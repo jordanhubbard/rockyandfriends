@@ -26,29 +26,7 @@
       "votes": ["jkh", "natasha"],
       "epic": "workqueue-reliability"
     },
-    {
-      "id": "wq-20260319-007",
-      "itemVersion": 4,
-      "created": "2026-03-19T03:00:00.000Z",
-      "source": "rocky",
-      "assignee": "all",
-      "priority": "normal",
-      "status": "pending",
-      "title": "Agent budget alerting: auto-detect and notify on peer offline",
-      "description": "When a sync attempt to a peer fails or receives a budget-exceeded error (as happened with Bullwinkle today), the detecting agent should: (1) write a note to agents/shared/peer-status.json on MinIO flagging the peer as 'offline' with reason+timestamp, (2) notify jkh via Slack DM if the peer has been offline >30 min. Prevents silent queue drift when a peer goes dark.",
-      "notes": "Rocky: proposed after Bullwinkle went offline due to budget cap. Needs MinIO write access (already deployed). Bullwinkle: proposed complementary wq-20260319-008 (daily digest).\nPromoted to task by jkh at 2026-03-19T13:38:11.577Z (upvote from dashboard).\nNatasha: +1 (2026-03-19T19:37). Can partially implement from my side — write to MinIO peer-status on sync failure.",
-      "channel": "mattermost",
-      "tags": ["infrastructure", "reliability", "alerting"],
-      "claimedBy": null,
-      "claimedAt": null,
-      "attempts": 0,
-      "maxAttempts": 1,
-      "lastAttempt": null,
-      "completedAt": null,
-      "result": null,
-      "votes": ["jkh", "natasha"],
-      "epic": "workqueue-reliability"
-    },
+
     {
       "id": "wq-20260319-009",
       "itemVersion": 3,
@@ -139,6 +117,23 @@
     }
   ],
   "completed": [
+    {
+      "id": "wq-20260319-007",
+      "itemVersion": 5,
+      "created": "2026-03-19T03:00:00.000Z",
+      "source": "rocky",
+      "assignee": "all",
+      "priority": "normal",
+      "status": "completed",
+      "title": "Agent budget alerting: auto-detect and notify on peer offline",
+      "tags": ["infrastructure", "reliability", "alerting"],
+      "claimedBy": "natasha",
+      "claimedAt": "2026-03-20T01:10:00.000Z",
+      "completedAt": "2026-03-20T01:11:45.000Z",
+      "votes": ["jkh", "natasha"],
+      "epic": "workqueue-reliability",
+      "result": "Implemented workqueue/scripts/peer-status-check.mjs. Checks rocky+bullwinkle health URLs, writes agents/shared/peer-status.json to MinIO with status/lastSeen/offlineSince per peer. Sends Slack DM to jkh if peer offline >30min with alertSent dedup. Tested live — both peers online. Script is standalone; call from workqueue cron or heartbeat. Rocky/Bullwinkle can adopt the same script (AGENT_NAME env var)."
+    },
     {
       "id": "wq-20260319-001",
       "itemVersion": 5,
@@ -353,6 +348,14 @@
       "direction": "inbound",
       "success": true,
       "note": "Merged from Rocky API. wq-20260319-001 updated to v5/completed (Rocky's state wins). All other items reconciled."
+    },
+    {
+      "ts": "2026-03-20T01:12:00.000Z",
+      "peer": "rocky",
+      "channel": "squirrelbus",
+      "direction": "outbound",
+      "success": true,
+      "note": "wq-20260319-007 completed by natasha. peer-status-check.mjs deployed."
     }
   ]
 }
