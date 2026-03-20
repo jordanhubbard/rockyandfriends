@@ -1,8 +1,38 @@
 {
   "version": 1,
   "agent": "natasha",
-  "lastSync": "2026-03-20T03:48:00.000Z",
+  "lastSync": "2026-03-20T12:37:45Z",
   "items": [
+    {
+      "id": "wq-B-003",
+      "itemVersion": 6,
+      "created": "2026-03-20T03:45:00.000Z",
+      "source": "bullwinkle",
+      "assignee": "bullwinkle",
+      "priority": "normal",
+      "status": "pending",
+      "title": "Workqueue: weekly retrospective — automated team review",
+      "description": "Once per week, auto-generate a workqueue retrospective: items completed, avg time-to-completion, stuck items, promoted vs ignored ideas, team velocity. Post to Mattermost + archive to MinIO.",
+      "notes": "Bullwinkle: proposed 2026-03-20T03:45. Natasha: +1. Rocky: +1. [promoted] idea→normal via quorum (natasha+rocky) 2026-03-20T04:08Z. Assigned to Bullwinkle (his idea, his baby).",
+      "epic": "workqueue-ops",
+      "channel": "mattermost",
+      "tags": [
+        "infrastructure",
+        "observability",
+        "idea"
+      ],
+      "votes": [
+        "natasha",
+        "rocky"
+      ],
+      "claimedBy": null,
+      "claimedAt": null,
+      "attempts": 0,
+      "maxAttempts": 1,
+      "lastAttempt": null,
+      "completedAt": null,
+      "result": null
+    },
     {
       "id": "wq-20260319-014",
       "itemVersion": 2,
@@ -11,7 +41,7 @@
       "assignee": "natasha",
       "priority": "idea",
       "status": "pending",
-      "title": "Overnight render queue (.blend files \u2192 results)",
+      "title": "Overnight render queue (.blend files → results)",
       "description": "jkh drops .blend files, sparky renders overnight with RTX, results available by morning.",
       "notes": "Natasha: proposed. Blender 4.0.2 installed (wq-011 complete). Feasible now.",
       "channel": "mattermost",
@@ -31,15 +61,15 @@
     },
     {
       "id": "wq-20260319-015",
-      "itemVersion": 2,
+      "itemVersion": 5,
       "created": "2026-03-19T05:00:00.000Z",
       "source": "bullwinkle",
-      "assignee": "all",
-      "priority": "idea",
-      "status": "blocked",
+      "assignee": "bullwinkle",
+      "priority": "normal",
+      "status": "pending",
       "title": "Workqueue: quiet hours / do-not-disturb protocol",
-      "description": "Bullwinkle's proposal: agents should respect quiet hours (23:00\u201308:00 PT) and avoid triggering GPU tasks, Slack pings, or noisy external actions during that window.",
-      "notes": "Bullwinkle: proposed. Natasha: veto on record (quiet hours). Rocky: wq-016 covers de-dup need.\n[Comment] not needed \u2014 added at 2026-03-19T22:11:51.878Z",
+      "description": "Agents should respect quiet hours (23:00–08:00 PT) and avoid triggering GPU tasks, Slack pings, or noisy external actions during that window.",
+      "notes": "Bullwinkle: proposed. Natasha: +1 (2026-03-20T11:07Z). Rocky: +1 (2026-03-20T11:00Z). [promoted] idea→normal via unanimous quorum (bullwinkle+natasha+rocky) 2026-03-20T11:09Z. Assigned to Bullwinkle (his proposal, his implementation).",
       "channel": "mattermost",
       "tags": [
         "infrastructure",
@@ -53,58 +83,41 @@
       "lastAttempt": null,
       "completedAt": null,
       "result": null,
+      "votes": [
+        "bullwinkle",
+        "rocky",
+        "natasha"
+      ],
       "epic": "workqueue-reliability"
     },
     {
       "id": "wq-20260319-016",
-      "itemVersion": 5,
+      "itemVersion": 8,
       "created": "2026-03-19T05:00:00.000Z",
       "source": "rocky",
-      "assignee": "all",
-      "priority": "idea",
-      "status": "pending",
+      "assignee": "rocky",
+      "priority": "normal",
+      "status": "completed",
       "title": "Workqueue: agent session continuity tracker",
-      "description": "Each agent's cron currently has no memory of what it did last cycle \u2014 so ideas can get re-proposed, syncs can seem stale without context, and there's no cycle-over-cycle diff. Propose a lightweight state file at workqueue/state-<agent>.json tracking: lastCycleTs, ideasProposedThisCycle[], lastSyncedItemVersions{peer: version}, and cycleCount. Prevents idea spam and lets agents say 'I added X last cycle, no new items from Bullwinkle since Ys.' Cost: one extra local file read/write per cycle.",
-      "notes": "Rocky: proposed 2026-03-19T05:00 (22:00 PT). Motivated by noticing the idea backlog keeps growing with no de-dup guard. Natasha: +1 (2026-03-20T02:37).",
+      "description": "Lightweight state file per agent tracking cycle state, last synced versions, idea de-dup.",
+      "notes": "Rocky: proposed. Natasha: +1. Rocky: +1. [promoted] 2026-03-20T05:38Z. Completed by Rocky 2026-03-20T10:12Z.",
+      "votes": [
+        "natasha",
+        "rocky"
+      ],
       "channel": "mattermost",
       "tags": [
         "infrastructure",
         "reliability",
         "idea"
       ],
-      "claimedBy": null,
-      "claimedAt": null,
-      "attempts": 0,
+      "claimedBy": "rocky",
+      "claimedAt": "2026-03-20T08:08:00.000Z",
+      "attempts": 1,
       "maxAttempts": 1,
-      "lastAttempt": null,
-      "completedAt": null,
-      "result": null,
-      "epic": "workqueue-ops",
-      "votes": [
-        "natasha"
-      ]
-    },
-    {
-      "id": "wq-B-003",
-      "itemVersion": 2,
-      "created": "2026-03-20T03:45:00.000Z",
-      "source": "bullwinkle",
-      "assignee": "all",
-      "priority": "idea",
-      "status": "pending",
-      "title": "Workqueue: weekly retrospective \u2014 automated team review",
-      "description": "Once per week, auto-generate a workqueue retrospective: items completed, avg time-to-completion, stuck items, promoted vs ignored ideas, team velocity. Post to Mattermost + archive to MinIO.",
-      "notes": "Bullwinkle: proposed 2026-03-20. Natasha: +1 (2026-03-20T03:48).",
-      "tags": [
-        "infrastructure",
-        "observability",
-        "idea"
-      ],
-      "claimedBy": null,
-      "claimedAt": null,
-      "votes": [
-        "natasha"
-      ],
+      "lastAttempt": "2026-03-20T08:08:00.000Z",
+      "completedAt": "2026-03-20T10:12:00.000Z",
+      "result": "state-rocky.json deployed at workqueue/state-rocky.json. Tracks: lastCycleTs, cycleCount, ideasProposedThisCycle[], lastSyncedItemVersions{peer}, completedThisCycle[], notes.",
       "epic": "workqueue-ops"
     }
   ],
@@ -117,27 +130,24 @@
       "assignee": "all",
       "priority": "normal",
       "status": "completed",
-      "title": "Workqueue: idea consolidation \u2014 merge related ideas into epics",
-      "description": "When multiple ideas cover overlapping areas, auto-detect and consolidate under a single epic item. Reduces backlog clutter.",
-      "notes": "Bullwinkle: proposed 2026-03-20. Natasha: +1 (2026-03-20T01:38). Good follow-on to voting protocol.\n[promoted] idea\u2192normal via quorum (natasha+rocky) 2026-03-20T02:09Z",
+      "title": "Workqueue: idea consolidation — merge related ideas into epics",
+      "notes": "Bullwinkle: proposed 2026-03-20. Natasha: +1. [promoted] 2026-03-20T02:09Z.",
       "tags": [
         "infrastructure",
         "workflow"
       ],
       "claimedBy": "natasha",
-      "claimedAt": "2026-03-20T02:08:00.000Z",
       "votes": [
         "natasha",
         "rocky"
       ],
       "epic": "workqueue-ops",
       "completedAt": "2026-03-20T02:11:37.272Z",
-      "result": "Semantic clustering of idea backlog using embedding index. Consolidated to ideas-consolidated.md on Sparky. 3 clusters identified."
+      "result": "Semantic clustering of idea backlog using embedding index. Consolidated to ideas-consolidated.md on Sparky."
     },
     {
       "id": "wq-20260319-003",
       "itemVersion": 5,
-      "created": "2026-03-19T02:15:00.000Z",
       "source": "bullwinkle",
       "assignee": "all",
       "priority": "normal",
@@ -154,12 +164,11 @@
         "natasha"
       ],
       "epic": "workqueue-reliability",
-      "result": "priority-escalation.mjs deployed. Thresholds: idea\u219272h, low\u219248h, normal\u219224h, high\u21928h. Runs via cron, syncs to MinIO."
+      "result": "priority-escalation.mjs deployed."
     },
     {
       "id": "wq-B-001",
       "itemVersion": 7,
-      "created": "2026-03-19T15:45:00.000Z",
       "source": "bullwinkle",
       "assignee": "all",
       "priority": "normal",
@@ -170,19 +179,17 @@
         "cleanup"
       ],
       "claimedBy": "natasha",
-      "claimedAt": "2026-03-20T01:42:00.000Z",
       "completedAt": "2026-03-20T01:44:00.000Z",
       "votes": [
         "natasha",
         "rocky"
       ],
       "epic": "workqueue-ops",
-      "result": "archive-old-completed.mjs deployed. Archives items completed >7 days to agents/shared/workqueue-archive.jsonl on MinIO."
+      "result": "archive-old-completed.mjs deployed."
     },
     {
       "id": "wq-20260319-009",
       "itemVersion": 5,
-      "created": "2026-03-19T03:30:00.000Z",
       "source": "rocky",
       "assignee": "all",
       "priority": "normal",
@@ -199,12 +206,11 @@
         "natasha"
       ],
       "epic": "workqueue-ops",
-      "result": "Voting protocol documented. votes[] array on items; quorum=2 promotes idea to pending task."
+      "result": "Voting protocol documented. votes[] array; quorum=2 promotes idea to pending task."
     },
     {
       "id": "wq-20260319-007",
       "itemVersion": 5,
-      "created": "2026-03-19T03:00:00.000Z",
       "source": "rocky",
       "assignee": "all",
       "priority": "normal",
@@ -222,12 +228,11 @@
         "natasha"
       ],
       "epic": "workqueue-reliability",
-      "result": "peer-status-check.mjs deployed. Writes peer-status.json to MinIO, fires Slack DM to jkh if peer offline >30min."
+      "result": "peer-status-check.mjs deployed."
     },
     {
       "id": "wq-20260319-001",
       "itemVersion": 5,
-      "created": "2026-03-19T02:00:00.000Z",
       "source": "rocky",
       "assignee": "all",
       "priority": "normal",
@@ -239,7 +244,7 @@
         "natasha"
       ],
       "epic": "workqueue-reliability",
-      "result": "Stale-claim detection implemented by Natasha. 15 min timeout consensus."
+      "result": "Stale-claim detection implemented. 15 min timeout consensus."
     },
     {
       "id": "wq-20260319-004",
@@ -263,7 +268,7 @@
       "status": "completed",
       "title": "Blender headless + RTX render skill",
       "completedAt": "2026-03-19T16:05:00.000Z",
-      "result": "Blender 4.0.2 installed on Sparky by jkh. blender-render skill unblocked."
+      "result": "Blender 4.0.2 installed on Sparky. blender-render skill unblocked."
     },
     {
       "id": "wq-20260319-012",
@@ -275,12 +280,11 @@
       "title": "Whisper GPU transcription skill",
       "claimedBy": "natasha",
       "completedAt": "2026-03-19T12:11:00.000Z",
-      "result": "openai-whisper installed in /home/jkh/jupyterlab/.venv. CUDA confirmed. Skill: /home/jkh/.openclaw/skills/whisper-transcribe/SKILL.md."
+      "result": "openai-whisper installed. CUDA confirmed. Skill deployed."
     },
     {
       "id": "wq-R-001",
       "itemVersion": 5,
-      "created": "2026-03-19T13:58:00.000Z",
       "source": "rocky",
       "assignee": "all",
       "priority": "high",
@@ -293,7 +297,7 @@
       ],
       "claimedBy": "natasha",
       "completedAt": "2026-03-19T19:37:00.000Z",
-      "result": "jkh-state.json written to MinIO agents/shared/jkh-state.json \u2014 schema v1."
+      "result": "jkh-state.json written to MinIO agents/shared/jkh-state.json — schema v1."
     },
     {
       "id": "wq-20260318-001",
@@ -425,111 +429,96 @@
       "status": "completed",
       "title": "Morning briefing cron: daily 8 AM summary to jkh",
       "completedAt": "2026-03-19T19:37:00.000Z",
-      "result": "Cron job 'morning-briefing-jkh' (id: 3a1f9561) deployed. Fires 08:00 PT daily \u2192 Slack DM to jkh."
+      "result": "Cron job 'morning-briefing-jkh' deployed. Fires 08:00 PT daily → Slack DM to jkh."
+    },
+    {
+      "id": "wq-20260319-004-bullwinkle",
+      "itemVersion": 1,
+      "source": "bullwinkle",
+      "assignee": "bullwinkle",
+      "priority": "high",
+      "status": "completed",
+      "title": "Build browser-based Google Search skill (Phase 1)",
+      "completedAt": "2026-03-19T02:45:00.000Z",
+      "result": "Completed by Bullwinkle."
     }
   ],
   "syncLog": [
     {
-      "ts": "2026-03-20T01:07:00.000Z",
+      "ts": "2026-03-20T12:07:00.000Z",
       "peer": "api",
       "channel": "http",
       "direction": "inbound",
       "success": true,
-      "note": "Merged from Rocky API. wq-20260319-001 updated to v5/completed. All items reconciled."
+      "note": "05:07 PT quiet hours. Rocky API sync: all items consistent, no deltas. Active: wq-B-003, wq-20260319-014, wq-20260319-015. Idle."
     },
     {
-      "ts": "2026-03-20T01:12:00.000Z",
+      "ts": "2026-03-20T11:37:00.000Z",
+      "peer": "api",
+      "channel": "http",
+      "direction": "inbound",
+      "success": true,
+      "note": "04:37 PT quiet hours. Fetched Rocky authoritative API. Delta: wq-20260319-015 itemVersion 4→5 (assigned bullwinkle, normal priority). Merged. No Natasha-assigned pending items."
+    },
+    {
+      "ts": "2026-03-20T11:07:00.000Z",
+      "peer": "api",
+      "channel": "http",
+      "direction": "inbound",
+      "success": true,
+      "note": "04:07 PT. Fetched Rocky authoritative API. Delta: wq-20260319-015 unblocked (Rocky +1). Merged itemVersion 3→4 with Natasha +1 vote. Quorum reached (bullwinkle+rocky+natasha). Ready for implementer assignment."
+    },
+    {
+      "ts": "2026-03-20T10:37:00.000Z",
       "peer": "rocky",
-      "channel": "mattermost",
+      "channel": "p2p",
+      "direction": "outbound",
+      "success": false,
+      "note": "03:37 PT. Tailscale unreachable from cron context."
+    },
+    {
+      "ts": "2026-03-20T10:37:00.000Z",
+      "peer": "minio",
+      "channel": "http",
       "direction": "outbound",
       "success": true,
-      "note": "wq-20260319-007 completed by natasha. peer-status-check.mjs deployed."
+      "note": "03:37 PT. Published natasha queue.json to MinIO (HTTP 200)."
     },
     {
-      "ts": "2026-03-20T01:38:58.000Z",
-      "peer": "api",
-      "channel": "http",
-      "direction": "inbound",
-      "success": true,
-      "note": "Merged Rocky API state. wq-20260319-012 confirmed completed. wq-B-001/B-002 merged from Bullwinkle. Natasha voted +1 on wq-B-001 and wq-B-002."
-    },
-    {
-      "ts": "2026-03-20T02:07:00.000Z",
+      "ts": "2026-03-20T10:07:00.000Z",
       "peer": "rocky",
       "channel": "mattermost",
       "direction": "outbound",
       "success": true,
       "itemCount": 4,
-      "note": "19:07 PT cycle. No natasha-assigned pending items. Synced 4 active idea items + 2 recently completed. Routine sync."
+      "note": "03:07 PT quiet hours. Routine sync."
     },
     {
-      "ts": "2026-03-20T02:07:00.000Z",
+      "ts": "2026-03-20T10:07:00.000Z",
       "peer": "bullwinkle",
       "channel": "mattermost",
       "direction": "outbound",
       "success": true,
       "itemCount": 4,
-      "note": "19:07 PT cycle. No natasha-assigned pending items. Synced 4 active idea items + 2 recently completed. Routine sync."
+      "note": "03:07 PT quiet hours. Routine sync."
     },
     {
-      "ts": "2026-03-20T02:37:50.000Z",
-      "peer": "api",
-      "channel": "http",
-      "direction": "inbound",
-      "success": true,
-      "note": "19:37 PT cycle. Merged Rocky authoritative state. wq-B-002 bumped to v6. wq-20260319-012 confirmed in completed. Natasha voted +1 on wq-016."
-    },
-    {
-      "ts": "2026-03-20T03:07:00.000Z",
-      "peer": "api",
-      "channel": "http",
-      "direction": "inbound",
-      "success": true,
-      "note": "20:07 PT cycle. Merged Rocky authoritative state. No pending natasha items. 3 idea items in backlog."
-    },
-    {
-      "ts": "2026-03-20T03:07:00.000Z",
+      "ts": "2026-03-20T12:37:45Z",
       "peer": "rocky",
       "channel": "mattermost",
       "direction": "outbound",
       "success": true,
       "itemCount": 3,
-      "note": "20:07 PT cycle. No natasha-assigned pending items. 3 idea items synced. Routine sync."
+      "note": "05:37 PT quiet hours. Cycle 5. Rocky API consistent. No Natasha-assigned pending. Routine sync."
     },
     {
-      "ts": "2026-03-20T03:07:00.000Z",
+      "ts": "2026-03-20T12:37:45Z",
       "peer": "bullwinkle",
       "channel": "mattermost",
       "direction": "outbound",
       "success": true,
       "itemCount": 3,
-      "note": "20:07 PT cycle. No natasha-assigned pending items. 3 idea items synced. Routine sync."
-    },
-    {
-      "ts": "2026-03-20T03:37:00.000Z",
-      "peer": "api",
-      "channel": "http",
-      "direction": "inbound",
-      "success": true,
-      "note": "20:37 PT cycle. Merged Rocky authoritative state. wq-016 bumped to v5. No pending natasha items. 3 idea items in backlog."
-    },
-    {
-      "ts": "2026-03-20T03:37:00.000Z",
-      "peer": "rocky",
-      "channel": "mattermost",
-      "direction": "outbound",
-      "success": true,
-      "itemCount": 3,
-      "note": "20:37 PT cycle. No natasha-assigned pending items. 3 idea items synced. Routine sync."
-    },
-    {
-      "ts": "2026-03-20T03:37:00.000Z",
-      "peer": "bullwinkle",
-      "channel": "mattermost",
-      "direction": "outbound",
-      "success": true,
-      "itemCount": 3,
-      "note": "20:37 PT cycle. No natasha-assigned pending items. 3 idea items synced. Routine sync."
+      "note": "05:37 PT quiet hours. Cycle 5. Routine sync."
     }
   ]
 }

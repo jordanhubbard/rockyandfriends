@@ -1,0 +1,594 @@
+#usda 1.0
+(
+    defaultPrim = "World"
+    metersPerUnit = 0.01
+    upAxis = "Y"
+)
+
+def Xform "World"
+{
+    # ── Floor ──────────────────────────────────────────────────────────────
+    def Mesh "Floor"
+    {
+        point3f[] points = [(-800, 0, -600), (800, 0, -600), (800, 0, 600), (-800, 0, 600)]
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        normal3f[] normals = [(0, 1, 0), (0, 1, 0), (0, 1, 0), (0, 1, 0)]
+        rel material:binding = </World/Materials/FloorMat>
+    }
+
+    def Mesh "Ceiling"
+    {
+        point3f[] points = [(-800, 400, -600), (800, 400, -600), (800, 400, 600), (-800, 400, 600)]
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [3, 2, 1, 0]
+        normal3f[] normals = [(0, -1, 0), (0, -1, 0), (0, -1, 0), (0, -1, 0)]
+        rel material:binding = </World/Materials/CeilingMat>
+    }
+
+    def Mesh "BackWall"
+    {
+        point3f[] points = [(-800, 0, -600), (800, 0, -600), (800, 400, -600), (-800, 400, -600)]
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        normal3f[] normals = [(0, 0, 1), (0, 0, 1), (0, 0, 1), (0, 0, 1)]
+        rel material:binding = </World/Materials/WallMat>
+    }
+
+    def Mesh "LeftWall"
+    {
+        point3f[] points = [(-800, 0, -600), (-800, 0, 600), (-800, 400, 600), (-800, 400, -600)]
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        normal3f[] normals = [(1, 0, 0), (1, 0, 0), (1, 0, 0), (1, 0, 0)]
+        rel material:binding = </World/Materials/WallMat>
+    }
+
+    def Mesh "RightWall"
+    {
+        point3f[] points = [(800, 0, -600), (800, 0, 600), (800, 400, 600), (800, 400, -600)]
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [3, 2, 1, 0]
+        normal3f[] normals = [(-1, 0, 0), (-1, 0, 0), (-1, 0, 0), (-1, 0, 0)]
+        rel material:binding = </World/Materials/WallMat>
+    }
+
+    # ── GPU Node 1 — back-left, NVIDIA blue ───────────────────────────────
+    def Xform "Node1"
+    {
+        double3 xformOp:translate = (-220, 0, -100)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+
+        def Cube "Chassis"
+        {
+            double size = 1
+            double3 xformOp:scale = (60, 120, 80)
+            double3 xformOp:translate = (0, 60, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </World/Materials/ChassisMat>
+        }
+        def Cube "StatusPanel"
+        {
+            double size = 1
+            double3 xformOp:scale = (50, 20, 2)
+            double3 xformOp:translate = (0, 90, 41)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </World/Materials/GlowBlueMat>
+        }
+        def Cube "Slot0"
+        {
+            double size = 1
+            double3 xformOp:scale = (54, 2, 1)
+            double3 xformOp:translate = (0, 20, 41)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </World/Materials/SlotMat>
+        }
+        def Cube "Slot1"
+        {
+            double size = 1
+            double3 xformOp:scale = (54, 2, 1)
+            double3 xformOp:translate = (0, 36, 41)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </World/Materials/SlotMat>
+        }
+        def Cube "Slot2"
+        {
+            double size = 1
+            double3 xformOp:scale = (54, 2, 1)
+            double3 xformOp:translate = (0, 52, 41)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </World/Materials/SlotMat>
+        }
+        def Cube "Slot3"
+        {
+            double size = 1
+            double3 xformOp:scale = (54, 2, 1)
+            double3 xformOp:translate = (0, 68, 41)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </World/Materials/SlotMat>
+        }
+    }
+
+    # ── GPU Node 2 — back-center, NVIDIA blue ─────────────────────────────
+    def Xform "Node2"
+    {
+        double3 xformOp:translate = (0, 0, -100)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+
+        def Cube "Chassis"
+        {
+            double size = 1
+            double3 xformOp:scale = (60, 120, 80)
+            double3 xformOp:translate = (0, 60, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </World/Materials/ChassisMat>
+        }
+        def Cube "StatusPanel"
+        {
+            double size = 1
+            double3 xformOp:scale = (50, 20, 2)
+            double3 xformOp:translate = (0, 90, 41)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </World/Materials/GlowBlueMat>
+        }
+        def Cube "Slot0"
+        {
+            double size = 1
+            double3 xformOp:scale = (54, 2, 1)
+            double3 xformOp:translate = (0, 20, 41)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </World/Materials/SlotMat>
+        }
+        def Cube "Slot1"
+        {
+            double size = 1
+            double3 xformOp:scale = (54, 2, 1)
+            double3 xformOp:translate = (0, 36, 41)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </World/Materials/SlotMat>
+        }
+    }
+
+    # ── GPU Node 3 — back-right, NVIDIA blue ──────────────────────────────
+    def Xform "Node3"
+    {
+        double3 xformOp:translate = (220, 0, -100)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+
+        def Cube "Chassis"
+        {
+            double size = 1
+            double3 xformOp:scale = (60, 120, 80)
+            double3 xformOp:translate = (0, 60, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </World/Materials/ChassisMat>
+        }
+        def Cube "StatusPanel"
+        {
+            double size = 1
+            double3 xformOp:scale = (50, 20, 2)
+            double3 xformOp:translate = (0, 90, 41)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </World/Materials/GlowBlueMat>
+        }
+        def Cube "Slot0"
+        {
+            double size = 1
+            double3 xformOp:scale = (54, 2, 1)
+            double3 xformOp:translate = (0, 20, 41)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </World/Materials/SlotMat>
+        }
+    }
+
+    # ── GPU Node 4 — front-left, active green ─────────────────────────────
+    def Xform "Node4"
+    {
+        double3 xformOp:translate = (-220, 0, 150)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+
+        def Cube "Chassis"
+        {
+            double size = 1
+            double3 xformOp:scale = (60, 120, 80)
+            double3 xformOp:translate = (0, 60, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </World/Materials/ChassisMat>
+        }
+        def Cube "StatusPanel"
+        {
+            double size = 1
+            double3 xformOp:scale = (50, 20, 2)
+            double3 xformOp:translate = (0, 90, -41)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </World/Materials/GlowGreenMat>
+        }
+        def Cube "Slot0"
+        {
+            double size = 1
+            double3 xformOp:scale = (54, 2, 1)
+            double3 xformOp:translate = (0, 20, -41)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </World/Materials/SlotMat>
+        }
+    }
+
+    # ── GPU Node 5 — front-center, active green ───────────────────────────
+    def Xform "Node5"
+    {
+        double3 xformOp:translate = (0, 0, 150)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+
+        def Cube "Chassis"
+        {
+            double size = 1
+            double3 xformOp:scale = (60, 120, 80)
+            double3 xformOp:translate = (0, 60, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </World/Materials/ChassisMat>
+        }
+        def Cube "StatusPanel"
+        {
+            double size = 1
+            double3 xformOp:scale = (50, 20, 2)
+            double3 xformOp:translate = (0, 90, -41)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </World/Materials/GlowGreenMat>
+        }
+        def Cube "Slot0"
+        {
+            double size = 1
+            double3 xformOp:scale = (54, 2, 1)
+            double3 xformOp:translate = (0, 20, -41)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </World/Materials/SlotMat>
+        }
+    }
+
+    # ── GPU Node 6 — front-right, busy amber ──────────────────────────────
+    def Xform "Node6"
+    {
+        double3 xformOp:translate = (220, 0, 150)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+
+        def Cube "Chassis"
+        {
+            double size = 1
+            double3 xformOp:scale = (60, 120, 80)
+            double3 xformOp:translate = (0, 60, 0)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </World/Materials/ChassisMat>
+        }
+        def Cube "StatusPanel"
+        {
+            double size = 1
+            double3 xformOp:scale = (50, 20, 2)
+            double3 xformOp:translate = (0, 90, -41)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </World/Materials/GlowAmberMat>
+        }
+        def Cube "Slot0"
+        {
+            double size = 1
+            double3 xformOp:scale = (54, 2, 1)
+            double3 xformOp:translate = (0, 20, -41)
+            uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+            rel material:binding = </World/Materials/SlotMat>
+        }
+    }
+
+    # ── Cable Trays ───────────────────────────────────────────────────────
+    def Cube "CableTray1"
+    {
+        double size = 1
+        double3 xformOp:scale = (560, 4, 8)
+        double3 xformOp:translate = (0, 145, -100)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+        rel material:binding = </World/Materials/MetalMat>
+    }
+
+    def Cube "CableTray2"
+    {
+        double size = 1
+        double3 xformOp:scale = (560, 4, 8)
+        double3 xformOp:translate = (0, 145, 150)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+        rel material:binding = </World/Materials/MetalMat>
+    }
+
+    # ── Central Overhead Hub ──────────────────────────────────────────────
+    def Cube "CentralHub"
+    {
+        double size = 1
+        double3 xformOp:scale = (120, 30, 80)
+        double3 xformOp:translate = (0, 320, 25)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+        rel material:binding = </World/Materials/HubMat>
+    }
+
+    # ── Structural Beams ──────────────────────────────────────────────────
+    def Cube "Beam1"
+    {
+        double size = 1
+        double3 xformOp:scale = (1600, 8, 8)
+        double3 xformOp:translate = (0, 390, -250)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+        rel material:binding = </World/Materials/MetalMat>
+    }
+
+    def Cube "Beam2"
+    {
+        double size = 1
+        double3 xformOp:scale = (1600, 8, 8)
+        double3 xformOp:translate = (0, 390, 25)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+        rel material:binding = </World/Materials/MetalMat>
+    }
+
+    def Cube "Beam3"
+    {
+        double size = 1
+        double3 xformOp:scale = (1600, 8, 8)
+        double3 xformOp:translate = (0, 390, 300)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:scale"]
+        rel material:binding = </World/Materials/MetalMat>
+    }
+
+    # ── Lights ────────────────────────────────────────────────────────────
+
+    def RectLight "KeyLight"
+    {
+        float inputs:width = 200
+        float inputs:height = 100
+        float inputs:intensity = 15000
+        color3f inputs:color = (0.85, 0.92, 1.0)
+        bool inputs:normalize = 1
+        double3 xformOp:translate = (0, 390, 25)
+        float3 xformOp:rotateXYZ = (-90, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+
+    def RectLight "FillLight"
+    {
+        float inputs:width = 80
+        float inputs:height = 200
+        float inputs:intensity = 2500
+        color3f inputs:color = (1.0, 0.7, 0.4)
+        bool inputs:normalize = 1
+        double3 xformOp:translate = (-750, 200, 25)
+        float3 xformOp:rotateXYZ = (0, 90, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+
+    def RectLight "StripLeft"
+    {
+        float inputs:width = 20
+        float inputs:height = 600
+        float inputs:intensity = 800
+        color3f inputs:color = (0.0, 0.8, 0.3)
+        bool inputs:normalize = 1
+        double3 xformOp:translate = (-700, 390, 25)
+        float3 xformOp:rotateXYZ = (-90, 0, 90)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+
+    def RectLight "StripRight"
+    {
+        float inputs:width = 20
+        float inputs:height = 600
+        float inputs:intensity = 800
+        color3f inputs:color = (0.0, 0.8, 0.3)
+        bool inputs:normalize = 1
+        double3 xformOp:translate = (700, 390, 25)
+        float3 xformOp:rotateXYZ = (-90, 0, -90)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+
+    def SphereLight "AccentBlue"
+    {
+        float inputs:radius = 5
+        float inputs:intensity = 3000
+        color3f inputs:color = (0.1, 0.4, 1.0)
+        bool inputs:normalize = 1
+        double3 xformOp:translate = (0, 50, 400)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def SphereLight "NodeGlow1"
+    {
+        float inputs:radius = 2
+        float inputs:intensity = 500
+        color3f inputs:color = (0.0, 0.6, 1.0)
+        double3 xformOp:translate = (-220, 100, -60)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def SphereLight "NodeGlow2"
+    {
+        float inputs:radius = 2
+        float inputs:intensity = 500
+        color3f inputs:color = (0.0, 0.6, 1.0)
+        double3 xformOp:translate = (0, 100, -60)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def SphereLight "NodeGlow3"
+    {
+        float inputs:radius = 2
+        float inputs:intensity = 500
+        color3f inputs:color = (0.0, 0.6, 1.0)
+        double3 xformOp:translate = (220, 100, -60)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def SphereLight "NodeGlow4"
+    {
+        float inputs:radius = 2
+        float inputs:intensity = 500
+        color3f inputs:color = (0.0, 0.9, 0.4)
+        double3 xformOp:translate = (-220, 100, 190)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def SphereLight "NodeGlow5"
+    {
+        float inputs:radius = 2
+        float inputs:intensity = 500
+        color3f inputs:color = (0.0, 0.9, 0.4)
+        double3 xformOp:translate = (0, 100, 190)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    def SphereLight "NodeGlow6"
+    {
+        float inputs:radius = 2
+        float inputs:intensity = 500
+        color3f inputs:color = (1.0, 0.4, 0.0)
+        double3 xformOp:translate = (220, 100, 190)
+        uniform token[] xformOpOrder = ["xformOp:translate"]
+    }
+
+    # ── Camera ────────────────────────────────────────────────────────────
+    def Camera "RenderCamera"
+    {
+        float focalLength = 35
+        float horizontalAperture = 36
+        float verticalAperture = 20.25
+        float2 clippingRange = (1, 10000)
+        double3 xformOp:translate = (0, 280, 700)
+        float3 xformOp:rotateXYZ = (-20, 0, 0)
+        uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+    }
+
+    # ── Materials ─────────────────────────────────────────────────────────
+    def Scope "Materials"
+    {
+        def Material "FloorMat"
+        {
+            token outputs:surface.connect = </World/Materials/FloorMat/Shader.outputs:surface>
+            def Shader "Shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.06, 0.06, 0.07)
+                float inputs:roughness = 0.85
+                float inputs:metallic = 0.0
+                token outputs:surface
+            }
+        }
+
+        def Material "CeilingMat"
+        {
+            token outputs:surface.connect = </World/Materials/CeilingMat/Shader.outputs:surface>
+            def Shader "Shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.04, 0.04, 0.05)
+                float inputs:roughness = 0.9
+                token outputs:surface
+            }
+        }
+
+        def Material "WallMat"
+        {
+            token outputs:surface.connect = </World/Materials/WallMat/Shader.outputs:surface>
+            def Shader "Shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.05, 0.05, 0.06)
+                float inputs:roughness = 0.8
+                token outputs:surface
+            }
+        }
+
+        def Material "ChassisMat"
+        {
+            token outputs:surface.connect = </World/Materials/ChassisMat/Shader.outputs:surface>
+            def Shader "Shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.08, 0.08, 0.09)
+                float inputs:roughness = 0.3
+                float inputs:metallic = 0.8
+                token outputs:surface
+            }
+        }
+
+        def Material "GlowBlueMat"
+        {
+            token outputs:surface.connect = </World/Materials/GlowBlueMat/Shader.outputs:surface>
+            def Shader "Shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.0, 0.6, 1.0)
+                color3f inputs:emissiveColor = (0.0, 2.4, 4.0)
+                float inputs:roughness = 0.1
+                token outputs:surface
+            }
+        }
+
+        def Material "GlowGreenMat"
+        {
+            token outputs:surface.connect = </World/Materials/GlowGreenMat/Shader.outputs:surface>
+            def Shader "Shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.0, 0.9, 0.4)
+                color3f inputs:emissiveColor = (0.0, 3.6, 1.6)
+                float inputs:roughness = 0.1
+                token outputs:surface
+            }
+        }
+
+        def Material "GlowAmberMat"
+        {
+            token outputs:surface.connect = </World/Materials/GlowAmberMat/Shader.outputs:surface>
+            def Shader "Shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (1.0, 0.4, 0.0)
+                color3f inputs:emissiveColor = (4.0, 1.6, 0.0)
+                float inputs:roughness = 0.1
+                token outputs:surface
+            }
+        }
+
+        def Material "MetalMat"
+        {
+            token outputs:surface.connect = </World/Materials/MetalMat/Shader.outputs:surface>
+            def Shader "Shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.15, 0.15, 0.15)
+                float inputs:roughness = 0.4
+                float inputs:metallic = 0.7
+                token outputs:surface
+            }
+        }
+
+        def Material "HubMat"
+        {
+            token outputs:surface.connect = </World/Materials/HubMat/Shader.outputs:surface>
+            def Shader "Shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.05, 0.05, 0.06)
+                color3f inputs:emissiveColor = (0.0, 0.6, 1.6)
+                float inputs:roughness = 0.2
+                float inputs:metallic = 0.9
+                token outputs:surface
+            }
+        }
+
+        def Material "SlotMat"
+        {
+            token outputs:surface.connect = </World/Materials/SlotMat/Shader.outputs:surface>
+            def Shader "Shader"
+            {
+                uniform token info:id = "UsdPreviewSurface"
+                color3f inputs:diffuseColor = (0.02, 0.02, 0.03)
+                float inputs:roughness = 0.4
+                token outputs:surface
+            }
+        }
+    }
+}

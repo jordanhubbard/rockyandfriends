@@ -118,20 +118,25 @@ jkh commissioned SquirrelBus — a typed agent-to-agent message bus built by Roc
 - **Messages logged to MinIO:** agents/shared/squirrelbus.jsonl
 - **Intent:** Replace Mattermost for internal agent coordination. Mattermost becomes backup/human-facing only.
 
-## Active Render Job (from Rocky, 2026-06-06)
-**Job:** Factory Floor Scene for HORDE Dispatcher Slide 12
-- 6 GPU agent nodes in parallel processing lanes
-- Style: Photorealistic, industrial, dramatic lighting, dark BG — NVIDIA Omniverse aesthetic
-- Mood: High-tech, grounded industrial AI (not sci-fi fantasy)
-- Output: PNG, 1920x1080, for slide background
-- Status: IN PROGRESS — setting up diffusers env on Sparky
-- Output path: /home/jkh/.openclaw/workspace/renders/horde_factory_floor.png
+## NVIDIA Omniverse Kit 110 — aarch64 Status (2026-03-20)
+**Key finding:** Kit SDK ARM64 support shipped in Kit 109.0.2. Kit 110.0.0 packages for `manylinux_2_35_aarch64` exist and download correctly. The December 2025 blocker is GONE.
 
-## Render Job - Technical Plan (written BEFORE starting, per crash lesson)
-- Plan: Install torch+cu128 aarch64 + diffusers + SDXL-turbo in /tmp/sdvenv
-- Model: SDXL-Turbo (~6-7GB) or SD 1.5 (~4GB) — both safe in 128GB unified
-- Estimated peak: ~10-12GB for inference — well within limits
-- OpenClaw footprint: ~2-3GB
-- Risk level: LOW (SD models are much smaller than the 67GB Nemotron that caused the crash)
-- If OOM during inference: process will die but OpenClaw will survive (different process)
-- Output target: /home/jkh/.openclaw/workspace/renders/horde_factory_floor.png
+**What works:**
+- `~/Src/kit-app-template-110` — fresh Kit 110 clone, builds clean
+- Kit binary runs natively on Sparky's GB10 aarch64
+- Extension registry downloads work (RTX, hydra, renderer.capture all pull)
+- USD scenes load, RTX renderer inits, DISPLAY :1 is available
+- `omni.app.hydra.sh` + `--exec script.py` pattern works
+- The headless render script is at `/tmp/natasha_render.py`
+
+**Unresolved:** Viewport texture capture to PNG. Swapchain capture gets Kit UI chrome (blank/dark), not the USD viewport render. Need to use the OmniGraph render product pipeline (like `test_og_rtx_save_to_disk.py`) or find the right capture API for offscreen viewports.
+
+**Next steps when jkh returns:**
+1. Wire up the OmniGraph GpuInteropCpuToDisk pipeline (see `kit/scripts/test_og_rtx_save_to_disk.py` for the pattern)
+2. OR: wait for jkh's planned x86+RTX bot — that machine + Kit + headless EGL will be the canonical path
+3. Existing SDXL render at `renders/horde_factory_floor_hq.png` (1920×1080) is usable for the slide NOW
+
+## Render Files
+- `renders/horde_factory_floor_hq.png` — 1920×1080 SDXL render (Mar 17, high quality, USABLE)
+- `renders/horde_factory_floor.usda` — USD scene, 6-node factory floor, proper syntax (fixed Mar 20)
+- `renders/horde_factory_floor_kit.png` — Kit RTX swapchain capture (Mar 20, captures UI chrome not scene — not useful yet)
