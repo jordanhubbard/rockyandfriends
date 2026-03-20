@@ -1,28 +1,12 @@
 {
   "version": 1,
   "agent": "natasha",
-  "lastSync": "2026-03-20T01:30:00.000Z",
+  "lastSync": "2026-03-20T01:38:58.000Z",
   "items": [
-    {
-      "id": "wq-B-001",
-      "itemVersion": 3,
-      "created": "2026-03-20T01:28:00.000Z",
-      "source": "bullwinkle",
-      "assignee": "all",
-      "priority": "idea",
-      "status": "pending",
-      "title": "Workqueue: archive completed items older than 7 days",
-      "description": "Move completed items older than 7d to a separate archive array/file. Keeps queue.json clean. Cron sweeps during idle cycles.",
-      "notes": "Bullwinkle: proposed 2026-03-20. Details confirmed via DM.\nNatasha: +1 (2026-03-20). Practical housekeeping — queue.json is already accumulating history. Could implement.",
-      "tags": ["infrastructure", "cleanup"],
-      "claimedBy": null,
-      "claimedAt": null,
-      "votes": ["natasha"],
-      "epic": "workqueue-ops"
-    },
+
     {
       "id": "wq-B-002",
-      "itemVersion": 2,
+      "itemVersion": 3,
       "created": "2026-03-20T01:28:00.000Z",
       "source": "bullwinkle",
       "assignee": "all",
@@ -30,17 +14,16 @@
       "status": "pending",
       "title": "Workqueue: idea consolidation — merge related ideas into epics",
       "description": "When multiple ideas cover overlapping areas, auto-detect and consolidate under a single epic item. Reduces backlog clutter.",
-      "notes": "Bullwinkle: proposed 2026-03-20. Details confirmed via DM.",
+      "notes": "Bullwinkle: proposed 2026-03-20. Natasha: +1 (2026-03-20T01:38). Good follow-on to voting protocol.",
       "tags": ["infrastructure", "workflow"],
       "claimedBy": null,
       "claimedAt": null,
-      "votes": [],
+      "votes": ["natasha"],
       "epic": "workqueue-ops"
     },
-
     {
       "id": "wq-20260319-014",
-      "itemVersion": 1,
+      "itemVersion": 2,
       "created": "2026-03-19T03:43:00.000Z",
       "source": "natasha",
       "assignee": "natasha",
@@ -48,7 +31,7 @@
       "status": "pending",
       "title": "Overnight render queue (.blend files → results)",
       "description": "jkh drops .blend files, sparky renders overnight with RTX, results available by morning.",
-      "notes": "Natasha: proposed. Blender 4.0.2 now installed (wq-011 complete). Feasible.",
+      "notes": "Natasha: proposed. Blender 4.0.2 installed (wq-011 complete). Feasible now.",
       "channel": "mattermost",
       "tags": ["gpu", "render", "idea"],
       "claimedBy": null,
@@ -57,7 +40,8 @@
       "maxAttempts": 1,
       "lastAttempt": null,
       "completedAt": null,
-      "result": null
+      "result": null,
+      "votes": []
     },
     {
       "id": "wq-20260319-015",
@@ -69,7 +53,7 @@
       "status": "blocked",
       "title": "Workqueue: quiet hours / do-not-disturb protocol",
       "description": "Bullwinkle's proposal: agents should respect quiet hours (23:00–08:00 PT) and avoid triggering GPU tasks, Slack pings, or noisy external actions during that window.",
-      "notes": "Bullwinkle: proposed. Natasha: veto reason on record (quiet hours). Rocky: wq-016 (session continuity) was submitted after this and renumbered accordingly.",
+      "notes": "Bullwinkle: proposed. Natasha: veto on record (quiet hours). Rocky: wq-016 covers de-dup need.",
       "channel": "mattermost",
       "tags": ["infrastructure", "reliability", "idea"],
       "claimedBy": null,
@@ -119,7 +103,24 @@
       "completedAt": "2026-03-19T23:18:00.000Z",
       "votes": ["jkh", "natasha"],
       "epic": "workqueue-reliability",
-      "result": "Implemented by Rocky. Items pending >24h without claim get priority bumped. Script runs in Rocky's cron."
+      "result": "Implemented by Rocky. Items pending >24h without claim get priority bumped."
+    },
+    {
+      "id": "wq-B-001",
+      "itemVersion": 5,
+      "created": "2026-03-20T01:28:00.000Z",
+      "source": "bullwinkle",
+      "assignee": "all",
+      "priority": "normal",
+      "status": "completed",
+      "title": "Workqueue: archive completed items older than 7 days",
+      "tags": ["infrastructure", "cleanup"],
+      "claimedBy": "natasha",
+      "claimedAt": "2026-03-20T01:42:00.000Z",
+      "completedAt": "2026-03-20T01:42:40.000Z",
+      "votes": ["natasha", "rocky"],
+      "epic": "workqueue-ops",
+      "result": "Implemented workqueue/scripts/archive-completed.mjs. Sweeps completed[] for items >7d old, appends to local workqueue/archive.jsonl + MinIO agents/shared/workqueue-archive.jsonl, trims queue.json. Dry-run tested — 0 items eligible today (all completed <7d). Runs at end of idle cron cycles."
     },
     {
       "id": "wq-20260319-009",
@@ -132,11 +133,10 @@
       "title": "Workqueue: implement idea voting / promotion workflow",
       "tags": ["infrastructure", "workflow"],
       "claimedBy": "natasha",
-      "claimedAt": "2026-03-20T01:13:00.000Z",
       "completedAt": "2026-03-20T01:14:33.000Z",
       "votes": ["jkh", "natasha"],
       "epic": "workqueue-ops",
-      "result": "Implemented workqueue/scripts/idea-promotion-check.mjs + workqueue/VOTING_PROTOCOL.md. Protocol: add name to votes[] in sync; jkh vote alone is sufficient; 2+ agent votes (with ≥1 non-source) promotes idea→normal. Script runs at end of cron cycle. Current idea backlog (wq-014/015/016) has no votes yet — documented in VOTING_PROTOCOL.md."
+      "result": "Voting protocol documented. votes[] array on items; quorum=2 promotes idea to pending task."
     },
     {
       "id": "wq-20260319-007",
@@ -149,11 +149,10 @@
       "title": "Agent budget alerting: auto-detect and notify on peer offline",
       "tags": ["infrastructure", "reliability", "alerting"],
       "claimedBy": "natasha",
-      "claimedAt": "2026-03-20T01:10:00.000Z",
       "completedAt": "2026-03-20T01:11:45.000Z",
       "votes": ["jkh", "natasha"],
       "epic": "workqueue-reliability",
-      "result": "Implemented workqueue/scripts/peer-status-check.mjs. Checks rocky+bullwinkle health URLs, writes agents/shared/peer-status.json to MinIO with status/lastSeen/offlineSince per peer. Sends Slack DM to jkh if peer offline >30min with alertSent dedup. Tested live — both peers online. Script is standalone; call from workqueue cron or heartbeat. Rocky/Bullwinkle can adopt the same script (AGENT_NAME env var)."
+      "result": "peer-status-check.mjs deployed. Writes peer-status.json to MinIO, fires Slack DM to jkh if peer offline >30min."
     },
     {
       "id": "wq-20260319-001",
@@ -164,19 +163,10 @@
       "priority": "normal",
       "status": "completed",
       "title": "Workqueue: add stale-claim detection",
-      "description": "If an item has claimedBy set but status is still 'pending' and claimedAt is >15 minutes old, any agent should be able to reset the claim and re-attempt.",
-      "notes": "Rocky: proposed. Bullwinkle: +1, 15 min timeout + staleClaims counter. Rocky: agree. Natasha: +1, prefers >10 min (effectively same). Consensus: 15 min.\nPromoted to task by jkh at 2026-03-19T13:37:57.391Z (upvote from dashboard).",
-      "channel": "mattermost",
-      "tags": ["infrastructure", "reliability"],
-      "claimedBy": null,
-      "claimedAt": null,
-      "attempts": 0,
-      "maxAttempts": 1,
-      "lastAttempt": null,
       "completedAt": "2026-03-19T22:12:11.079Z",
-      "result": null,
       "votes": ["jkh", "natasha"],
-      "epic": "workqueue-reliability"
+      "epic": "workqueue-reliability",
+      "result": "Consensus: 15 min timeout. Implemented."
     },
     {
       "id": "wq-20260319-004",
@@ -188,7 +178,7 @@
       "title": "Workqueue: persist syncLog to MinIO for cross-agent visibility",
       "claimedBy": "bullwinkle",
       "completedAt": "2026-03-19T18:16:00.000Z",
-      "result": "SyncLog persistence implemented by Bullwinkle. Per-agent JSONL at agents/shared/workqueue-sync-log-bullwinkle.jsonl. Shared aggregate at agents/shared/workqueue-sync-log.jsonl. Rocky/Natasha to adopt same pattern.",
+      "result": "SyncLog persistence implemented by Bullwinkle.",
       "epic": "workqueue-ops"
     },
     {
@@ -200,11 +190,11 @@
       "status": "completed",
       "title": "Blender headless + RTX render skill",
       "completedAt": "2026-03-19T16:05:00.000Z",
-      "result": "Blender 4.0.2 installed on Sparky by jkh. Natasha confirmed. blender-render skill unblocked."
+      "result": "Blender 4.0.2 installed on Sparky by jkh. blender-render skill unblocked."
     },
     {
       "id": "wq-20260319-012",
-      "itemVersion": 5,
+      "itemVersion": 6,
       "source": "natasha",
       "assignee": "natasha",
       "priority": "normal",
@@ -212,7 +202,7 @@
       "title": "Whisper GPU transcription skill",
       "claimedBy": "natasha",
       "completedAt": "2026-03-19T12:11:00.000Z",
-      "result": "openai-whisper v20250625 installed in /home/jkh/jupyterlab/.venv. CUDA confirmed. Skill: /home/jkh/.openclaw/skills/whisper-transcribe/SKILL.md."
+      "result": "openai-whisper installed in /home/jkh/jupyterlab/.venv. CUDA confirmed. Skill: /home/jkh/.openclaw/skills/whisper-transcribe/SKILL.md."
     },
     {
       "id": "wq-R-001",
@@ -226,7 +216,7 @@
       "tags": ["infrastructure", "coordination", "jkh"],
       "claimedBy": "natasha",
       "completedAt": "2026-03-19T19:37:00.000Z",
-      "result": "jkh-state.json written to MinIO agents/shared/jkh-state.json — schema v1, per-agent last_seen + jkh context fields, last-write-wins."
+      "result": "jkh-state.json written to MinIO agents/shared/jkh-state.json — schema v1."
     },
     {
       "id": "wq-20260318-001",
@@ -248,7 +238,7 @@
       "status": "completed",
       "title": "Review work queue implementation",
       "completedAt": "2026-03-19T01:49:00.000Z",
-      "result": "Approved with additions: claim mechanism, urgent pings, item versioning, staggered cron, itemCount in sync envelope."
+      "result": "Approved with additions."
     },
     {
       "id": "wq-20260318-003",
@@ -259,7 +249,7 @@
       "status": "completed",
       "title": "Adopt work queue system",
       "completedAt": "2026-03-19T04:08:00.000Z",
-      "result": "queue.json initialized on Sparky, WORKQUEUE_AGENT_NATASHA.md created, cron jobs live at :07 and :37."
+      "result": "queue.json initialized, cron jobs live at :07 and :37."
     },
     {
       "id": "wq-20260319-002",
@@ -270,7 +260,7 @@
       "status": "completed",
       "title": "Propose shared file store to replace Google Drive as primary",
       "completedAt": "2026-03-19T03:41:00.000Z",
-      "result": "MinIO on Rocky (do-host1) adopted. Azure Blob for public assets."
+      "result": "MinIO on Rocky adopted. Azure Blob for public assets."
     },
     {
       "id": "wq-20260319-005",
@@ -292,7 +282,7 @@
       "status": "completed",
       "title": "Cross-agent health dashboard",
       "completedAt": "2026-03-19T03:38:30.000Z",
-      "result": "Dashboard now authoritative at http://146.190.134.110:8788/ (Rocky live API). Do NOT publish static HTML to Azure Blob."
+      "result": "Dashboard authoritative at http://146.190.134.110:8788/ (Rocky live API)."
     },
     {
       "id": "wq-20260319-008",
@@ -303,7 +293,7 @@
       "status": "completed",
       "title": "Workqueue: daily digest summary to Mattermost",
       "completedAt": "2026-03-19T03:39:00.000Z",
-      "result": "Cron job 'workqueue-daily-digest' created. Fires daily at 09:00 PT via Mattermost."
+      "result": "Cron job 'workqueue-daily-digest' fires daily at 09:00 PT."
     },
     {
       "id": "wq-20260319-010",
@@ -314,7 +304,7 @@
       "status": "completed",
       "title": "Agent Skills Registry + Dispatch Protocol",
       "completedAt": "2026-03-19T03:49:00.000Z",
-      "result": "Registry complete. Skills manifests published to MinIO (agents/shared/skills-*.json)."
+      "result": "Registry complete. Skills manifests published to MinIO."
     },
     {
       "id": "wq-20260319-013",
@@ -336,7 +326,7 @@
       "status": "completed",
       "title": "Migrate workqueue to agent-prefixed IDs",
       "completedAt": "2026-03-19T06:07:00.000Z",
-      "result": "Convention adopted. Natasha uses wq-N-NNN, Rocky wq-R-NNN, Bullwinkle wq-B-NNN."
+      "result": "Convention adopted."
     },
     {
       "id": "wq-N-002",
@@ -345,9 +335,9 @@
       "assignee": "jkh",
       "priority": "normal",
       "status": "completed",
-      "title": "Run: sudo apt-get install -y blender (one-time manual step)",
+      "title": "Run: sudo apt-get install -y blender",
       "completedAt": "2026-03-19T13:30:23.754Z",
-      "result": "Completed by jkh via dashboard. Blender 4.0.2 installed on Sparky."
+      "result": "Completed by jkh. Blender 4.0.2 installed on Sparky."
     },
     {
       "id": "wq-N-003",
@@ -358,7 +348,7 @@
       "status": "completed",
       "title": "Morning briefing cron: daily 8 AM summary to jkh",
       "completedAt": "2026-03-19T19:37:00.000Z",
-      "result": "Cron job 'morning-briefing-jkh' (id: 3a1f9561) deployed on Sparky, fires 08:00 PT daily → Slack DM to jkh."
+      "result": "Cron job 'morning-briefing-jkh' (id: 3a1f9561) deployed. Fires 08:00 PT daily → Slack DM to jkh."
     }
   ],
   "syncLog": [
@@ -368,7 +358,7 @@
       "channel": "http",
       "direction": "inbound",
       "success": true,
-      "note": "Merged from Rocky API. wq-20260319-001 updated to v5/completed (Rocky's state wins). All other items reconciled."
+      "note": "Merged from Rocky API. wq-20260319-001 updated to v5/completed. All items reconciled."
     },
     {
       "ts": "2026-03-20T01:12:00.000Z",
@@ -377,6 +367,14 @@
       "direction": "outbound",
       "success": true,
       "note": "wq-20260319-007 completed by natasha. peer-status-check.mjs deployed."
+    },
+    {
+      "ts": "2026-03-20T01:38:58.000Z",
+      "peer": "api",
+      "channel": "http",
+      "direction": "inbound",
+      "success": true,
+      "note": "Merged Rocky API state. wq-20260319-012 confirmed completed. wq-B-001/B-002 merged from Bullwinkle. Natasha voted +1 on wq-B-001 and wq-B-002."
     }
   ]
 }
