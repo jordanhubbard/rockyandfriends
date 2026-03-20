@@ -1,0 +1,613 @@
+2026-03-17T03:49:48Z [3ms] [Info] [carb] Logging to file: /home/jkh/.openclaw/workspace/shanghai_output/ovrtx.log
+2026-03-17T03:49:48Z [3ms] [Info] [ovrtx] OVRTX logging: file='/home/jkh/.openclaw/workspace/shanghai_output/ovrtx.log' (ovrtx), level='Info' (external), crash dump directory='/home/jkh/.openclaw/workspace/shanghai_output'
+2026-03-17T03:49:48Z [3ms] [Info] [ovrtx] Loading 3 base plugins from kCarbConfigString with 31 search paths
+2026-03-17T03:49:48Z [5ms] [Info] [carb] Registered plugin: carb.tasking.plugin (interfaces: [carb::tasking::ITasking v2.7],[carb::tasking::ITaskingDebug v1.3],[carb::tasking::IThreadPool v1.0]) (impl: carb.tasking.plugin)
+2026-03-17T03:49:48Z [5ms] [Info] [carb] Registered plugin: carb.variant.plugin (interfaces: [carb::variant::IVariant v0.1]) (impl: carb.variant.plugin)
+2026-03-17T03:49:48Z [5ms] [Info] [carb] Initializing plugin: carb.tasking.plugin (interfaces: [carb::tasking::ITasking v2.7],[carb::tasking::ITaskingDebug v1.3],[carb::tasking::IThreadPool v1.0]) (impl: carb.tasking.plugin)
+2026-03-17T03:49:48Z [7ms] [Info] [ovrtx] Loading 70 plugins from kCarbConfigString with 31 search paths
+2026-03-17T03:49:48Z [10ms] [Info] [carb] Registered plugin: carb.imaging.plugin (interfaces: [carb::imaging::IImaging v2.6]) (impl: carb.imaging.plugin)
+2026-03-17T03:49:48Z [10ms] [Info] [carb] Registered plugin: carb.progress.plugin (interfaces: [carb::progress::IProgress v1.0]) (impl: carb.progress.plugin)
+2026-03-17T03:49:48Z [10ms] [Info] [carb] Registered plugin: carb.datastore.plugin (interfaces: [carb::datastore::ICombinedDataStore v0.1],[carb::datastore::IFailureInjectionDataStoreFactory v0.1],[carb::datastore::ILocalDataStore v0.2],[carb::datastore::INucleusDataStore v0.1],[carb::datastore::IOmniHubDataStore v0.2],[carb::datastore::IProfileDataStore v0.2],[carb::datastore::IWriteBackDataStore v0.3]) (impl: carb.datastore.plugin)
+2026-03-17T03:49:48Z [10ms] [Info] [carb] Registered plugin: carb.hsscclient.plugin (interfaces: [carb::HsscClient::IClient v1.1],[carb::HsscClient::IDataStore v1.1],[carb::HsscClient::IServiceDiscovery v1.1]) (impl: carb.hsscclient.plugin)
+2026-03-17T03:49:48Z [11ms] [Info] [carb] Registered plugin: carb.stats.plugin (interfaces: [carb::stats::IStats v2.2]) (impl: carb.stats.plugin)
+2026-03-17T03:49:48Z [11ms] [Info] [carb] Registered plugin: carb.ujitsodefault.plugin (interfaces: [carb::ujitso::IDefault v0.1]) (impl: carb.ujitsodefault.plugin)
+2026-03-17T03:49:48Z [11ms] [Info] [carb] Registered plugin: carb.ujitso.processor.default.plugin (interfaces: [carb::ujitso::processor::IDefaultProcessorsLoader v0.1]) (impl: carb.ujitso.processor.default.plugin)
+2026-03-17T03:49:48Z [11ms] [Info] [carb] Registered plugin: carb.ujitso.processor.geometry.plugin (interfaces: [carb::ujitso::processor::IGeometryProcessorLoader v0.2]) (impl: carb.ujitso.processor.geometry.plugin)
+2026-03-17T03:49:48Z [11ms] [Info] [carb] Registered plugin: carb.ujitso.processor.texture.plugin (interfaces: [carb::ujitso::processor::ITextureProcessorLoader v0.1]) (impl: carb.ujitso.processor.texture.plugin)
+2026-03-17T03:49:48Z [11ms] [Info] [carb] Registered plugin: carb.ujitsoagent.plugin (interfaces: [carb::ujitso::IAgent v0.5],[carb::ujitso::IFactory v0.2],[carb::ujitso::IRegistry v0.2],[carb::ujitso::IService v0.10]) (impl: carb.ujitsoagent.plugin)
+2026-03-17T03:49:48Z [13ms] [Info] [carb] Registered plugin: carb.volume.plugin (interfaces: [carb::volume::IVolume v0.1]) (impl: carb.volume.plugin)
+2026-03-17T03:49:48Z [13ms] [Info] [carb] Registered plugin: carb.blockcompression.plugin (interfaces: [carb::blockcompression::BlockCompression v0.2]) (impl: carb.blockcompression.plugin)
+2026-03-17T03:49:48Z [13ms] [Info] [carb] Registered plugin: carb.cudainterop.plugin (interfaces: [carb::cudainterop::CudaInterop v0.20]) (impl: carb.cudainterop.plugin)
+2026-03-17T03:49:48Z [14ms] [Info] [carb] Registered plugin: carb.graphics-vulkan.plugin (interfaces: [carb::graphics::Graphics v3.9],[carb::ngx::Ngx v0.11]) (impl: carb.graphics-vulkan.plugin)
+2026-03-17T03:49:48Z [14ms] [Info] [carb] Registered plugin: carb.graphics_optional.plugin (interfaces: [carb::graphics::IOptionalFeatures v2.1]) (impl: carb.graphics_optional.plugin)
+2026-03-17T03:49:48Z [14ms] [Info] [carb] Registered plugin: carb.imguiregistry.plugin (interfaces: [carb::imgui::ImGuiCallbackRegistry v1.0]) (impl: carb.imguiregistry.plugin)
+2026-03-17T03:49:48Z [15ms] [Info] [carb] Registered plugin: carb.memorytracking (interfaces: [carb::memorytracking2::IGpuMemoryTracker v3.1],[carb::memorytracking::IGpuMemoryTracker v0.0],[carb::memorytracking::IMemoryScopeTracker v1.0],[carb::tasking::IFiberEvents v1.0]) (impl: carb.memorytracking)
+2026-03-17T03:49:48Z [15ms] [Info] [carb] Registered plugin: carb.profiler.gpu.plugin (interfaces: [carb::profiler::IGpuProfiler v0.8]) (impl: carb.profiler.gpu.plugin)
+2026-03-17T03:49:48Z [15ms] [Info] [carb] Registered plugin: carb.shadercompiler-slang.plugin (interfaces: [carb::shadercompiler::ShaderCompiler v0.6]) (impl: carb.shadercompiler-slang.plugin)
+2026-03-17T03:49:48Z [16ms] [Info] [carb] Registered plugin: gpu.foundation.plugin (interfaces: [carb::graphicsmux::GraphicsMux v2.7],[gpu::foundation::IGpuFoundationFactory v1.0],[gpu::foundation::ISystemInfo v0.9],[gpu::realm::Realm v0.1],[gpu::unstable::IMemoryBudgetManagerFactory v0.1],[gpu::vblank::IVBlank v0.1],[rtx::psodb::PsoDb v0.7],[rtx::rendergraph::RenderGraphBuilder v0.17],[rtx::resourcemanager::ResourceManager v2.3],[rtx::shaderdb::ShaderDb v1.13]) (impl: gpu.foundation.plugin)
+2026-03-17T03:49:48Z [16ms] [Info] [carb] Registered plugin: omni.perfmonitor.plugin (interfaces: [omni::perfmonitor::IPerfMonitor v2.0]) (impl: omni.perfmonitor.plugin)
+2026-03-17T03:49:48Z [16ms] [Info] [carb] Registered plugin: omni.streamingstatus.plugin (interfaces: [omni::IStreamingStatusManager v1.2]) (impl: omni.streamingstatus.plugin)
+2026-03-17T03:49:48Z [16ms] [Info] [carb] Registered plugin: omni.gpucompute-cuda.plugin (interfaces: [omni::gpucompute::GpuCompute v0.3]) (impl: omni.gpucompute-cuda.plugin)
+2026-03-17T03:49:48Z [16ms] [Info] [carb] Registered plugin: omni.gpucompute-d3dvk.plugin (interfaces: [omni::gpucompute::ComputeCompiler v0.1],[omni::gpucompute::GpuCompute v0.3]) (impl: omni.gpucompute-d3dvk.plugin)
+2026-03-17T03:49:48Z [16ms] [Info] [carb] Registered plugin: carb.assets.plugin (interfaces: [carb::assets::IAssets v2.0],[carb::assets::IAssetsBlob v1.0]) (impl: carb.assets.plugin)
+2026-03-17T03:49:48Z [16ms] [Info] [carb] Registered plugin: carb.datasource-file.plugin (interfaces: [carb::datasource::IDataSource v1.1]) (impl: carb.datasource-file.plugin)
+2026-03-17T03:49:48Z [16ms] [Info] [carb] Registered plugin: carb.dictionary.serializer-toml.plugin (interfaces: [carb::dictionary::ISerializer v1.1]) (impl: carb.dictionary.serializer-toml.plugin)
+2026-03-17T03:49:48Z [16ms] [Info] [carb] Registered plugin: carb.eventdispatcher.plugin (interfaces: [carb::eventdispatcher::IEventDispatcher v1.5],[carb::eventdispatcher::IMessageQueueFactory v1.1]) (impl: carb.eventdispatcher.plugin)
+2026-03-17T03:49:48Z [17ms] [Info] [carb] Registered plugin: carb.events.plugin (interfaces: [carb::events::IEvents v1.5],[carb::events::IEventsAdapter v1.1]) (impl: carb.events.plugin)
+2026-03-17T03:49:48Z [17ms] [Info] [carb] Registered plugin: carb.input.plugin (interfaces: [carb::input::IInput v1.2]) (impl: carb.input.plugin)
+2026-03-17T03:49:48Z [17ms] [Info] [carb] Registered plugin: carb.launcher.plugin (interfaces: [carb::launcher::ILauncher v1.4]) (impl: carb.launcher.plugin)
+2026-03-17T03:49:48Z [17ms] [Info] [carb] Registered plugin: carb.typeinfo.plugin (interfaces: [carb::typeinfo::ITypeInfo v1.0]) (impl: carb.typeinfo.plugin)
+2026-03-17T03:49:48Z [17ms] [Info] [carb] Registered plugin: carb.windowing-glfw.plugin (interfaces: [carb::windowing::IGLContext v1.0],[carb::windowing::IWindowing v1.5]) (impl: carb.windowing-glfw.plugin)
+2026-03-17T03:49:48Z [17ms] [Info] [carb] Registered plugin: rtx.neuraylib.plugin (interfaces: [rtx::neuray::NeurayLib v1.5]) (impl: rtx.neuraylib.plugin)
+2026-03-17T03:49:48Z [17ms] [Info] [carb] Registered plugin: omni.blobkey.plugin (interfaces: [omni::blobkey::IBlobKey v1.1]) (impl: omni.blobkey.plugin)
+2026-03-17T03:49:48Z [17ms] [Info] [carb] Registered plugin: carb.datasource-omniclient.plugin (interfaces: [carb::datasource::IDataSource v1.1]) (impl: carb.datasource-omniclient.plugin)
+2026-03-17T03:49:48Z [23ms] [Info] [carb] Registered plugin: carb.omniclient.plugin (interfaces: [carb::omniclient::IOmniClient v2.69]) (impl: carb.omniclient.plugin)
+2026-03-17T03:49:48Z [23ms] [Info] [carb] Registered plugin: omni.cubric.plugin (interfaces: [omni::cubric::IAdapter v0.1]) (impl: omni.cubric.plugin)
+2026-03-17T03:49:48Z [23ms] [Info] [carb] Registered plugin: omni.fabric.plugin (interfaces: [omni::fabric::IChangeTrackerConfig v0.5],[omni::fabric::IConnectivity v1.9],[omni::fabric::IDiagnostics v1.1],[omni::fabric::IFabric v0.13],[omni::fabric::IFabricContextManager v1.0],[omni::fabric::IFabricInspector v0.2],[omni::fabric::IFabricRingBuffer v1.2],[omni::fabric::IFabricSampleStorage v0.3],[omni::fabric::IFabricUsd v1.0],[omni::fabric::IFineGrainedChangeTracker v0.2],[omni::fabric::IPath v1.0],[omni::fabric::IPlatform v0.2],[omni::fabric::IPopulator v1.0],[omni::fabric::IPrimBucketList v0.5],[omni::fabric::ISerializer v0.3],[omni::fabric::ISimStageWithHistory v0.2],[omni::fabric::IStageAtTimeInterval v1.0],[omni::fabric::IStageAtTimeIntervalLegacy v1.0],[omni::fabric::IStageReaderWriter v0.14],[omni::fabric::IStageReaderWriterLegacy v1.0],[omni::fabric::IStageReaderWriterUsd v1.0],[omni::fabric::IStats v1.0],[omni::fabric::IToken v1.0],[omni::fabric::batch::iBatch v0.3]) (impl: omni.fabric.plugin)
+2026-03-17T03:49:48Z [24ms] [Info] [carb] Registered plugin: omni.remoteimgui.plugin (interfaces: [omni::remoteimgui::IRemoteImGui v0.1]) (impl: omni.remoteimgui.plugin)
+2026-03-17T03:49:48Z [24ms] [Info] [carb] Registered plugin: omni.tbb.globalcontrol.plugin (interfaces: [omni::tbb::IGlobalControl v1.0]) (impl: omni.tbb.globalcontrol.plugin)
+2026-03-17T03:49:48Z [25ms] [Info] [carb] Registered plugin: omni.usd-abi.plugin (interfaces: [omni::usd::IPathAbi v1.0],[omni::usd::IRenderProductPrimFactory v1.7],[omni::usd::IRenderSettings v0.2],[omni::usd::IRenderSettingsLegacy v0.2],[omni::usd::IResolverPathAbi v0.2],[omni::usd::ITokenAbi v1.0]) (impl: omni.usd-abi.plugin)
+2026-03-17T03:49:48Z [25ms] [Info] [carb] Registered plugin: rtx.usdmdl.plugin (interfaces: [rtx::usdmdl::IUsdMdl v1.0]) (impl: rtx.usdmdl.plugin)
+2026-03-17T03:49:48Z [25ms] [Info] [carb] Registered plugin: carb.usdresolver.plugin (interfaces: [carb::usdresolver::IUsdResolver v1.1]) (impl: carb.usdresolver.plugin)
+2026-03-17T03:49:48Z [25ms] [Info] [carb] Registered plugin: carb.imgui.plugin (interfaces: [carb::imgui::ImGui v1.0],[carb::imgui::NetImGui v1.0]) (impl: carb.imgui.plugin)
+2026-03-17T03:49:48Z [25ms] [Info] [carb] Registered plugin: carb.svg.plugin (interfaces: [carb::svg::Svg v0.1]) (impl: carb.svg.plugin)
+2026-03-17T03:49:48Z [25ms] [Info] [carb] Registered plugin: rtx.indexlib.plugin (interfaces: [rtx::index::IndexInstance v0.1]) (impl: rtx.indexlib.plugin)
+2026-03-17T03:49:48Z [26ms] [Info] [carb] Registered plugin: carb.ocio.plugin (interfaces: [carb::ocio::OpenColorIo v0.1]) (impl: carb.ocio.plugin)
+2026-03-17T03:49:48Z [26ms] [Info] [carb] Registered plugin: carb.renderer.plugin (interfaces: [carb::renderer::Renderer v0.21]) (impl: carb.renderer.plugin)
+2026-03-17T03:49:48Z [26ms] [Info] [carb] Registered plugin: carb.scenerenderer-rtx.plugin (interfaces: [carb::renderer::SceneRenderer v10.0],[carb::renderer::SceneRendererRTX v0.2]) (impl: carb.scenerenderer-rtx.plugin)
+2026-03-17T03:49:48Z [26ms] [Info] [carb] Registered plugin: omni.usd.hydra.protoserializerregistry.plugin (interfaces: [omni::usd::hydra::IProtoSerializerRegistry v0.1]) (impl: omni.usd.hydra.protoserializerregistry.plugin)
+2026-03-17T03:49:48Z [26ms] [Info] [carb] Registered plugin: omni.usd.hydra.renderproduct.plugin (interfaces: [omni::usd::hydra::IRenderProductManager v0.2]) (impl: omni.usd.hydra.renderproduct.plugin)
+2026-03-17T03:49:48Z [27ms] [Info] [carb] Registered plugin: rtx.cameraisp.plugin (interfaces: [rtx::cameraisp::CameraIsp v1.0]) (impl: rtx.cameraisp.plugin)
+2026-03-17T03:49:48Z [27ms] [Info] [carb] Registered plugin: rtx.denoising.plugin (interfaces: [denoising::RtDenoising v1.0],[rtx::denoising::Caustics v0.1],[rtx::denoising::DirectLighting v0.1],[rtx::denoising::GIReprojection v0.1],[rtx::denoising::IndirectDiffuse v0.1]) (impl: rtx.denoising.plugin)
+2026-03-17T03:49:48Z [27ms] [Info] [carb] Registered plugin: rtx.flow.plugin (interfaces: [rtx::flow::FlowRayMarch v2.0],[rtx::flow::FlowRayMarchIsosurface v1.0],[rtx::flow::FlowSelfShadow v1.0],[rtx::raytracing::Flow v2.0]) (impl: rtx.flow.plugin)
+2026-03-17T03:49:48Z [27ms] [Info] [carb] Registered plugin: rtx.materialdb.plugin (interfaces: [rtx::materialdb::MaterialDb v1.11]) (impl: rtx.materialdb.plugin)
+2026-03-17T03:49:48Z [28ms] [Info] [carb] Registered plugin: rtx.materialx.plugin (interfaces: [rtx::materialx::IMaterialX v1.0]) (impl: rtx.materialx.plugin)
+2026-03-17T03:49:48Z [28ms] [Info] [carb] Registered plugin: rtx.mdltranslator.plugin (interfaces: [rtx::mdltranslator::MdlTranslator v17.0]) (impl: rtx.mdltranslator.plugin)
+2026-03-17T03:49:48Z [28ms] [Info] [carb] Registered plugin: rtx.memutil.MemUtility (interfaces: [rtx::memutil::IMemUtil v1.0],[rtx::memutil::IMemUtilExtended v1.0]) (impl: rtx.memutil.MemUtility)
+2026-03-17T03:49:48Z [28ms] [Info] [carb] Registered plugin: rtx.multigpumanager.plugin (interfaces: [rtx::multigpumanager::MultiGpuManager v0.9]) (impl: rtx.multigpumanager.plugin)
+2026-03-17T03:49:48Z [28ms] [Info] [carb] Registered plugin: rtx.optixdenoising.plugin (interfaces: [rtx::optixdenoising::OptixDenoising75 v1.0]) (impl: rtx.optixdenoising.plugin)
+2026-03-17T03:49:48Z [28ms] [Info] [carb] Registered plugin: rtx.optixdenoising73.plugin (interfaces: [rtx::optixdenoising::OptixDenoising73 v1.0]) (impl: rtx.optixdenoising73.plugin)
+2026-03-17T03:49:48Z [28ms] [Info] [carb] Registered plugin: rtx.postprocessing.plugin (interfaces: [rtx::postprocessing::AlphaZeroMask v4.0],[rtx::postprocessing::ChromaticAberration v3.0],[rtx::postprocessing::DLSS v3.0],[rtx::postprocessing::DepthSensor v2.0],[rtx::postprocessing::Downsample v1.0],[rtx::postprocessing::Downsample2x v1.0],[rtx::postprocessing::Fullscreen v1.0],[rtx::postprocessing::Fxaa v2.0],[rtx::postprocessing::Histogram v2.0],[rtx::postprocessing::LensFlare v2.0],[rtx::postprocessing::MotionBlur v3.0],[rtx::postprocessing::NuRecVolumeCompositing v2.0],[rtx::postprocessing::Outline v1.0],[rtx::postprocessing::Postprocessing v6.0],[rtx::postprocessing::RegisterCompositing v0.0],[rtx::postprocessing::RegisteredCompositing v5.0],[rtx::postprocessing::TemporalAA v3.1],[rtx::postprocessing::TileCompositing v0.1],[rtx::postprocessing::Tonemapping v2.0],[rtx::postprocessing::TvNoise v3.0],[rtx::postprocessing::ViewCombiner v0.1]) (impl: rtx.postprocessing.plugin)
+2026-03-17T03:49:48Z [29ms] [Info] [carb] Registered plugin: rtx.rasterizing.plugin (interfaces: [rtx::rasterizing::Primitive v1.0],[rtx::rasterizing::Selection v1.0]) (impl: rtx.rasterizing.plugin)
+2026-03-17T03:49:48Z [29ms] [Info] [carb] Registered plugin: rtx.raytracing.plugin (interfaces: [rtx::raytracing::AmbientOcclusion v2.0],[rtx::raytracing::AovConverter v3.0],[rtx::raytracing::Caustics v2.0],[rtx::raytracing::Compositing v1.0],[rtx::raytracing::CopyDepth v2.0],[rtx::raytracing::DebugView v3.0],[rtx::raytracing::DirectLightingLtc v2.0],[rtx::raytracing::DirectLightingSampled v2.0],[rtx::raytracing::GBuffer v6.0],[rtx::raytracing::GlobalVolumetricEffects v1.0],[rtx::raytracing::Hair v2.0],[rtx::raytracing::IndirectDiffuse v3.0],[rtx::raytracing::MaterialBaking v0.2],[rtx::raytracing::PathTracing v3.0],[rtx::raytracing::Picking v2.0],[rtx::raytracing::RTXRaycastQueryManager v1.0],[rtx::raytracing::RadianceCache v1.0],[rtx::raytracing::RaycastQueryManager v1.0],[rtx::raytracing::Reflections v3.0],[rtx::raytracing::SamplerFeedback v2.0],[rtx::raytracing::Selection v1.0],[rtx::raytracing::Shadows v3.0],[rtx::raytracing::SpatialHashGrid v1.0],[rtx::raytracing::Subsurface v2.0],[rtx::raytracing::SyntheticAttributeData v1.0],[rtx::raytracing::SyntheticImageData v2.0],[rtx::raytracing::Translucency v6.0]) (impl: rtx.raytracing.plugin)
+2026-03-17T03:49:48Z [29ms] [Info] [carb] Registered plugin: rtx.reshade.plugin (interfaces: [rtx::reshade::Reshade v1.0]) (impl: rtx.reshade.plugin)
+2026-03-17T03:49:48Z [29ms] [Info] [carb] Registered plugin: rtx.rtxsensor.memutil_legacy.plugin (interfaces: [rtx::rtxsensor::MemUtil_v10 v1.0]) (impl: rtx.rtxsensor.memutil_legacy.plugin)
+2026-03-17T03:49:48Z [30ms] [Info] [carb] Registered plugin: rtx.rtxsensor.plugin (interfaces: [rtx::rtxsensor::RtxSensor v3.0]) (impl: rtx.rtxsensor.plugin)
+2026-03-17T03:49:48Z [30ms] [Info] [carb] Registered plugin: rtx.rtxsensor.example.plugin (interfaces: [rtx::rtxsensor::RtxSensorModel v1.0]) (impl: rtx.rtxsensor.example.plugin)
+2026-03-17T03:49:48Z [30ms] [Info] [carb] Registered plugin: rtx.rtxsensor.example_legacy.plugin (interfaces: [rtx::rtxsensor::RtxSensorModel v0.5]) (impl: rtx.rtxsensor.example_legacy.plugin)
+2026-03-17T03:49:48Z [30ms] [Info] [carb] Registered plugin: rtx.rtxsensormodel_20.example.plugin (interfaces: [rtx::rtxsensor::RtxSensorModel v2.0]) (impl: rtx.rtxsensormodel_20.example.plugin)
+2026-03-17T03:49:48Z [30ms] [Info] [carb] Registered plugin: rtx.rtxsensormodel_30.example.plugin (interfaces: [rtx::rtxsensor::RtxSensorModel v3.0]) (impl: rtx.rtxsensormodel_30.example.plugin)
+2026-03-17T03:49:48Z [30ms] [Info] [carb] Registered plugin: rtx.scenedb.plugin (interfaces: [rtx::scenedb::FabricSceneDb v0.2],[rtx::scenedb::SceneDb v6.1]) (impl: rtx.scenedb.plugin)
+2026-03-17T03:49:48Z [30ms] [Info] [carb] Registered plugin: rtx.syntheticdata.plugin (interfaces: [rtx::syntheticdataannotation::SyntheticDataAnnotation v1.1]) (impl: rtx.syntheticdata.plugin)
+2026-03-17T03:49:48Z [31ms] [Info] [carb] Initializing plugin: omni.usd.hydra.protoserializerregistry.plugin (interfaces: [omni::usd::hydra::IProtoSerializerRegistry v0.1]) (impl: omni.usd.hydra.protoserializerregistry.plugin)
+2026-03-17T03:49:48Z [31ms] [Info] [carb] Registered plugin: rtx.syntheticdataproto.plugin (interfaces: [omni::usd::hydra::IProtoSerializer v0.1]) (impl: rtx.syntheticdataproto.plugin)
+2026-03-17T03:49:48Z [31ms] [Info] [carb] Registered plugin: rtx.xr.tools.plugin (interfaces: [rtx::xr::XRTools v4.0]) (impl: rtx.xr.tools.plugin)
+2026-03-17T03:49:48Z [36ms] [Info] [ovrtx] Using kit plugin base folder: ''
+2026-03-17T03:49:48Z [36ms] [Info] [ovrtx] Using rendering plugin base folder: '/usr/bin'
+2026-03-17T03:49:48Z [36ms] [Info] [carb] Initializing plugin: carb.usdresolver.plugin (interfaces: [carb::usdresolver::IUsdResolver v1.1]) (impl: carb.usdresolver.plugin)
+2026-03-17T03:49:48Z [36ms] [Info] [carb] Initializing plugin: carb.omniclient.plugin (interfaces: [carb::omniclient::IOmniClient v2.69]) (impl: carb.omniclient.plugin)
+2026-03-17T03:49:48Z [36ms] [Info] [carb.omniclient.plugin]  Main: core: Initializing Version 2.69.0-release.6705+gl.52ac201d
+2026-03-17T03:49:48Z [37ms] [Info] [carb.omniclient.plugin]  Main: core: Client ID: KLYYUUGO
+2026-03-17T03:49:48Z [40ms] [Info] [carb.omniclient.plugin]  Main: core: Not using Hub: Hub not found
+2026-03-17T03:49:48Z [40ms] [Info] [carb] Initializing plugin: carb.graphics-vulkan.plugin (interfaces: [carb::graphics::Graphics v3.9],[carb::ngx::Ngx v0.11]) (impl: carb.graphics-vulkan.plugin)
+2026-03-17T03:49:48Z [40ms] [Info] [omni.rtx] Environment variable overridden: VK_SDK_PATH = 
+2026-03-17T03:49:48Z [40ms] [Info] [omni.rtx] Environment variable overridden: VULKAN_SDK = 
+2026-03-17T03:49:48Z [40ms] [Info] [omni.rtx] Environment variable overridden: VK_LAYER_PATH = 
+2026-03-17T03:49:48Z [40ms] [Info] [omni.rtx] Environment variable overridden: VK_INSTANCE_LAYERS = 
+2026-03-17T03:49:48Z [40ms] [Info] [omni.rtx] Environment variable overridden: VULKAN_HEADERS_INSTALL_DIR = 
+2026-03-17T03:49:48Z [40ms] [Info] [carb] Initializing plugin: gpu.foundation.plugin (interfaces: [carb::graphicsmux::GraphicsMux v2.7],[gpu::foundation::IGpuFoundationFactory v1.0],[gpu::foundation::ISystemInfo v0.9],[gpu::realm::Realm v0.1],[gpu::unstable::IMemoryBudgetManagerFactory v0.1],[gpu::vblank::IVBlank v0.1],[rtx::psodb::PsoDb v0.7],[rtx::rendergraph::RenderGraphBuilder v0.17],[rtx::resourcemanager::ResourceManager v2.3],[rtx::shaderdb::ShaderDb v1.13]) (impl: gpu.foundation.plugin)
+2026-03-17T03:49:48Z [40ms] [Info] [carb] Initializing plugin: omni.perfmonitor.plugin (interfaces: [omni::perfmonitor::IPerfMonitor v2.0]) (impl: omni.perfmonitor.plugin)
+2026-03-17T03:49:48Z [42ms] [Info] [omni.perfmonitor.plugin] Performance Monitor Activity Started.
+2026-03-17T03:49:48Z [42ms] [Info] [carb] Initializing plugin: carb.profiler.gpu.plugin (interfaces: [carb::profiler::IGpuProfiler v0.8]) (impl: carb.profiler.gpu.plugin)
+2026-03-17T03:49:48Z [42ms] [Info] [carb] Initializing plugin: carb.stats.plugin (interfaces: [carb::stats::IStats v2.2]) (impl: carb.stats.plugin)
+2026-03-17T03:49:48Z [55ms] [Info] [carb] Initializing plugin: carb.launcher.plugin (interfaces: [carb::launcher::ILauncher v1.4]) (impl: carb.launcher.plugin)
+2026-03-17T03:49:48Z [55ms] [Info] [carb] Initializing plugin: carb.cudainterop.plugin (interfaces: [carb::cudainterop::CudaInterop v0.20]) (impl: carb.cudainterop.plugin)
+2026-03-17T03:49:48Z [58ms] [Info] [carb] Initializing plugin: carb.memorytracking (interfaces: [carb::memorytracking2::IGpuMemoryTracker v3.1],[carb::memorytracking::IGpuMemoryTracker v0.0],[carb::memorytracking::IMemoryScopeTracker v1.0],[carb::tasking::IFiberEvents v1.0]) (impl: carb.memorytracking)
+2026-03-17T03:49:48Z [83ms] [Info] [omni.rtx] Setting DataStoreKey::MaxBlobSize[0] = 5242880 bytes
+2026-03-17T03:49:48Z [83ms] [Info] [omni.rtx] Setting DataStoreKey::MaxBlobSize[1] = 47185920 bytes
+2026-03-17T03:49:48Z [83ms] [Info] [omni.rtx] Disabling shader cache redirection handler
+2026-03-17T03:49:48Z [83ms] [Info] [omni.rtx] The driver cache redirection shared library was disabled successfully
+2026-03-17T03:49:48Z [83ms] [Info] [omni.rtx] [ShaderCache]: Limiting to 32-bit driver cache size: 4000 MB
+2026-03-17T03:49:48Z [83ms] [Info] [omni.rtx] Disabling Vulkan image compression
+2026-03-17T03:49:48Z [83ms] [Info] [omni.rtx] [ShaderCache]: driver app shader cache path = '/home/jkh/.local/lib/python3.12/site-packages/ovrtx/bin/cache/nv_shadercache/vulkan'; driver shader cache path = '/home/jkh/.local/lib/python3.12/site-packages/ovrtx/bin/cache/nv_shadercache/vulkan'
+2026-03-17T03:49:48Z [83ms] [Info] [omni.rtx] [ShaderCache]: Driver shaderCache directory: /home/jkh/.local/lib/python3.12/site-packages/ovrtx/bin/cache/nv_shadercache/vulkan
+2026-03-17T03:49:48Z [83ms] [Info] [omni.rtx] [ShaderCache]: Driver shadercache folder: /home/jkh/.local/lib/python3.12/site-packages/ovrtx/bin/cache/nv_shadercache/vulkan, file count: 2, size: 146.78 MB, process_0: 0.00 MB.
+2026-03-17T03:49:48Z [83ms] [Info] [omni.rtx] loadVulkanGlobalFunctions. Loading libvulkan from /home/jkh/.local/lib/python3.12/site-packages/ovrtx/bin/plugins/gpu.foundation/libvulkan.so.1
+2026-03-17T03:49:48Z [111ms] [Info] [omni.rtx] Instance extension VK_KHR_get_physical_device_properties2 required by NGX.
+2026-03-17T03:49:48Z [118ms] [Info] [carb.launcher.plugin] launched '/usr/bin/nvidia-smi -q': parent=860875, child=860936, handle=0xf162c4000c70
+2026-03-17T03:49:48Z [157ms] [Info] [omni.rtx] carb::graphics::enumeratePhysicalDeviceGroups failed or no physical device group is found. Falling back to carb::graphics::enumeratePhysicalDevices.
+2026-03-17T03:49:48Z [157ms] [Info] [omni.rtx] Skipping createScoringSurface for no-window request.
+2026-03-17T03:49:48Z [228ms] [Info] [omni.rtx] 
+==============NVSMI LOG==============
+
+Timestamp                                              : Mon Mar 16 20:49:48 2026
+Driver Version                                         : 580.126.09
+CUDA Version                                           : 13.0
+
+Attached GPUs                                          : 1
+GPU 0000000F:01:00.0
+    Product Name                                       : NVIDIA GB10
+    Product Brand                                      : NVIDIA RTX
+    Product Architecture                               : Blackwell
+    Display Mode                                       : Requested functionality has been deprecated
+    Display Attached                                   : Yes
+    Display Active                                     : Disabled
+    Persistence Mode                                   : Enabled
+    Addressing Mode                                    : ATS
+    MIG Mode
+        Current                                        : N/A
+        Pending                                        : N/A
+    Accounting Mode                                    : Disabled
+    Accounting Mode Buffer Size                        : 4000
+    Driver Model
+        Current                                        : N/A
+        Pending                                        : N/A
+    Serial Number                                      : N/A
+    GPU UUID                                           : GPU-80f79155-371d-3545-62f3-c9d0e066444f
+    GPU PDI                                            : 0x1b895437f4755bb4
+    Minor Number                                       : 0
+    VBIOS Version                                      : 9A.0B.1E.00.00
+    MultiGPU Board                                     : No
+    Board ID                                           : 0xf0100
+    Board Part Number                                  : N/A
+    GPU Part Number                                    : 2E12-275-A1
+    FRU Part Number                                    : N/A
+    Platform Info
+        Chassis Serial Number                          : 
+        Slot Number                                    : 0
+        Tray Index                                     : 0
+        Host ID                                        : 1
+        Peer Type                                      : Direct Connected
+        Module Id                                      : 1
+        GPU Fabric GUID                                : 0x0000000000000000
+    Inforom Version
+        Image Version                                  : N/A
+        OEM Object                                     : N/A
+        ECC Object                                     : N/A
+        Power Management Object                        : N/A
+    Inforom BBX Object Flush
+        Latest Timestamp                               : N/A
+        Latest Duration                                : N/A
+    GPU Operation Mode
+        Current                                        : N/A
+        Pending                                        : N/A
+    GPU C2C Mode                                       : Enabled
+    GPU Virtualization Mode
+        Virtualization Mode                            : None
+        Host VGPU Mode                                 : N/A
+        vGPU Heterogeneous Mode                        : N/A
+    GPU Recovery Action                                : None
+    GSP Firmware Version                               : 580.126.09
+    IBMNPU
+        Relaxed Ordering Mode                          : N/A
+    PCI
+        Bus                                            : 0x01
+        Device                                         : 0x00
+        Domain                                         : 0x000F
+        Base Classcode                                 : 0x3
+        Sub Classcode                                  : 0x0
+        Device Id                                      : 0x2E1210DE
+        Bus Id                                         : 0000000F:01:00.0
+        Sub System Id                                  : 0x000010DE
+        GPU Link Info
+            PCIe Generation
+                Max                                    : 1
+                Current                                : 1
+                Device Current                         : 1
+                Device Max                             : 5
+                Host Max                               : 5
+            Link Width
+                Max                                    : 16x
+                Current                                : 1x
+        Bridge Chip
+            Type                                       : N/A
+            Firmware                                   : N/A
+        Replays Since Reset                            : 0
+        Replay Number Rollovers                        : 0
+        Tx Throughput                                  : N/A
+        Rx Throughput                                  : N/A
+        Atomic Caps Outbound                           : FETCHADD_32 FETCHADD_64 SWAP_32 SWAP_64 CAS_32 CAS_64 
+        Atomic Caps Inbound                            : N/A
+    Fan Speed                                          : N/A
+    Performance State                                  : P0
+    Clocks Event Reasons
+        Idle                                           : Not Active
+        Applications Clocks Setting                    : Not Active
+        SW Power Cap                                   : Not Active
+        HW Slowdown                                    : Not Active
+            HW Thermal Slowdown                        : Not Active
+            HW Power Brake Slowdown                    : Not Active
+        Sync Boost                                     : Not Active
+        SW Thermal Slowdown                            : Not Active
+        Display Clock Setting                          : Not Active
+    Clocks Event Reasons Counters
+        SW Power Capping                               : 0 us
+        Sync Boost                                     : 0 us
+        SW Thermal Slowdown                            : 0 us
+        HW Thermal Slowdown                            : 0 us
+        HW Power Braking                               : 0 us
+    Sparse Operation Mode                              : N/A
+    FB Memory Usage
+        Total                                          : N/A
+        Reserved                                       : N/A
+        Used                                           : N/A
+        Free                                           : N/A
+    BAR1 Memory Usage
+        Total                                          : N/A
+        Used                                           : N/A
+        Free                                           : N/A
+    Conf Compute Protected Memory Usage
+        Total                                          : 0 MiB
+        Used                                           : 0 MiB
+        Free                                           : 0 MiB
+    Compute Mode                                       : Default
+    Utilization
+        GPU                                            : 0 %
+        Memory                                         : 0 %
+        Encoder                                        : 0 %
+        Decoder                                        : 0 %
+        JPEG                                           : 0 %
+        OFA                                            : 0 %
+    Encoder Stats
+        Active Sessions                                : 0
+        Average FPS                                    : 0
+        Average Latency                                : 0
+    FBC Stats
+        Active Sessions                                : 0
+        Average FPS                                    : 0
+        Average Latency                                : 0
+    DRAM Encryption Mode
+        Current                                        : N/A
+        Pending                                        : N/A
+    ECC Mode
+        Current                                        : N/A
+        Pending                                        : N/A
+    ECC Errors
+        Volatile
+            SRAM Correctable                           : N/A
+            SRAM Uncorrectable Parity                  : N/A
+            SRAM Uncorrectable SEC-DED                 : N/A
+            DRAM Correctable                           : N/A
+            DRAM Uncorrectable                         : N/A
+        Aggregate
+            SRAM Correctable                           : N/A
+            SRAM Uncorrectable Parity                  : N/A
+            SRAM Uncorrectable SEC-DED                 : N/A
+            DRAM Correctable                           : N/A
+            DRAM Uncorrectable                         : N/A
+            SRAM Threshold Exceeded                    : N/A
+        Aggregate Uncorrectable SRAM Sources
+            SRAM L2                                    : N/A
+            SRAM SM                                    : N/A
+            SRAM Microcontroller                       : N/A
+            SRAM PCIE                                  : N/A
+            SRAM Other                                 : N/A
+        Channel Repair Pending                         : N/A
+        TPC Repair Pending                             : N/A
+    Retired Pages
+        Single Bit ECC                                 : N/A
+        Double Bit ECC                                 : N/A
+        Pending Page Blacklist                         : N/A
+    Remapped Rows                                      : N/A
+    Temperature
+        GPU Current Temp                               : 52 C
+        GPU T.Limit Temp                               : 44 C
+        GPU Shutdown T.Limit Temp                      : N/A
+        GPU Slowdown T.Limit Temp                      : N/A
+        GPU Max Operating T.Limit Temp                 : 0 C
+        GPU Target Temperature                         : N/A
+        Memory Current Temp                            : N/A
+        Memory Max Operating T.Limit Temp              : N/A
+    GPU Power Readings
+        Average Power Draw                             : 11.80 W
+        Instantaneous Power Draw                       : 13.72 W
+        Current Power Limit                            : N/A
+        Requested Power Limit                          : N/A
+        Default Power Limit                            : N/A
+        Min Power Limit                                : N/A
+        Max Power Limit                                : N/A
+    GPU Memory Power Readings 
+        Average Power Draw                             : N/A
+        Instantaneous Power Draw                       : N/A
+    Module Power Readings
+        Average Power Draw                             : N/A
+        Instantaneous Power Draw                       : N/A
+        Current Power Limit                            : N/A
+        Requested Power Limit                          : N/A
+        Default Power Limit                            : N/A
+        Min Power Limit                                : N/A
+        Max Power Limit                                : N/A
+    Power Smoothing                                    : N/A
+    Workload Power Profiles
+        Requested Profiles                             : N/A
+        Enforced Profiles                              : N/A
+    Clocks
+        Graphics                                       : 2411 MHz
+        SM                                             : 2411 MHz
+        Memory                                         : N/A
+        Video                                          : 2060 MHz
+    Applications Clocks
+        Graphics                                       : 2418 MHz
+        Memory                                         : N/A
+    Default Applications Clocks
+        Graphics                                       : 2418 MHz
+        Memory                                         : N/A
+    Deferred Clocks
+        Memory                                         : N/A
+    Max Clocks
+        Graphics                                       : 3003 MHz
+        SM                                             : 3003 MHz
+        Memory                                         : N/A
+        Video                                          : 3003 MHz
+    Max Customer Boost Clocks
+        Graphics                                       : N/A
+    Clock Policy
+        Auto Boost                                     : N/A
+        Auto Boost Default                             : N/A
+    Fabric
+        State                                          : N/A
+        Status                                         : N/A
+        CliqueId                                       : N/A
+        ClusterUUID                                    : N/A
+        Health
+            Summary                                    : N/A
+            Bandwidth                                  : N/A
+            Route Recovery in progress                 : N/A
+            Route Unhealthy                            : N/A
+            Access Timeout Recovery                    : N/A
+            Incorrect Configuration                    : N/A
+            Partition Assigned                         : N/A
+    Processes
+        GPU instance ID                   : N/A
+        Compute instance ID               : N/A
+        Process ID                        : 5436
+            Type                          : G
+            Name                          : ............./Xorg
+            Used GPU Memory               : 102 MiB
+        GPU instance ID                   : N/A
+        Compute instance ID               : N/A
+        Process ID                        : 5516
+            Type                          : C+G
+            Name                          : ............/gnome-remote-desktop-daemon
+            Used GPU Memory               : 176 MiB
+        GPU instance ID                   : N/A
+        Compute instance ID               : N/A
+        Process ID                        : 5602
+            Type                          : G
+            Name                          : ......../gnome-shell
+            Used GPU Memory               : 129 MiB
+        GPU instance ID                   : N/A
+        Compute instance ID               : N/A
+        Process ID                        : 6563
+            Type                          : G
+            Name                          : ............................................/chrome
+            Used GPU Memory               : 79 MiB
+        GPU instance ID                   : N/A
+        Compute instance ID               : N/A
+        Process ID                        : 175085
+            Type                          : G
+            Name                          : ............................................/chrome
+            Used GPU Memory               : 60 MiB
+    Capabilities
+        EGM                                            : disabled
+
+
+2026-03-17T03:49:49Z [391ms] [Info] [omni.rtx] Skipping software adapter 1: llvmpipe (LLVM 20.1.2, 128 bits)
+2026-03-17T03:49:49Z [391ms] [Info] [omni.rtx] useCudaDeviceOrder enabled: using CUDA device order 0-0
+2026-03-17T03:49:49Z [391ms] [Info] [omni.rtx] CUDA device 0 maps to Vulkan device 0
+2026-03-17T03:49:49Z [391ms] [Info] [omni.rtx] Translating CUDA device 0 to Vulkan device 0
+2026-03-17T03:49:49Z [391ms] [Info] [omni.rtx] Single CUDA GPU specified, setting activePhysicalDevice to 0
+2026-03-17T03:49:49Z [391ms] [Info] [omni.rtx] NVIDIA Aftermath Status: auto-enabled
+2026-03-17T03:49:49Z [392ms] [Info] [omni.rtx] Active GPU: NVIDIA GB10
+2026-03-17T03:49:49Z [393ms] [Info] [omni.rtx] Enabled NVIDIA Aftermath Version: 2025.5
+2026-03-17T03:49:49Z [393ms] [Info] [omni.rtx] Device extension VK_NVX_binary_import required by NGX.
+2026-03-17T03:49:49Z [393ms] [Info] [omni.rtx] Device extension VK_NVX_image_view_handle required by NGX.
+2026-03-17T03:49:49Z [393ms] [Info] [omni.rtx] Device extension VK_NVX_image_view_handle required by NGX.
+2026-03-17T03:49:49Z [393ms] [Info] [omni.rtx] Device extension VK_NVX_image_view_handle required by NGX.
+2026-03-17T03:49:49Z [888ms] [Info] [omni.rtx] CPU performance profile: performance
+2026-03-17T03:49:49Z [899ms] [Info] [omni.rtx] ECC is disabled on physical device 0
+2026-03-17T03:49:49Z [899ms] [Info] [omni.rtx]  
+2026-03-17T03:49:49Z [899ms] [Info] [omni.rtx] vGPU License Report:
+2026-03-17T03:49:49Z [899ms] [Info] [omni.rtx]  
+2026-03-17T03:49:49Z [899ms] [Info] [omni.rtx]    Physical device 0
+2026-03-17T03:49:49Z [899ms] [Info] [omni.rtx]    GPU virtualization mode: Bare metal
+2026-03-17T03:49:49Z [899ms] [Info] [omni.rtx]    Grid License Supported: False
+2026-03-17T03:49:49Z [899ms] [Info] [omni.rtx]    Number of licenseable features: 0
+2026-03-17T03:49:49Z [899ms] [Info] [omni.rtx]  
+2026-03-17T03:49:49Z [899ms] [Info] [carb] Initializing plugin: omni.streamingstatus.plugin (interfaces: [omni::IStreamingStatusManager v1.2]) (impl: omni.streamingstatus.plugin)
+2026-03-17T03:49:49Z [899ms] [Info] [carb] Initializing plugin: carb.eventdispatcher.plugin (interfaces: [carb::eventdispatcher::IEventDispatcher v1.5],[carb::eventdispatcher::IMessageQueueFactory v1.1]) (impl: carb.eventdispatcher.plugin)
+2026-03-17T03:49:49Z [900ms] [Info] [carb] Initializing plugin: carb.assets.plugin (interfaces: [carb::assets::IAssets v2.0],[carb::assets::IAssetsBlob v1.0]) (impl: carb.assets.plugin)
+2026-03-17T03:49:49Z [900ms] [Info] [carb] Initializing plugin: carb.datasource-file.plugin (interfaces: [carb::datasource::IDataSource v1.1]) (impl: carb.datasource-file.plugin)
+2026-03-17T03:49:49Z [900ms] [Info] [carb] Initializing plugin: carb.datasource-omniclient.plugin (interfaces: [carb::datasource::IDataSource v1.1]) (impl: carb.datasource-omniclient.plugin)
+2026-03-17T03:49:49Z [900ms] [Info] [carb] Initializing plugin: carb.imaging.plugin (interfaces: [carb::imaging::IImaging v2.6]) (impl: carb.imaging.plugin)
+2026-03-17T03:49:49Z [973ms] [Info] [carb] Initializing plugin: carb.ujitsodefault.plugin (interfaces: [carb::ujitso::IDefault v0.1]) (impl: carb.ujitsodefault.plugin)
+2026-03-17T03:49:49Z [973ms] [Info] [carb] Initializing plugin: carb.datastore.plugin (interfaces: [carb::datastore::ICombinedDataStore v0.1],[carb::datastore::IFailureInjectionDataStoreFactory v0.1],[carb::datastore::ILocalDataStore v0.2],[carb::datastore::INucleusDataStore v0.1],[carb::datastore::IOmniHubDataStore v0.2],[carb::datastore::IProfileDataStore v0.2],[carb::datastore::IWriteBackDataStore v0.3]) (impl: carb.datastore.plugin)
+2026-03-17T03:49:49Z [973ms] [Info] [carb] Initializing plugin: omni.blobkey.plugin (interfaces: [omni::blobkey::IBlobKey v1.1]) (impl: omni.blobkey.plugin)
+2026-03-17T03:49:49Z [974ms] [Info] [omni.datastore] Locked base cache layer '/home/jkh/.local/lib/python3.12/site-packages/ovrtx/bin/cache/DerivedDataCache'
+2026-03-17T03:49:49Z [974ms] [Info] [carb.ujitsodefault.plugin] DataStoreConfigurator[UJITSOCache]: created local datastore on: '/home/jkh/.local/lib/python3.12/site-packages/ovrtx/bin/cache/DerivedDataCache'
+2026-03-17T03:49:49Z [974ms] [Info] [carb] Initializing plugin: carb.ujitsoagent.plugin (interfaces: [carb::ujitso::IAgent v0.5],[carb::ujitso::IFactory v0.2],[carb::ujitso::IRegistry v0.2],[carb::ujitso::IService v0.10]) (impl: carb.ujitsoagent.plugin)
+2026-03-17T03:49:49Z [974ms] [Info] [carb.ujitsoagent.plugin] UJITSO: ProcessorRegistry(): globalProcessorVersion:0, addKitGitHashToVersion:0, resolvedGitHash:''
+2026-03-17T03:49:49Z [975ms] [Info] [carb] Initializing plugin: omni.fabric.plugin (interfaces: [omni::fabric::IChangeTrackerConfig v0.5],[omni::fabric::IConnectivity v1.9],[omni::fabric::IDiagnostics v1.1],[omni::fabric::IFabric v0.13],[omni::fabric::IFabricContextManager v1.0],[omni::fabric::IFabricInspector v0.2],[omni::fabric::IFabricRingBuffer v1.2],[omni::fabric::IFabricSampleStorage v0.3],[omni::fabric::IFabricUsd v1.0],[omni::fabric::IFineGrainedChangeTracker v0.2],[omni::fabric::IPath v1.0],[omni::fabric::IPlatform v0.2],[omni::fabric::IPopulator v1.0],[omni::fabric::IPrimBucketList v0.5],[omni::fabric::ISerializer v0.3],[omni::fabric::ISimStageWithHistory v0.2],[omni::fabric::IStageAtTimeInterval v1.0],[omni::fabric::IStageAtTimeIntervalLegacy v1.0],[omni::fabric::IStageReaderWriter v0.14],[omni::fabric::IStageReaderWriterLegacy v1.0],[omni::fabric::IStageReaderWriterUsd v1.0],[omni::fabric::IStats v1.0],[omni::fabric::IToken v1.0],[omni::fabric::batch::iBatch v0.3]) (impl: omni.fabric.plugin)
+2026-03-17T03:49:49Z [975ms] [Info] [carb] Initializing plugin: omni.tbb.globalcontrol.plugin (interfaces: [omni::tbb::IGlobalControl v1.0]) (impl: omni.tbb.globalcontrol.plugin)
+2026-03-17T03:49:49Z [975ms] [Info] [omni.tbb.globalcontrol.plugin] TBB Global Control Plugin loaded, max_allowed_parallelism=16
+2026-03-17T03:49:49Z [975ms] [Info] [carb] Plugin gpu.foundation.plugin is already a dependency of carb.ujitsodefault.plugin; not changing unload order
+2026-03-17T03:49:49Z [979ms] [Info] [carb] Initializing plugin: carb.imgui.plugin (interfaces: [carb::imgui::ImGui v1.0],[carb::imgui::NetImGui v1.0]) (impl: carb.imgui.plugin)
+2026-03-17T03:49:49Z [979ms] [Info] [carb] Initializing plugin: carb.input.plugin (interfaces: [carb::input::IInput v1.2]) (impl: carb.input.plugin)
+2026-03-17T03:49:49Z [982ms] [Info] [carb] Initializing plugin: carb.shadercompiler-slang.plugin (interfaces: [carb::shadercompiler::ShaderCompiler v0.6]) (impl: carb.shadercompiler-slang.plugin)
+2026-03-17T03:49:49Z [983ms] [Info] [omni.rtx] Max allowing 15 shader compiler sessions based on 94.5 GB of free system memory.
+2026-03-17T03:49:49Z [983ms] [Info] [carb] Plugin gpu.foundation.plugin is already a dependency of carb.shadercompiler-slang.plugin; not changing unload order
+2026-03-17T03:49:49Z [983ms] [Info] [omni.rtx] Max ShaderDB concurrency allowed: 15.
+2026-03-17T03:49:49Z [984ms] [Info] [omni.rtx] Device 0:
+2026-03-17T03:49:49Z [984ms] [Info] [omni.rtx]  - CUDA device index: 0
+2026-03-17T03:49:49Z [984ms] [Info] [omni.rtx] BAR1 memory is not supported.
+2026-03-17T03:49:49Z [984ms] [Info] [omni.rtx] Realm Process 0 of 1 started.
+2026-03-17T03:49:49Z [984ms] [Info] [omni.rtx] Skipped optional host to device PCIe bandwidth check.
+2026-03-17T03:49:49Z [984ms] [Info] [carb] Initializing plugin: carb.ujitso.processor.texture.plugin (interfaces: [carb::ujitso::processor::ITextureProcessorLoader v0.1]) (impl: carb.ujitso.processor.texture.plugin)
+2026-03-17T03:49:49Z [984ms] [Info] [carb.ujitso.processor.texture.plugin] IGpuFoundationFactory was not available at creation time, initGpuFoundation must be called explicitely
+2026-03-17T03:49:49Z [984ms] [Info] [carb] Initializing plugin: carb.ujitso.processor.default.plugin (interfaces: [carb::ujitso::processor::IDefaultProcessorsLoader v0.1]) (impl: carb.ujitso.processor.default.plugin)
+2026-03-17T03:49:49Z [984ms] [Info] [carb] Initializing plugin: carb.ujitso.processor.geometry.plugin (interfaces: [carb::ujitso::processor::IGeometryProcessorLoader v0.2]) (impl: carb.ujitso.processor.geometry.plugin)
+2026-03-17T03:49:49Z [984ms] [Info] [carb.ujitsoagent.plugin] Registering container factory for type: 0x4a1a5bf06fa7b500
+2026-03-17T03:49:49Z [985ms] [Info] [carb.ujitsoagent.plugin] Registering container factory for type: 0x4453955f8192ba8
+2026-03-17T03:49:49Z [985ms] [Info] [carb.ujitsoagent.plugin] Registering container factory for type: 0xa4b964d1e198d9ce
+2026-03-17T03:49:49Z [985ms] [Info] [carb.ujitso.processor.geometry.plugin] Geometry processors (Mesh, Curve, Points) registered successfully
+2026-03-17T03:49:49Z [985ms] [Info] [carb] Plugin carb.ujitso.processor.texture.plugin is already a dependency of carb.ujitsodefault.plugin; not changing unload order
+2026-03-17T03:49:49Z [985ms] [Info] [carb] Plugin gpu.foundation.plugin is already a dependency of carb.ujitsoagent.plugin; not changing unload order
+2026-03-17T03:49:49Z [986ms] [Info] [omni.rtx] Setting mgpu copy backend to 'copyQueue'
+2026-03-17T03:49:49Z [997ms] [Info] [carb] Initializing plugin: carb.scenerenderer-rtx.plugin (interfaces: [carb::renderer::SceneRenderer v10.0],[carb::renderer::SceneRendererRTX v0.2]) (impl: carb.scenerenderer-rtx.plugin)
+2026-03-17T03:49:49Z [997ms] [Info] [ovrtx] [MBVH]: Creating SceneRenderer 0 with raytracing motion 'OFF' (device mask: 0x1)
+2026-03-17T03:49:49Z [997ms] [Info] [carb] Initializing plugin: omni.usd-abi.plugin (interfaces: [omni::usd::IPathAbi v1.0],[omni::usd::IRenderProductPrimFactory v1.7],[omni::usd::IRenderSettings v0.2],[omni::usd::IRenderSettingsLegacy v0.2],[omni::usd::IResolverPathAbi v0.2],[omni::usd::ITokenAbi v1.0]) (impl: omni.usd-abi.plugin)
+2026-03-17T03:49:49Z [998ms] [Info] [omni.rtx] No setting was found for '/rtx-defaults-transient/rt2Enabled'
+2026-03-17T03:49:49Z [998ms] [Info] [omni.rtx] No setting was found for '/rtx-defaults-transient/ptEnabled'
+2026-03-17T03:49:49Z [998ms] [Info] [omni.rtx] No setting was found for '/rtx-defaults-transient/rtEnabled'
+2026-03-17T03:49:49Z [998ms] [Info] [carb.scenerenderer-rtx.plugin] [MBVH]: RtxRenderContext 0 has motion instance 'DISABLED' (device mask: 0x1)
+2026-03-17T03:49:49Z [1,000ms] [Info] [omni.rtx] Could not find a valid value for carb-setting: '/rtx/useViewLightingMode'
+2026-03-17T03:49:49Z [1,000ms] [Info] [omni.rtx] Could not find a valid value for carb-setting: '/rtx/minimal/mode'
+2026-03-17T03:49:49Z [1,000ms] [Info] [omni.rtx] Could not find a valid value for carb-setting: '/rtx/post/taa/samples'
+2026-03-17T03:49:49Z [1,000ms] [Info] [omni.rtx] Could not find a valid value for carb-setting: '/rtx/post/backgroundZeroAlpha/enabled'
+2026-03-17T03:49:49Z [1,000ms] [Info] [omni.rtx] Could not find a valid value for carb-setting: '/rtx/post/backgroundZeroAlpha/backgroundComposite'
+2026-03-17T03:49:49Z [1,000ms] [Info] [omni.rtx] Could not find a valid value for carb-setting: '/rtx/post/backgroundZeroAlpha/blackBackgroundInComposite'
+2026-03-17T03:49:49Z [1,000ms] [Info] [omni.rtx] Could not find a valid value for carb-setting: '/rtx/post/backgroundZeroAlpha/postTonemapBackgroundComposite'
+2026-03-17T03:49:49Z [1,000ms] [Info] [omni.rtx] Could not find a valid value for carb-setting: '/rtx/background/source/type'
+2026-03-17T03:49:49Z [1,000ms] [Info] [omni.rtx] Could not find a valid value for carb-setting: '/rtx/post/aa/op'
+2026-03-17T03:49:49Z [1,000ms] [Info] [omni.rtx] Could not find a valid value for carb-setting: '/rtx-transient/post/aa/limitedOps'
+2026-03-17T03:49:49Z [1,000ms] [Info] [omni.rtx] Could not find a valid value for carb-setting: '/rtx/matteObject/blend/fadeOut'
+2026-03-17T03:49:49Z [1,000ms] [Info] [omni.rtx] Could not find a valid value for carb-setting: '/rtx/pathtracing/dynamicResolution/ratio'
+2026-03-17T03:49:49Z [1,000ms] [Info] [omni.rtx] Could not find a valid value for carb-setting: '/rtx/pathtracing/temporalAccumulation'
+2026-03-17T03:49:49Z [1,000ms] [Info] [omni.rtx] Could not find a valid value for carb-setting: '/rtx/material/translucencyAsOpacity'
+2026-03-17T03:49:49Z [1,000ms] [Info] [omni.rtx] Could not find a valid value for carb-setting: '/rtx/material/enableRefraction'
+2026-03-17T03:49:49Z [1,000ms] [Info] [carb] Initializing plugin: rtx.mdltranslator.plugin (interfaces: [rtx::mdltranslator::MdlTranslator v17.0]) (impl: rtx.mdltranslator.plugin)
+2026-03-17T03:49:49Z [1,001ms] [Info] [omni.rtx] MDL translator code generation hash: '0x6c1f7c4c7b93a61f'
+2026-03-17T03:49:49Z [1,001ms] [Info] [carb] Initializing plugin: rtx.neuraylib.plugin (interfaces: [rtx::neuray::NeurayLib v1.5]) (impl: rtx.neuraylib.plugin)
+2026-03-17T03:49:49Z [1,003ms] [Info] [rtx.neuraylib.plugin] Iray cpu load limit set to 20
+2026-03-17T03:49:49Z [1,061ms] [Info] [rtx.neuraylib.plugin] [EntityResolver] add MDL search path: file:/home/jkh/.local/lib/python3.12/site-packages/ovrtx/bin/mdl)
+2026-03-17T03:49:49Z [1,061ms] [Info] [rtx.neuraylib.plugin] [EntityResolver] add MDL search path: file:/home/jkh/.local/lib/python3.12/site-packages/ovrtx/bin/mdl)
+2026-03-17T03:49:49Z [1,061ms] [Info] [rtx.neuraylib.plugin] [EntityResolver] add MDL search path: file:/home/jkh/.local/lib/python3.12/site-packages/ovrtx/bin/mdl)
+2026-03-17T03:49:49Z [1,061ms] [Info] [rtx.neuraylib.plugin] [EntityResolver] add MDL search path: file:/home/jkh/.local/lib/python3.12/site-packages/ovrtx/bin/library/mdl/Base)
+2026-03-17T03:49:49Z [1,062ms] [Info] [rtx.neuraylib.plugin] [EntityResolver] add MDL search path: file:/home/jkh/.local/lib/python3.12/site-packages/ovrtx/bin/library/mdl/Ue4)
+2026-03-17T03:49:49Z [1,062ms] [Info] [rtx.neuraylib.plugin] [EntityResolver] add MDL search path: file:/home/jkh/.local/lib/python3.12/site-packages/ovrtx/bin/library/mdl/Aperture)
+2026-03-17T03:49:49Z [1,062ms] [Info] [rtx.neuraylib.plugin] [EntityResolver] add MDL search path: file:/home/jkh/.local/lib/python3.12/site-packages/ovrtx/bin/library/mdl/VRay)
+2026-03-17T03:49:49Z [1,062ms] [Info] [rtx.neuraylib.plugin] [EntityResolver] add MDL search path: file:/home/jkh/.local/lib/python3.12/site-packages/ovrtx/bin/library/mdl/Volume)
+2026-03-17T03:49:49Z [1,062ms] [Info] [rtx.neuraylib.plugin] [EntityResolver] add MDL search path: file:/home/jkh/.local/lib/python3.12/site-packages/ovrtx/bin/library/mdl/mdl)
+2026-03-17T03:49:49Z [1,062ms] [Info] [rtx.neuraylib.plugin] [EntityResolver] add MDL search path: file:/home/jkh/.local/lib/python3.12/site-packages/ovrtx/bin/library/materialx/mdl)
+2026-03-17T03:49:49Z [1,062ms] [Info] [rtx.neuraylib.plugin] [EntityResolver] add MDL search path: file:/home/jkh/.local/lib/python3.12/site-packages/ovrtx/bin/mdl/omniverse_exts)
+2026-03-17T03:49:49Z [1,062ms] [Info] [carb] Initializing plugin: rtx.multigpumanager.plugin (interfaces: [rtx::multigpumanager::MultiGpuManager v0.9]) (impl: rtx.multigpumanager.plugin)
+2026-03-17T03:49:49Z [1,062ms] [Info] [carb] Initializing plugin: rtx.scenedb.plugin (interfaces: [rtx::scenedb::FabricSceneDb v0.2],[rtx::scenedb::SceneDb v6.1]) (impl: rtx.scenedb.plugin)
+2026-03-17T03:49:49Z [1,120ms] [Info] [carb] Initializing plugin: carb.graphics_optional.plugin (interfaces: [carb::graphics::IOptionalFeatures v2.1]) (impl: carb.graphics_optional.plugin)
+2026-03-17T03:49:49Z [1,120ms] [Info] [omni.rtx] carb.graphics optional features library path: /home/jkh/.local/lib/python3.12/site-packages/ovrtx/bin/plugins/gpu.foundation
+2026-03-17T03:49:49Z [1,175ms] [Info] [omni.rtx] NGX DLSS Frame Generation Feature Supported
+2026-03-17T03:49:49Z [1,176ms] [Info] [carb] Initializing plugin: rtx.rasterizing.plugin (interfaces: [rtx::rasterizing::Primitive v1.0],[rtx::rasterizing::Selection v1.0]) (impl: rtx.rasterizing.plugin)
+2026-03-17T03:49:49Z [1,177ms] [Info] [carb] Initializing plugin: rtx.materialdb.plugin (interfaces: [rtx::materialdb::MaterialDb v1.11]) (impl: rtx.materialdb.plugin)
+2026-03-17T03:49:49Z [1,186ms] [Info] [carb] Initializing plugin: carb.blockcompression.plugin (interfaces: [carb::blockcompression::BlockCompression v0.2]) (impl: carb.blockcompression.plugin)
+2026-03-17T03:49:49Z [1,210ms] [Info] [carb] Initializing plugin: rtx.raytracing.plugin (interfaces: [rtx::raytracing::AmbientOcclusion v2.0],[rtx::raytracing::AovConverter v3.0],[rtx::raytracing::Caustics v2.0],[rtx::raytracing::Compositing v1.0],[rtx::raytracing::CopyDepth v2.0],[rtx::raytracing::DebugView v3.0],[rtx::raytracing::DirectLightingLtc v2.0],[rtx::raytracing::DirectLightingSampled v2.0],[rtx::raytracing::GBuffer v6.0],[rtx::raytracing::GlobalVolumetricEffects v1.0],[rtx::raytracing::Hair v2.0],[rtx::raytracing::IndirectDiffuse v3.0],[rtx::raytracing::MaterialBaking v0.2],[rtx::raytracing::PathTracing v3.0],[rtx::raytracing::Picking v2.0],[rtx::raytracing::RTXRaycastQueryManager v1.0],[rtx::raytracing::RadianceCache v1.0],[rtx::raytracing::RaycastQueryManager v1.0],[rtx::raytracing::Reflections v3.0],[rtx::raytracing::SamplerFeedback v2.0],[rtx::raytracing::Selection v1.0],[rtx::raytracing::Shadows v3.0],[rtx::raytracing::SpatialHashGrid v1.0],[rtx::raytracing::Subsurface v2.0],[rtx::raytracing::SyntheticAttributeData v1.0],[rtx::raytracing::SyntheticImageData v2.0],[rtx::raytracing::Translucency v6.0]) (impl: rtx.raytracing.plugin)
+2026-03-17T03:49:49Z [1,216ms] [Info] [carb] Initializing plugin: rtx.denoising.plugin (interfaces: [denoising::RtDenoising v1.0],[rtx::denoising::Caustics v0.1],[rtx::denoising::DirectLighting v0.1],[rtx::denoising::GIReprojection v0.1],[rtx::denoising::IndirectDiffuse v0.1]) (impl: rtx.denoising.plugin)
+2026-03-17T03:49:49Z [1,229ms] [Info] [omni.rtx] No setting was found for '/rtx-defaults-transient/meshlights/forceDisable'
+2026-03-17T03:49:49Z [1,258ms] [Info] [carb] Initializing plugin: rtx.postprocessing.plugin (interfaces: [rtx::postprocessing::AlphaZeroMask v4.0],[rtx::postprocessing::ChromaticAberration v3.0],[rtx::postprocessing::DLSS v3.0],[rtx::postprocessing::DepthSensor v2.0],[rtx::postprocessing::Downsample v1.0],[rtx::postprocessing::Downsample2x v1.0],[rtx::postprocessing::Fullscreen v1.0],[rtx::postprocessing::Fxaa v2.0],[rtx::postprocessing::Histogram v2.0],[rtx::postprocessing::LensFlare v2.0],[rtx::postprocessing::MotionBlur v3.0],[rtx::postprocessing::NuRecVolumeCompositing v2.0],[rtx::postprocessing::Outline v1.0],[rtx::postprocessing::Postprocessing v6.0],[rtx::postprocessing::RegisterCompositing v0.0],[rtx::postprocessing::RegisteredCompositing v5.0],[rtx::postprocessing::TemporalAA v3.1],[rtx::postprocessing::TileCompositing v0.1],[rtx::postprocessing::Tonemapping v2.0],[rtx::postprocessing::TvNoise v3.0],[rtx::postprocessing::ViewCombiner v0.1]) (impl: rtx.postprocessing.plugin)
+2026-03-17T03:49:49Z [1,263ms] [Info] [carb] Initializing plugin: carb.ocio.plugin (interfaces: [carb::ocio::OpenColorIo v0.1]) (impl: carb.ocio.plugin)
+2026-03-17T03:49:49Z [1,271ms] [Info] [rtx.postprocessing.plugin] NuRec Device Memory Allocator: NuRec ResourceManager allocator created
+2026-03-17T03:49:49Z [1,271ms] [Info] [carb] Initializing plugin: rtx.optixdenoising.plugin (interfaces: [rtx::optixdenoising::OptixDenoising75 v1.0]) (impl: rtx.optixdenoising.plugin)
+2026-03-17T03:49:49Z [1,274ms] [Info] [omni.rtx] Creating Optix 7.5 adaptor for device 0
+2026-03-17T03:49:50Z [1,316ms] [Info] [carb] Initializing plugin: rtx.reshade.plugin (interfaces: [rtx::reshade::Reshade v1.0]) (impl: rtx.reshade.plugin)
+2026-03-17T03:49:50Z [1,319ms] [Info] [carb] Initializing plugin: rtx.rtxsensor.plugin (interfaces: [rtx::rtxsensor::RtxSensor v3.0]) (impl: rtx.rtxsensor.plugin)
+2026-03-17T03:49:50Z [1,365ms] [Info] [carb] Initializing plugin: rtx.syntheticdata.plugin (interfaces: [rtx::syntheticdataannotation::SyntheticDataAnnotation v1.1]) (impl: rtx.syntheticdata.plugin)
+2026-03-17T03:49:50Z [1,366ms] [Info] [carb] Initializing plugin: rtx.cameraisp.plugin (interfaces: [rtx::cameraisp::CameraIsp v1.0]) (impl: rtx.cameraisp.plugin)
+2026-03-17T03:49:50Z [1,415ms] [Info] [carb] Initializing plugin: carb.progress.plugin (interfaces: [carb::progress::IProgress v1.0]) (impl: carb.progress.plugin)
+2026-03-17T03:49:50Z [1,415ms] [Info] [carb] Initializing plugin: carb.variant.plugin (interfaces: [carb::variant::IVariant v0.1]) (impl: carb.variant.plugin)
+2026-03-17T03:49:50Z [1,464ms] [Info] [carb] Initializing plugin: rtx.usdmdl.plugin (interfaces: [rtx::usdmdl::IUsdMdl v1.0]) (impl: rtx.usdmdl.plugin)
+2026-03-17T03:49:50Z [1,464ms] [Info] [omni.sensorscheduling] SensorRenderScheduler initialized
+2026-03-17T03:49:50Z [1,464ms] [Info] [ovrtx] OperationStream synchronous mode: disabled
+2026-03-17T03:49:50Z [1,464ms] [Info] [carb] Initializing plugin: omni.gpucompute-cuda.plugin (interfaces: [omni::gpucompute::GpuCompute v0.3]) (impl: omni.gpucompute-cuda.plugin)
+2026-03-17T03:49:50Z [1,468ms] [Info] [omni.sensorscheduling.debug] MultiTickRateSensorRenderDebugWindow created
+2026-03-17T03:49:50Z [1,474ms] [Info] [rtx.scenedb] [MBVH]: Creating scene acceleration structures for context 0, device mask: 0x1
+2026-03-17T03:49:50Z [1,552ms] [Info] [carb] Initializing plugin: omni.cubric.plugin (interfaces: [omni::cubric::IAdapter v0.1]) (impl: omni.cubric.plugin)
+2026-03-17T03:49:50Z [1,558ms] [Info] [ovrtx] OperationStream: worker thread started...
+2026-03-17T03:49:50Z [1,598ms] [Info] [omni.rtx] No setting was found for '/rtx-defaults/rtxsensor/fallbackTimestamps/enabled'
+2026-03-17T03:49:50Z [1,598ms] [Info] [omni.rtx] No setting was found for '/rtx-defaults/multiThreading/enabled'
+2026-03-17T03:49:50Z [1,598ms] [Info] [omni.rtx] No setting was found for '/rtx-defaults/rtxsensor/useHydraTimeAlways'
+2026-03-17T03:49:50Z [1,599ms] [Info] [omni.sensorscheduling] Added sensor 265322076143728 at path '/Render/OmniverseKit/HydraTextures/FlyCamera' with tick rate 30.00 Hz, exposure time 0.000000 s
+2026-03-17T03:49:50Z [1,678ms] [Info] [carb] Initializing plugin: omni.usd.hydra.renderproduct.plugin (interfaces: [omni::usd::hydra::IRenderProductManager v0.2]) (impl: omni.usd.hydra.renderproduct.plugin)
+2026-03-17T03:49:50Z [1,792ms] [Info] [omni.rtx] View 0 (/Render/OmniverseKit/HydraTextures/FlyCamera) assigned to device 0
+2026-03-17T03:49:50Z [1,792ms] [Info] [omni.rtx] View 0 (/Render/OmniverseKit/HydraTextures/FlyCamera) switching to 1x1 layout
+2026-03-17T03:49:50Z [1,897ms] [Info] [carb] Initializing plugin: omni.remoteimgui.plugin (interfaces: [omni::remoteimgui::IRemoteImGui v0.1]) (impl: omni.remoteimgui.plugin)
+2026-03-17T03:49:50Z [2,073ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:50Z [2,082ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:50Z [2,093ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:50Z [2,102ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:50Z [2,113ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:50Z [2,122ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:50Z [2,132ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:50Z [2,143ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:50Z [2,152ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:50Z [2,161ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:50Z [2,248ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:51Z [2,279ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:51Z [2,304ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:51Z [2,329ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:51Z [2,359ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:51Z [2,390ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:51Z [2,416ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:51Z [2,444ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:51Z [2,470ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:51Z [2,497ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:51Z [2,525ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:51Z [2,552ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:51Z [2,578ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:51Z [2,606ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:51Z [2,634ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:51Z [2,661ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:51Z [2,689ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:51Z [2,716ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:51Z [2,742ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:51Z [2,768ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:51Z [2,795ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:51Z [2,822ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:51Z [2,848ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:51Z [2,874ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:51Z [2,902ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:51Z [2,930ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:51Z [2,956ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:51Z [2,983ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:51Z [3,010ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:51Z [3,036ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:51Z [3,064ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:51Z [3,091ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:51Z [3,118ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:51Z [3,145ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:51Z [3,172ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:51Z [3,199ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:51Z [3,226ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:51Z [3,252ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:52Z [3,278ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:52Z [3,304ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:52Z [3,331ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:52Z [3,358ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:52Z [3,385ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:52Z [3,411ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:52Z [3,438ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:52Z [3,465ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:52Z [3,491ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:52Z [3,517ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:52Z [3,544ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:52Z [3,570ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:52Z [3,596ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:52Z [3,622ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:52Z [3,648ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:52Z [3,673ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:52Z [3,700ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:52Z [3,727ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:52Z [3,755ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:52Z [3,782ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:52Z [3,808ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:52Z [3,834ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:52Z [3,861ms] [Info] [omni.sensorscheduling] Updated config for sensor 265322076143728: tick rate 30.00 Hz, start time 0.000 s, exposure time 0.000000 s
+2026-03-17T03:49:52Z [3,918ms] [Info] [ovrtx] OperationStream: worker thread exited...
+2026-03-17T03:49:52Z [3,919ms] [Info] [omni.sensorscheduling] SensorRenderScheduler destroyed
+2026-03-17T03:49:52Z [3,936ms] [Info] [rtx.postprocessing.plugin] NuRec Device Memory Allocator: NuRec ResourceManager allocator destroyed
+2026-03-17T03:49:53Z [5,121ms] [Info] [omni.usdMdl] MdlModuleRegistry::Clear()
+2026-03-17T03:49:54Z [5,304ms] [Info] [omni.rtx] Slang session count releasing: 0
+2026-03-17T03:49:54Z [5,385ms] [Info] [omni.perfmonitor.plugin] PerfMonitorManager::stop
+2026-03-17T03:49:54Z [5,385ms] [Info] [omni.perfmonitor.plugin] Performance Monitor Activity Stopped
+2026-03-17T03:49:54Z [5,385ms] [Info] [omni.perfmonitor.plugin] Deactivated uploading to remote connection ip: 127.0.0.1, port: 0
+2026-03-17T03:49:54Z [5,394ms] [Info] [omni.perfmonitor.plugin] PerfMonitorManager::stop
+2026-03-17T03:49:54Z [5,398ms] [Info] [carb.dictionary.plugin] Unsubscribing from 'rtx/resourcemanager/maxPercentageToSliceChunk' with 3 subscriptions left!
+2026-03-17T03:49:54Z [5,402ms] [Info] [omni.core.ITypeFactory] Module /home/jkh/.local/lib/python3.12/site-packages/ovrtx/bin/plugins/usdrt/libusdrt.hierarchy.plugin.so remained loaded after unload request.
+2026-03-17T03:49:54Z [5,402ms] [Info] [omni.core.ITypeFactory] Module /home/jkh/.local/lib/python3.12/site-packages/ovrtx/bin/plugins/usdrt/libusdrt.population.plugin.so remained loaded after unload request.

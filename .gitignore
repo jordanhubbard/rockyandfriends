@@ -1,0 +1,12 @@
+# Large binary/render outputs — don't commit these to git
+hatchery_frames/
+shanghai_output/frames/
+renders/hf_cache/
+models/hf-cache/
+models/embeddings/vectors.npy
+*.mp4
+*.gif
+*.pptx
+
+# Lock files
+renders/hf_cache/hub/.locks/

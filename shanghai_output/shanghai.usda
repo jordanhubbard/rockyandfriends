@@ -1,0 +1,1427 @@
+#usda 1.0
+(
+    defaultPrim = "Shanghai"
+    metersPerUnit = 1
+    upAxis = "Y"
+    startTimeCode = 0
+    endTimeCode = 240
+    timeCodesPerSecond = 24
+)
+
+def Xform "Shanghai"
+{
+    def Mesh "Ground" (
+        prepend apiSchemas = ["MaterialBindingAPI"]
+    )
+    {
+        float3[] extent = [(-800, 0, -800), (800, 1, 800)]
+        int[] faceVertexCounts = [4]
+        int[] faceVertexIndices = [0, 1, 2, 3]
+        point3f[] points = [(-800, 0, -800), (800, 0, -800), (800, 0, 800), (-800, 0, 800)]
+        normal3f[] normals = [(0, 1, 0), (0, 1, 0), (0, 1, 0), (0, 1, 0)] (interpolation = "faceVarying")
+        rel material:binding = </Shanghai/Materials/Ground>
+    }
+
+    def Xform "Materials"
+    {
+        def Material "Ground"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Ground/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Ground/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Ground/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.10, 0.12, 0.15)
+                float inputs:metallic_constant = 0.05
+                float inputs:reflection_roughness_constant = 0.8
+                token outputs:out
+            }
+        }
+        def Material "Mat_Shanghai_Tower"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Shanghai_Tower/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Shanghai_Tower/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Shanghai_Tower/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.850, 0.920, 1.000)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_World_Financial_Center"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_World_Financial_Center/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_World_Financial_Center/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_World_Financial_Center/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.950, 0.850, 0.700)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Jin_Mao_Tower"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Jin_Mao_Tower/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Jin_Mao_Tower/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Jin_Mao_Tower/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.700, 0.800, 1.000)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_One_IFC"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_One_IFC/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_One_IFC/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_One_IFC/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.600, 0.700, 0.900)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Two_IFC"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Two_IFC/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Two_IFC/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Two_IFC/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.750, 0.850, 0.750)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Office_00"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Office_00/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Office_00/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Office_00/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.891, 0.828, 0.925)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Office_01"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Office_01/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Office_01/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Office_01/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.838, 0.733, 0.730)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Office_02"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Office_02/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Office_02/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Office_02/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.674, 0.891, 0.963)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Office_03"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Office_03/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Office_03/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Office_03/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.789, 0.823, 0.989)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Office_04"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Office_04/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Office_04/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Office_04/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.716, 0.668, 0.884)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Office_05"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Office_05/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Office_05/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Office_05/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.832, 0.716, 0.751)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Office_06"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Office_06/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Office_06/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Office_06/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.783, 0.812, 0.923)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Office_08"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Office_08/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Office_08/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Office_08/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.818, 0.790, 0.844)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Office_10"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Office_10/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Office_10/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Office_10/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.632, 0.617, 0.748)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Office_11"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Office_11/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Office_11/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Office_11/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.692, 0.844, 0.708)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Office_12"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Office_12/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Office_12/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Office_12/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.725, 0.646, 0.894)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Office_14"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Office_14/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Office_14/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Office_14/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.887, 0.873, 0.895)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Office_15"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Office_15/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Office_15/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Office_15/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.645, 0.629, 0.966)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Office_16"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Office_16/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Office_16/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Office_16/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.850, 0.828, 0.902)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Office_19"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Office_19/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Office_19/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Office_19/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.601, 0.631, 0.856)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Office_20"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Office_20/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Office_20/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Office_20/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.558, 0.888, 0.819)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Office_21"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Office_21/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Office_21/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Office_21/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.750, 0.742, 0.743)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Office_22"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Office_22/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Office_22/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Office_22/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.864, 0.642, 0.844)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Office_23"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Office_23/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Office_23/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Office_23/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.819, 0.632, 0.971)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Office_24"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Office_24/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Office_24/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Office_24/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.833, 0.695, 0.984)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Office_25"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Office_25/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Office_25/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Office_25/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.566, 0.731, 0.997)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Office_26"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Office_26/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Office_26/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Office_26/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.661, 0.832, 0.882)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Office_27"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Office_27/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Office_27/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Office_27/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.634, 0.637, 0.941)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Office_28"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Office_28/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Office_28/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Office_28/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.659, 0.833, 0.990)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Office_29"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Office_29/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Office_29/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Office_29/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.787, 0.637, 0.827)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Bund_00"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Bund_00/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Bund_00/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Bund_00/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.898, 0.724, 0.571)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Bund_01"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Bund_01/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Bund_01/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Bund_01/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.941, 0.752, 0.707)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Bund_02"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Bund_02/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Bund_02/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Bund_02/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.834, 0.874, 0.651)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Bund_03"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Bund_03/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Bund_03/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Bund_03/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.772, 0.849, 0.685)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Bund_04"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Bund_04/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Bund_04/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Bund_04/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.833, 0.767, 0.622)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Bund_05"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Bund_05/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Bund_05/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Bund_05/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.899, 0.847, 0.568)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Bund_06"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Bund_06/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Bund_06/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Bund_06/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.779, 0.866, 0.578)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Bund_07"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Bund_07/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Bund_07/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Bund_07/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.785, 0.710, 0.650)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Bund_08"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Bund_08/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Bund_08/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Bund_08/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.920, 0.708, 0.581)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Bund_09"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Bund_09/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Bund_09/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Bund_09/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.825, 0.794, 0.567)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Bund_10"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Bund_10/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Bund_10/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Bund_10/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.931, 0.876, 0.686)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Bund_11"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Bund_11/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Bund_11/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Bund_11/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.853, 0.854, 0.629)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Bund_12"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Bund_12/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Bund_12/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Bund_12/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.833, 0.742, 0.612)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Bund_13"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Bund_13/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Bund_13/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Bund_13/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.940, 0.865, 0.632)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Bund_14"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Bund_14/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Bund_14/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Bund_14/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.857, 0.814, 0.599)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Bund_15"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Bund_15/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Bund_15/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Bund_15/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.873, 0.717, 0.673)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Bund_16"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Bund_16/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Bund_16/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Bund_16/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.869, 0.841, 0.685)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Bund_17"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Bund_17/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Bund_17/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Bund_17/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.784, 0.802, 0.647)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Bund_18"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Bund_18/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Bund_18/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Bund_18/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.870, 0.868, 0.570)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+        def Material "Mat_Bund_19"
+        {
+            token outputs:mdl:displacement.connect = </Shanghai/Materials/Mat_Bund_19/Shader.outputs:out>
+            token outputs:mdl:surface.connect = </Shanghai/Materials/Mat_Bund_19/Shader.outputs:out>
+            token outputs:mdl:volume.connect = </Shanghai/Materials/Mat_Bund_19/Shader.outputs:out>
+            def Shader "Shader"
+            {
+                uniform token info:implementationSource = "sourceAsset"
+                uniform asset info:mdl:sourceAsset = @OmniPBR.mdl@
+                uniform token info:mdl:sourceAsset:subIdentifier = "OmniPBR"
+                color3f inputs:diffuse_color_constant = (0.884, 0.760, 0.703)
+                float inputs:metallic_constant = 0.7
+                float inputs:reflection_roughness_constant = 0.15
+                token outputs:out
+            }
+        }
+    }
+
+    def Scope "Buildings"
+    {
+        def Mesh "Shanghai_Tower" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(-15.0, 0, -15.0), (15.0, 632.0, 15.0)]
+            point3f[] points = [(-15.0, 0.0, -15.0), (15.0, 0.0, -15.0), (15.0, 0.0, 15.0), (-15.0, 0.0, 15.0), (-15.0, 632.0, -15.0), (15.0, 632.0, -15.0), (15.0, 632.0, 15.0), (-15.0, 632.0, 15.0)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Shanghai_Tower>
+        }
+        def Mesh "World_Financial_Center" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(66.0, 0, -4.0), (94.0, 492.0, 24.0)]
+            point3f[] points = [(66.0, 0.0, -4.0), (94.0, 0.0, -4.0), (94.0, 0.0, 24.0), (66.0, 0.0, 24.0), (66.0, 492.0, -4.0), (94.0, 492.0, -4.0), (94.0, 492.0, 24.0), (66.0, 492.0, 24.0)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_World_Financial_Center>
+        }
+        def Mesh "Jin_Mao_Tower" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(-82.5, 0, 7.5), (-57.5, 421.0, 32.5)]
+            point3f[] points = [(-82.5, 0.0, 7.5), (-57.5, 0.0, 7.5), (-57.5, 0.0, 32.5), (-82.5, 0.0, 32.5), (-82.5, 421.0, 7.5), (-57.5, 421.0, 7.5), (-57.5, 421.0, 32.5), (-82.5, 421.0, 32.5)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Jin_Mao_Tower>
+        }
+        def Mesh "One_IFC" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(149.0, 0, -6.0), (171.0, 320.0, 16.0)]
+            point3f[] points = [(149.0, 0.0, -6.0), (171.0, 0.0, -6.0), (171.0, 0.0, 16.0), (149.0, 0.0, 16.0), (149.0, 320.0, -6.0), (171.0, 320.0, -6.0), (171.0, 320.0, 16.0), (149.0, 320.0, 16.0)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_One_IFC>
+        }
+        def Mesh "Two_IFC" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(-160.0, 0, 5.0), (-140.0, 288.0, 25.0)]
+            point3f[] points = [(-160.0, 0.0, 5.0), (-140.0, 0.0, 5.0), (-140.0, 0.0, 25.0), (-160.0, 0.0, 25.0), (-160.0, 288.0, 5.0), (-140.0, 288.0, 5.0), (-140.0, 288.0, 25.0), (-160.0, 288.0, 25.0)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Two_IFC>
+        }
+        def Mesh "Office_00" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(178.9, 0, -42.1), (204.6, 55.1, -19.0)]
+            point3f[] points = [(178.9, 0.0, -42.1), (204.6, 0.0, -42.1), (204.6, 0.0, -19.0), (178.9, 0.0, -19.0), (178.9, 55.1, -42.1), (204.6, 55.1, -42.1), (204.6, 55.1, -19.0), (178.9, 55.1, -19.0)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Office_00>
+        }
+        def Mesh "Office_01" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(-269.3, 0, -38.2), (-251.4, 143.0, -11.4)]
+            point3f[] points = [(-269.3, 0.0, -38.2), (-251.4, 0.0, -38.2), (-251.4, 0.0, -11.4), (-269.3, 0.0, -11.4), (-269.3, 143.0, -38.2), (-251.4, 143.0, -38.2), (-251.4, 143.0, -11.4), (-269.3, 143.0, -11.4)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Office_01>
+        }
+        def Mesh "Office_02" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(25.6, 0, -229.1), (50.8, 161.3, -207.0)]
+            point3f[] points = [(25.6, 0.0, -229.1), (50.8, 0.0, -229.1), (50.8, 0.0, -207.0), (25.6, 0.0, -207.0), (25.6, 161.3, -229.1), (50.8, 161.3, -229.1), (50.8, 161.3, -207.0), (25.6, 161.3, -207.0)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Office_02>
+        }
+        def Mesh "Office_03" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(185.1, 0, -159.0), (204.6, 64.7, -146.3)]
+            point3f[] points = [(185.1, 0.0, -159.0), (204.6, 0.0, -159.0), (204.6, 0.0, -146.3), (185.1, 0.0, -146.3), (185.1, 64.7, -159.0), (204.6, 64.7, -159.0), (204.6, 64.7, -146.3), (185.1, 64.7, -146.3)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Office_03>
+        }
+        def Mesh "Office_04" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(-131.7, 0, -72.3), (-112.2, 60.8, -57.3)]
+            point3f[] points = [(-131.7, 0.0, -72.3), (-112.2, 0.0, -72.3), (-112.2, 0.0, -57.3), (-131.7, 0.0, -57.3), (-131.7, 60.8, -72.3), (-112.2, 60.8, -72.3), (-112.2, 60.8, -57.3), (-131.7, 60.8, -57.3)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Office_04>
+        }
+        def Mesh "Office_05" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(-55.6, 0, 157.8), (-32.4, 173.2, 174.8)]
+            point3f[] points = [(-55.6, 0.0, 157.8), (-32.4, 0.0, 157.8), (-32.4, 0.0, 174.8), (-55.6, 0.0, 174.8), (-55.6, 173.2, 157.8), (-32.4, 173.2, 157.8), (-32.4, 173.2, 174.8), (-55.6, 173.2, 174.8)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Office_05>
+        }
+        def Mesh "Office_06" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(120.1, 0, -186.2), (135.3, 165.9, -174.1)]
+            point3f[] points = [(120.1, 0.0, -186.2), (135.3, 0.0, -186.2), (135.3, 0.0, -174.1), (120.1, 0.0, -174.1), (120.1, 165.9, -186.2), (135.3, 165.9, -186.2), (135.3, 165.9, -174.1), (120.1, 165.9, -174.1)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Office_06>
+        }
+        def Mesh "Office_08" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(-263.5, 0, -202.5), (-240.8, 130.4, -183.0)]
+            point3f[] points = [(-263.5, 0.0, -202.5), (-240.8, 0.0, -202.5), (-240.8, 0.0, -183.0), (-263.5, 0.0, -183.0), (-263.5, 130.4, -202.5), (-240.8, 130.4, -202.5), (-240.8, 130.4, -183.0), (-263.5, 130.4, -183.0)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Office_08>
+        }
+        def Mesh "Office_10" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(-336.1, 0, -40.9), (-320.7, 176.5, -22.4)]
+            point3f[] points = [(-336.1, 0.0, -40.9), (-320.7, 0.0, -40.9), (-320.7, 0.0, -22.4), (-336.1, 0.0, -22.4), (-336.1, 176.5, -40.9), (-320.7, 176.5, -40.9), (-320.7, 176.5, -22.4), (-336.1, 176.5, -22.4)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Office_10>
+        }
+        def Mesh "Office_11" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(-154.9, 0, 68.7), (-134.0, 146.3, 93.2)]
+            point3f[] points = [(-154.9, 0.0, 68.7), (-134.0, 0.0, 68.7), (-134.0, 0.0, 93.2), (-154.9, 0.0, 93.2), (-154.9, 146.3, 68.7), (-134.0, 146.3, 68.7), (-134.0, 146.3, 93.2), (-154.9, 146.3, 93.2)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Office_11>
+        }
+        def Mesh "Office_12" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(-345.9, 0, -214.7), (-322.3, 65.8, -195.3)]
+            point3f[] points = [(-345.9, 0.0, -214.7), (-322.3, 0.0, -214.7), (-322.3, 0.0, -195.3), (-345.9, 0.0, -195.3), (-345.9, 65.8, -214.7), (-322.3, 65.8, -214.7), (-322.3, 65.8, -195.3), (-345.9, 65.8, -195.3)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Office_12>
+        }
+        def Mesh "Office_14" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(-147.8, 0, 58.4), (-130.0, 58.9, 71.8)]
+            point3f[] points = [(-147.8, 0.0, 58.4), (-130.0, 0.0, 58.4), (-130.0, 0.0, 71.8), (-147.8, 0.0, 71.8), (-147.8, 58.9, 58.4), (-130.0, 58.9, 58.4), (-130.0, 58.9, 71.8), (-147.8, 58.9, 71.8)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Office_14>
+        }
+        def Mesh "Office_15" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(-176.1, 0, 222.9), (-151.7, 111.9, 246.3)]
+            point3f[] points = [(-176.1, 0.0, 222.9), (-151.7, 0.0, 222.9), (-151.7, 0.0, 246.3), (-176.1, 0.0, 246.3), (-176.1, 111.9, 222.9), (-151.7, 111.9, 222.9), (-151.7, 111.9, 246.3), (-176.1, 111.9, 246.3)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Office_15>
+        }
+        def Mesh "Office_16" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(-39.4, 0, -159.5), (-22.5, 68.3, -138.2)]
+            point3f[] points = [(-39.4, 0.0, -159.5), (-22.5, 0.0, -159.5), (-22.5, 0.0, -138.2), (-39.4, 0.0, -138.2), (-39.4, 68.3, -159.5), (-22.5, 68.3, -159.5), (-22.5, 68.3, -138.2), (-39.4, 68.3, -138.2)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Office_16>
+        }
+        def Mesh "Office_19" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(-297.2, 0, -52.0), (-284.6, 92.8, -32.1)]
+            point3f[] points = [(-297.2, 0.0, -52.0), (-284.6, 0.0, -52.0), (-284.6, 0.0, -32.1), (-297.2, 0.0, -32.1), (-297.2, 92.8, -52.0), (-284.6, 92.8, -52.0), (-284.6, 92.8, -32.1), (-297.2, 92.8, -32.1)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Office_19>
+        }
+        def Mesh "Office_20" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(-241.2, 0, 203.8), (-219.9, 134.5, 221.3)]
+            point3f[] points = [(-241.2, 0.0, 203.8), (-219.9, 0.0, 203.8), (-219.9, 0.0, 221.3), (-241.2, 0.0, 221.3), (-241.2, 134.5, 203.8), (-219.9, 134.5, 203.8), (-219.9, 134.5, 221.3), (-241.2, 134.5, 221.3)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Office_20>
+        }
+        def Mesh "Office_21" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(188.0, 0, -218.6), (207.8, 190.1, -198.7)]
+            point3f[] points = [(188.0, 0.0, -218.6), (207.8, 0.0, -218.6), (207.8, 0.0, -198.7), (188.0, 0.0, -198.7), (188.0, 190.1, -218.6), (207.8, 190.1, -218.6), (207.8, 190.1, -198.7), (188.0, 190.1, -198.7)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Office_21>
+        }
+        def Mesh "Office_22" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(-127.4, 0, 4.2), (-108.4, 172.2, 16.5)]
+            point3f[] points = [(-127.4, 0.0, 4.2), (-108.4, 0.0, 4.2), (-108.4, 0.0, 16.5), (-127.4, 0.0, 16.5), (-127.4, 172.2, 4.2), (-108.4, 172.2, 4.2), (-108.4, 172.2, 16.5), (-127.4, 172.2, 16.5)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Office_22>
+        }
+        def Mesh "Office_23" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(-282.2, 0, 74.8), (-265.7, 156.3, 97.4)]
+            point3f[] points = [(-282.2, 0.0, 74.8), (-265.7, 0.0, 74.8), (-265.7, 0.0, 97.4), (-282.2, 0.0, 97.4), (-282.2, 156.3, 74.8), (-265.7, 156.3, 74.8), (-265.7, 156.3, 97.4), (-282.2, 156.3, 97.4)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Office_23>
+        }
+        def Mesh "Office_24" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(-199.3, 0, -240.3), (-178.4, 172.8, -222.3)]
+            point3f[] points = [(-199.3, 0.0, -240.3), (-178.4, 0.0, -240.3), (-178.4, 0.0, -222.3), (-199.3, 0.0, -222.3), (-199.3, 172.8, -240.3), (-178.4, 172.8, -240.3), (-178.4, 172.8, -222.3), (-199.3, 172.8, -222.3)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Office_24>
+        }
+        def Mesh "Office_25" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(-154.4, 0, -6.0), (-138.3, 66.3, 21.0)]
+            point3f[] points = [(-154.4, 0.0, -6.0), (-138.3, 0.0, -6.0), (-138.3, 0.0, 21.0), (-154.4, 0.0, 21.0), (-154.4, 66.3, -6.0), (-138.3, 66.3, -6.0), (-138.3, 66.3, 21.0), (-154.4, 66.3, 21.0)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Office_25>
+        }
+        def Mesh "Office_26" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(261.0, 0, 111.2), (287.3, 123.0, 137.5)]
+            point3f[] points = [(261.0, 0.0, 111.2), (287.3, 0.0, 111.2), (287.3, 0.0, 137.5), (261.0, 0.0, 137.5), (261.0, 123.0, 111.2), (287.3, 123.0, 111.2), (287.3, 123.0, 137.5), (261.0, 123.0, 137.5)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Office_26>
+        }
+        def Mesh "Office_27" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(-100.4, 0, -210.9), (-76.5, 189.9, -194.7)]
+            point3f[] points = [(-100.4, 0.0, -210.9), (-76.5, 0.0, -210.9), (-76.5, 0.0, -194.7), (-100.4, 0.0, -194.7), (-100.4, 189.9, -210.9), (-76.5, 189.9, -210.9), (-76.5, 189.9, -194.7), (-100.4, 189.9, -194.7)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Office_27>
+        }
+        def Mesh "Office_28" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(-253.5, 0, -173.4), (-231.9, 71.4, -147.4)]
+            point3f[] points = [(-253.5, 0.0, -173.4), (-231.9, 0.0, -173.4), (-231.9, 0.0, -147.4), (-253.5, 0.0, -147.4), (-253.5, 71.4, -173.4), (-231.9, 71.4, -173.4), (-231.9, 71.4, -147.4), (-253.5, 71.4, -147.4)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Office_28>
+        }
+        def Mesh "Office_29" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(-5.6, 0, -185.9), (6.6, 61.1, -170.2)]
+            point3f[] points = [(-5.6, 0.0, -185.9), (6.6, 0.0, -185.9), (6.6, 0.0, -170.2), (-5.6, 0.0, -170.2), (-5.6, 61.1, -185.9), (6.6, 61.1, -185.9), (6.6, 61.1, -170.2), (-5.6, 61.1, -170.2)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Office_29>
+        }
+        def Mesh "Bund_00" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(168.6, 0, -405.2), (181.0, 55.8, -385.6)]
+            point3f[] points = [(168.6, 0.0, -405.2), (181.0, 0.0, -405.2), (181.0, 0.0, -385.6), (168.6, 0.0, -385.6), (168.6, 55.8, -405.2), (181.0, 55.8, -405.2), (181.0, 55.8, -385.6), (168.6, 55.8, -385.6)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Bund_00>
+        }
+        def Mesh "Bund_01" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(378.0, 0, -436.4), (391.6, 53.1, -420.5)]
+            point3f[] points = [(378.0, 0.0, -436.4), (391.6, 0.0, -436.4), (391.6, 0.0, -420.5), (378.0, 0.0, -420.5), (378.0, 53.1, -436.4), (391.6, 53.1, -436.4), (391.6, 53.1, -420.5), (378.0, 53.1, -420.5)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Bund_01>
+        }
+        def Mesh "Bund_02" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(-436.4, 0, -405.7), (-418.8, 27.0, -394.4)]
+            point3f[] points = [(-436.4, 0.0, -405.7), (-418.8, 0.0, -405.7), (-418.8, 0.0, -394.4), (-436.4, 0.0, -394.4), (-436.4, 27.0, -405.7), (-418.8, 27.0, -405.7), (-418.8, 27.0, -394.4), (-436.4, 27.0, -394.4)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Bund_02>
+        }
+        def Mesh "Bund_03" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(381.9, 0, -364.9), (397.5, 20.9, -345.5)]
+            point3f[] points = [(381.9, 0.0, -364.9), (397.5, 0.0, -364.9), (397.5, 0.0, -345.5), (381.9, 0.0, -345.5), (381.9, 20.9, -364.9), (397.5, 20.9, -364.9), (397.5, 20.9, -345.5), (381.9, 20.9, -345.5)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Bund_03>
+        }
+        def Mesh "Bund_04" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(-249.3, 0, -414.7), (-232.0, 50.2, -394.3)]
+            point3f[] points = [(-249.3, 0.0, -414.7), (-232.0, 0.0, -414.7), (-232.0, 0.0, -394.3), (-249.3, 0.0, -394.3), (-249.3, 50.2, -414.7), (-232.0, 50.2, -414.7), (-232.0, 50.2, -394.3), (-249.3, 50.2, -394.3)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Bund_04>
+        }
+        def Mesh "Bund_05" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(129.0, 0, -350.3), (144.5, 31.8, -337.4)]
+            point3f[] points = [(129.0, 0.0, -350.3), (144.5, 0.0, -350.3), (144.5, 0.0, -337.4), (129.0, 0.0, -337.4), (129.0, 31.8, -350.3), (144.5, 31.8, -350.3), (144.5, 31.8, -337.4), (129.0, 31.8, -337.4)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Bund_05>
+        }
+        def Mesh "Bund_06" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(-396.0, 0, -402.9), (-384.2, 35.5, -383.1)]
+            point3f[] points = [(-396.0, 0.0, -402.9), (-384.2, 0.0, -402.9), (-384.2, 0.0, -383.1), (-396.0, 0.0, -383.1), (-396.0, 35.5, -402.9), (-384.2, 35.5, -402.9), (-384.2, 35.5, -383.1), (-396.0, 35.5, -383.1)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Bund_06>
+        }
+        def Mesh "Bund_07" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(-199.4, 0, -477.5), (-188.1, 22.8, -467.2)]
+            point3f[] points = [(-199.4, 0.0, -477.5), (-188.1, 0.0, -477.5), (-188.1, 0.0, -467.2), (-199.4, 0.0, -467.2), (-199.4, 22.8, -477.5), (-188.1, 22.8, -477.5), (-188.1, 22.8, -467.2), (-199.4, 22.8, -467.2)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Bund_07>
+        }
+        def Mesh "Bund_08" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(155.7, 0, -437.2), (169.6, 63.8, -421.1)]
+            point3f[] points = [(155.7, 0.0, -437.2), (169.6, 0.0, -437.2), (169.6, 0.0, -421.1), (155.7, 0.0, -421.1), (155.7, 63.8, -437.2), (169.6, 63.8, -437.2), (169.6, 63.8, -421.1), (155.7, 63.8, -421.1)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Bund_08>
+        }
+        def Mesh "Bund_09" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(-245.4, 0, -462.6), (-228.5, 22.5, -447.6)]
+            point3f[] points = [(-245.4, 0.0, -462.6), (-228.5, 0.0, -462.6), (-228.5, 0.0, -447.6), (-245.4, 0.0, -447.6), (-245.4, 22.5, -462.6), (-228.5, 22.5, -462.6), (-228.5, 22.5, -447.6), (-245.4, 22.5, -447.6)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Bund_09>
+        }
+        def Mesh "Bund_10" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(289.6, 0, -496.2), (310.7, 62.2, -485.1)]
+            point3f[] points = [(289.6, 0.0, -496.2), (310.7, 0.0, -496.2), (310.7, 0.0, -485.1), (289.6, 0.0, -485.1), (289.6, 62.2, -496.2), (310.7, 62.2, -496.2), (310.7, 62.2, -485.1), (289.6, 62.2, -485.1)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Bund_10>
+        }
+        def Mesh "Bund_11" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(241.9, 0, -390.2), (261.2, 46.8, -378.5)]
+            point3f[] points = [(241.9, 0.0, -390.2), (261.2, 0.0, -390.2), (261.2, 0.0, -378.5), (241.9, 0.0, -378.5), (241.9, 46.8, -390.2), (261.2, 46.8, -390.2), (261.2, 46.8, -378.5), (241.9, 46.8, -378.5)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Bund_11>
+        }
+        def Mesh "Bund_12" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(-110.0, 0, -390.7), (-96.8, 43.9, -379.0)]
+            point3f[] points = [(-110.0, 0.0, -390.7), (-96.8, 0.0, -390.7), (-96.8, 0.0, -379.0), (-110.0, 0.0, -379.0), (-110.0, 43.9, -390.7), (-96.8, 43.9, -390.7), (-96.8, 43.9, -379.0), (-110.0, 43.9, -379.0)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Bund_12>
+        }
+        def Mesh "Bund_13" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(-127.5, 0, -450.2), (-113.0, 34.8, -431.9)]
+            point3f[] points = [(-127.5, 0.0, -450.2), (-113.0, 0.0, -450.2), (-113.0, 0.0, -431.9), (-127.5, 0.0, -431.9), (-127.5, 34.8, -450.2), (-113.0, 34.8, -450.2), (-113.0, 34.8, -431.9), (-127.5, 34.8, -431.9)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Bund_13>
+        }
+        def Mesh "Bund_14" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(-164.6, 0, -412.5), (-144.4, 60.2, -394.7)]
+            point3f[] points = [(-164.6, 0.0, -412.5), (-144.4, 0.0, -412.5), (-144.4, 0.0, -394.7), (-164.6, 0.0, -394.7), (-164.6, 60.2, -412.5), (-144.4, 60.2, -412.5), (-144.4, 60.2, -394.7), (-164.6, 60.2, -394.7)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Bund_14>
+        }
+        def Mesh "Bund_15" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(202.2, 0, -473.7), (220.6, 26.6, -453.4)]
+            point3f[] points = [(202.2, 0.0, -473.7), (220.6, 0.0, -473.7), (220.6, 0.0, -453.4), (202.2, 0.0, -453.4), (202.2, 26.6, -473.7), (220.6, 26.6, -473.7), (220.6, 26.6, -453.4), (202.2, 26.6, -453.4)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Bund_15>
+        }
+        def Mesh "Bund_16" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(-379.8, 0, -342.3), (-368.1, 60.0, -320.8)]
+            point3f[] points = [(-379.8, 0.0, -342.3), (-368.1, 0.0, -342.3), (-368.1, 0.0, -320.8), (-379.8, 0.0, -320.8), (-379.8, 60.0, -342.3), (-368.1, 60.0, -342.3), (-368.1, 60.0, -320.8), (-379.8, 60.0, -320.8)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Bund_16>
+        }
+        def Mesh "Bund_17" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(392.9, 0, -460.0), (410.0, 50.8, -448.8)]
+            point3f[] points = [(392.9, 0.0, -460.0), (410.0, 0.0, -460.0), (410.0, 0.0, -448.8), (392.9, 0.0, -448.8), (392.9, 50.8, -460.0), (410.0, 50.8, -460.0), (410.0, 50.8, -448.8), (392.9, 50.8, -448.8)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Bund_17>
+        }
+        def Mesh "Bund_18" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(-40.2, 0, -415.7), (-21.0, 44.6, -396.1)]
+            point3f[] points = [(-40.2, 0.0, -415.7), (-21.0, 0.0, -415.7), (-21.0, 0.0, -396.1), (-40.2, 0.0, -396.1), (-40.2, 44.6, -415.7), (-21.0, 44.6, -415.7), (-21.0, 44.6, -396.1), (-40.2, 44.6, -396.1)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Bund_18>
+        }
+        def Mesh "Bund_19" (
+            prepend apiSchemas = ["MaterialBindingAPI"]
+        )
+        {
+            float3[] extent = [(-353.6, 0, -491.7), (-335.7, 58.7, -476.7)]
+            point3f[] points = [(-353.6, 0.0, -491.7), (-335.7, 0.0, -491.7), (-335.7, 0.0, -476.7), (-353.6, 0.0, -476.7), (-353.6, 58.7, -491.7), (-335.7, 58.7, -491.7), (-335.7, 58.7, -476.7), (-353.6, 58.7, -476.7)]
+            int[] faceVertexCounts = [4, 4, 4, 4, 4, 4]
+            int[] faceVertexIndices = [0,1,2,3, 7,6,5,4, 0,1,5,4, 1,2,6,5, 2,3,7,6, 3,0,4,7]
+            rel material:binding = </Shanghai/Materials/Mat_Bund_19>
+        }
+    }
+
+    def DistantLight "Sun" (
+        prepend apiSchemas = ["ShapingAPI"]
+    )
+    {
+        float inputs:angle = 0.53
+        float inputs:intensity = 4000
+        color3f inputs:color = (1.0, 0.97, 0.88)
+        float3 xformOp:rotateXYZ = (-50, 30, 0)
+        uniform token[] xformOpOrder = ["xformOp:rotateXYZ"]
+    }
+
+    def DomeLight "Sky" (
+        prepend apiSchemas = ["ShapingAPI"]
+    )
+    {
+        float inputs:intensity = 600
+        color3f inputs:color = (0.53, 0.73, 1.0)
+        float inputs:shaping:cone:angle = 180
+    }
+
+}
+
+def Camera "FlyCamera"
+{
+    float2 clippingRange = (1, 5000)
+    float focalLength = 18.0
+    float horizontalAperture = 20.955
+    float verticalAperture = 15.2908
+    double3 xformOp:translate.timeSamples = {0: (-900.0, 300.0, 0.0), 10: (-892.3, 319.6, 117.5), 20: (-869.3, 338.8, 232.9), 30: (-831.5, 357.4, 344.4), 40: (-779.4, 375.0, 450.0), 50: (-714.0, 391.3, 547.9), 60: (-636.4, 406.1, 636.4), 70: (-547.9, 419.0, 714.0), 80: (-450.0, 429.9, 779.4), 90: (-344.4, 438.6, 831.5), 100: (-232.9, 444.9, 869.3), 110: (-117.5, 448.7, 892.3), 120: (0.0, 450.0, 900.0), 130: (117.5, 448.7, 892.3), 140: (232.9, 444.9, 869.3), 150: (344.4, 438.6, 831.5), 160: (450.0, 429.9, 779.4), 170: (547.9, 419.0, 714.0), 180: (636.4, 406.1, 636.4), 190: (714.0, 391.3, 547.9), 200: (779.4, 375.0, 450.0), 210: (831.5, 357.4, 344.4), 220: (869.3, 338.8, 232.9), 230: (892.3, 319.6, 117.5), 240: (900.0, 300.0, 0.0)}
+    float3 xformOp:rotateXYZ.timeSamples = {0: (3.18, 90.00, 0), 10: (4.42, 97.50, 0), 20: (5.64, 105.00, 0), 30: (6.81, 112.50, 0), 40: (7.91, 120.00, 0), 50: (8.92, 127.50, 0), 60: (9.84, 135.00, 0), 70: (10.64, 142.50, 0), 80: (11.30, 150.00, 0), 90: (11.83, 157.50, 0), 100: (12.22, 165.00, 0), 110: (12.45, 172.50, 0), 120: (12.53, 180.00, 0), 130: (12.45, -172.50, 0), 140: (12.22, -165.00, 0), 150: (11.83, -157.50, 0), 160: (11.30, -150.00, 0), 170: (10.64, -142.50, 0), 180: (9.84, -135.00, 0), 190: (8.92, -127.50, 0), 200: (7.91, -120.00, 0), 210: (6.81, -112.50, 0), 220: (5.64, -105.00, 0), 230: (4.42, -97.50, 0), 240: (3.18, -90.00, 0)}
+    uniform token[] xformOpOrder = ["xformOp:translate", "xformOp:rotateXYZ"]
+}
+
+def "Render" (
+    hide_in_stage_window = true
+    no_delete = true
+)
+{
+    def "OmniverseKit"
+    {
+        def "HydraTextures" (
+            hide_in_stage_window = true
+            no_delete = true
+        )
+        {
+            def RenderProduct "FlyCamera" (
+                hide_in_stage_window = true
+                no_delete = true
+            )
+            {
+                rel camera = </FlyCamera>
+                token omni:rtx:background:source:type = "sky"
+                token[] omni:rtx:waitForEvents = ["AllLoadingFinished", "OnlyOnFirstRequest"]
+                rel orderedVars = </Render/Vars/LdrColor>
+                uniform int2 resolution = (1280, 720)
+            }
+        }
+    }
+
+    def RenderSettings "OmniverseGlobalRenderSettings" (
+        no_delete = true
+    )
+    {
+        rel products = [
+            </Render/OmniverseKit/HydraTextures/FlyCamera>,
+        ]
+    }
+
+    def "Vars"
+    {
+        def RenderVar "LdrColor" (
+            hide_in_stage_window = true
+            no_delete = true
+        )
+        {
+            uniform string sourceName = "LdrColor"
+        }
+    }
+}
