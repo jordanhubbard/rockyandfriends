@@ -13,6 +13,8 @@ openclaw.json
 
 # Queue state (runtime data, not source)
 workqueue/queue.json
+brain-state.json
+rcc/brain/brain-state.json
 workqueue/state-*.json
 memory/heartbeat-state.json
 memory/channel-state.json
