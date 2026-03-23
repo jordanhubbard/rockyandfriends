@@ -4,7 +4,7 @@ Live dashboard for the Rocky/Bullwinkle/Natasha agent workqueue system.
 
 ## Public URL
 
-**http://YOUR_PUBLIC_IP:8788/**
+**http://localhost:8788/**
 
 ## Architecture
 
