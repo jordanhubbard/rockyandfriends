@@ -13,7 +13,12 @@ You are the workqueue processor for **Rocky**. You run periodically via cron.
 
 ## Processing Rules
 
-- Only process items where `assignee == "rocky"` and `status == "pending"`
+- Process items where `assignee == "rocky"` **or** `assignee == "all"` and `status == "pending"`
+- **For `assignee == "all"` items:** use capability routing before claiming:
+  1. Call `GET http://localhost:8789/api/agents/best?task=<preferred_executor or inferred task>`
+  2. If the response names **you** (`"rocky"`), claim and process it
+  3. If it names another agent, **skip** — they will claim it on their own cycle
+  4. If the endpoint is unreachable, fall back to: claim if `preferred_executor` is `claude_cli` or unset
 - **Claim first:** Set `claimedBy = "rocky"`, `claimedAt = <now ISO-8601>` before starting
 - If the item already has a different `claimedBy` with a newer `claimedAt`, **back off** — someone else has it
 - Set `status = "in_progress"`, increment `attempts` and `itemVersion`
