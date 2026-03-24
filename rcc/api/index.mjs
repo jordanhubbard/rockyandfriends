@@ -17,6 +17,16 @@ import { Brain, createRequest } from '../brain/index.mjs';
 import { Pump } from '../scout/pump.mjs';
 import { learnLesson, queryLessons, queryAllLessons, formatLessonsForContext, getTrendingLessons, formatTrendingForHeartbeat, getHeartbeatContext, receiveLessonFromBus, seedKnownLessons } from '../lessons/index.mjs';
 import * as registry from '../capabilities/registry.mjs';
+import {
+  ensureCollections,
+  vectorHealth,
+  indexLesson,
+  searchLessons,
+  indexQueueItem,
+  searchQueue,
+  rememberSnippet,
+  recallMemory,
+} from '../vector/index.mjs';
 
 // ── Config ─────────────────────────────────────────────────────────────────
 const PORT            = parseInt(process.env.RCC_PORT || '8789', 10);
@@ -740,6 +750,8 @@ async function handleRequest(req, res) {
       if (!q.items) q.items = [];
       q.items.push(item);
       await writeQueue(q);
+      // Index in Milvus for semantic search (best-effort)
+      indexQueueItem(item).catch(err => console.warn('[vector] indexQueueItem failed:', err.message));
       return json(res, 201, { ok: true, item });
     }
 
@@ -1139,6 +1151,8 @@ async function handleRequest(req, res) {
       const body = await readBody(req);
       if (!body.domain || !body.symptom || !body.fix) return json(res, 400, { error: 'domain, symptom, fix required' });
       const lesson = await learnLesson({ ...body, agent: body.agent || 'api' });
+      // Also index in Milvus for semantic search (best-effort)
+      indexLesson(lesson).catch(err => console.warn('[vector] indexLesson failed:', err.message));
       return json(res, 201, { ok: true, lesson });
     }
 
@@ -1174,6 +1188,110 @@ async function handleRequest(req, res) {
       }
       const context = url.searchParams.get('format') === 'context' ? formatLessonsForContext(lessons) : null;
       return json(res, 200, { lessons, context, count: lessons.length });
+    }
+
+    // ── Vector / Milvus endpoints ─────────────────────────────────────────
+
+    // GET /api/vector/health — Milvus health check
+    if (method === 'GET' && path === '/api/vector/health') {
+      const health = await vectorHealth();
+      return json(res, health.ok ? 200 : 503, health);
+    }
+
+    // GET /api/vector/search?collection=rcc_lessons&q=...&limit=5&filter=...
+    // Semantic search in any RCC collection
+    if (method === 'GET' && path === '/api/vector/search') {
+      const collection = url.searchParams.get('collection') || 'rcc_lessons';
+      const q = url.searchParams.get('q') || '';
+      const limit = parseInt(url.searchParams.get('limit') || '5', 10);
+      const filter = url.searchParams.get('filter') || '';
+      if (!q) return json(res, 400, { error: 'q (query) required' });
+      try {
+        const hits = await vectorSearch(collection, q, limit, filter);
+        return json(res, 200, { hits, count: hits.length, collection });
+      } catch (err) {
+        return json(res, 500, { error: err.message });
+      }
+    }
+
+    // GET /api/vector/lessons?q=...&limit=5 — semantic lesson search
+    if (method === 'GET' && path === '/api/vector/lessons') {
+      const q = url.searchParams.get('q') || '';
+      const limit = parseInt(url.searchParams.get('limit') || '5', 10);
+      const filter = url.searchParams.get('filter') || '';
+      if (!q) return json(res, 400, { error: 'q (query) required' });
+      try {
+        const hits = await searchLessons(q, limit, filter);
+        return json(res, 200, { hits, count: hits.length });
+      } catch (err) {
+        return json(res, 500, { error: err.message });
+      }
+    }
+
+    // GET /api/vector/queue?q=...&limit=5 — semantic queue search (find similar tasks)
+    if (method === 'GET' && path === '/api/vector/queue') {
+      const q = url.searchParams.get('q') || '';
+      const limit = parseInt(url.searchParams.get('limit') || '5', 10);
+      const filter = url.searchParams.get('filter') || '';
+      if (!q) return json(res, 400, { error: 'q (query) required' });
+      try {
+        const hits = await searchQueue(q, limit, filter);
+        return json(res, 200, { hits, count: hits.length });
+      } catch (err) {
+        return json(res, 500, { error: err.message });
+      }
+    }
+
+    // POST /api/vector/memory — store a memory snippet
+    // Body: { content: string, source?: string, agent?: string }
+    if (method === 'POST' && path === '/api/vector/memory') {
+      const body = await readBody(req);
+      if (!body.content) return json(res, 400, { error: 'content required' });
+      try {
+        const id = await rememberSnippet(body.content, body.source || '', body.agent || 'api');
+        return json(res, 201, { ok: true, id });
+      } catch (err) {
+        return json(res, 500, { error: err.message });
+      }
+    }
+
+    // GET /api/vector/memory?q=...&limit=5&agent=rocky — recall memory
+    if (method === 'GET' && path === '/api/vector/memory') {
+      const q = url.searchParams.get('q') || '';
+      const limit = parseInt(url.searchParams.get('limit') || '5', 10);
+      const agent = url.searchParams.get('agent') || '';
+      if (!q) return json(res, 400, { error: 'q (query) required' });
+      try {
+        const hits = await recallMemory(q, limit, agent);
+        return json(res, 200, { hits, count: hits.length });
+      } catch (err) {
+        return json(res, 500, { error: err.message });
+      }
+    }
+
+    // POST /api/vector/index/queue — manually index a queue item
+    // Body: queue item object
+    if (method === 'POST' && path === '/api/vector/index/queue') {
+      const body = await readBody(req);
+      if (!body.id) return json(res, 400, { error: 'id required' });
+      try {
+        await indexQueueItem(body);
+        return json(res, 200, { ok: true, id: body.id });
+      } catch (err) {
+        return json(res, 500, { error: err.message });
+      }
+    }
+
+    // POST /api/vector/index/lesson — manually index a lesson
+    if (method === 'POST' && path === '/api/vector/index/lesson') {
+      const body = await readBody(req);
+      if (!body.id || !body.symptom || !body.fix) return json(res, 400, { error: 'id, symptom, fix required' });
+      try {
+        await indexLesson(body);
+        return json(res, 200, { ok: true, id: body.id });
+      } catch (err) {
+        return json(res, 500, { error: err.message });
+      }
     }
 
     // ── GET /api/repos ────────────────────────────────────────────────────
@@ -1417,6 +1535,13 @@ export function startServer(port = PORT) {
       console.error('[rcc-api] Registry init error:', err.message);
     }
   })();
+
+  // ── Milvus vector collections (non-blocking — ok if it takes a sec) ──────
+  ensureCollections().then(() => {
+    console.log('[rcc-api] Milvus collections ready');
+  }).catch(err => {
+    console.warn('[rcc-api] Milvus init warning (non-fatal):', err.message);
+  });
 
   const server = createServer(handleRequest);
   server.listen(port, '0.0.0.0', () => {
