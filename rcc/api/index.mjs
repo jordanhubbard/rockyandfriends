@@ -12,20 +12,26 @@ import { createServer } from 'http';
 import { readFile, writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import { dirname } from 'path';
+import { hostname } from 'os';
 import { Brain, createRequest } from '../brain/index.mjs';
 import { Pump } from '../scout/pump.mjs';
 import { learnLesson, queryLessons, queryAllLessons, formatLessonsForContext, getTrendingLessons, formatTrendingForHeartbeat, getHeartbeatContext, receiveLessonFromBus, seedKnownLessons } from '../lessons/index.mjs';
+import * as registry from '../capabilities/registry.mjs';
 
 // ── Config ─────────────────────────────────────────────────────────────────
 const PORT            = parseInt(process.env.RCC_PORT || '8789', 10);
 const QUEUE_PATH      = process.env.QUEUE_PATH    || '../../workqueue/queue.json';
 const AGENTS_PATH        = process.env.AGENTS_PATH        || './agents.json';
 const CAPABILITIES_PATH  = process.env.CAPABILITIES_PATH  || './data/agent-capabilities.json';
+const REGISTRY_PATH      = process.env.REGISTRY_PATH      || './data/capabilities-registry.json';
 const REPOS_PATH      = process.env.REPOS_PATH    || './repos.json';
 const PROJECTS_PATH   = process.env.PROJECTS_PATH || './projects.json';
 const RCC_PUBLIC_URL  = process.env.RCC_PUBLIC_URL || 'http://localhost:8789';
 const AUTH_TOKENS  = new Set((process.env.RCC_AUTH_TOKENS || '').split(',').map(t => t.trim()).filter(Boolean));
 const START_TIME   = Date.now();
+
+// Configure capability registry persist path
+registry.configure({ path: new URL(REGISTRY_PATH, import.meta.url).pathname });
 
 // ── Stale claim thresholds (ms) by executor type ───────────────────────────
 // claude_cli: real coding agents, can run 60-90min on complex tasks
@@ -374,50 +380,109 @@ async function handleRequest(req, res) {
       return json(res, 200, result);
     }
 
-    // ── GET /api/agents/best?task=X — capability-based routing ───────────
+    // ── GET /api/agents/best?task=X&executor=Y — capability-based routing ──
+    // Accepts:
+    //   ?task=gpu|render|code|review|...  — semantic task type
+    //   ?executor=claude_cli|gpu|inference_key  — direct executor type (new)
+    // Registry manifests (executors[] format) take precedence over old agents.json
+    // capability flags.  Online agents (heartbeat within 10min) are preferred.
     if (method === 'GET' && path === '/api/agents/best') {
-      const task = url.searchParams.get('task') || '';
-      const agents = await readAgents();
-      const caps   = await readCapabilities();
-      const GPU_TASKS    = new Set(['gpu', 'render', 'training', 'inference']);
-      const CLAUDE_TASKS = new Set(['claude', 'code', 'review', 'debug', 'triage']);
-      const CTX_PRIORITY = { large: 3, medium: 2, small: 1 };
+      const task             = url.searchParams.get('task')     || '';
+      const preferredExec    = url.searchParams.get('executor') || null;
+      const agents           = await readAgents();
+      const caps             = await readCapabilities();
+      const manifests        = registry.list();
+      const manifestMap      = new Map(manifests.map(m => [m.agent, m]));
+      const GPU_TASKS        = new Set(['gpu', 'render', 'training', 'inference']);
+      const CLAUDE_TASKS     = new Set(['claude', 'code', 'review', 'debug', 'triage']);
+      const CTX_PRIORITY     = { large: 3, medium: 2, small: 1 };
 
       const candidates = Object.entries(agents).map(([name, agent]) => ({
         name,
         ...agent,
         capabilities: { ...(agent.capabilities || {}), ...(caps[name] || {}) },
+        manifest:  manifestMap.get(name) || null,   // new capability registry
         heartbeat: heartbeats[name] || null,
       }));
 
-      // prefer online agents (heartbeat within last 10 min), fall back to all
+      // Prefer online agents (heartbeat within last 10 min); fall back to all
       const onlineCutoff = Date.now() - 10 * 60 * 1000;
       const online = candidates.filter(a => a.heartbeat && new Date(a.heartbeat.ts).getTime() > onlineCutoff);
       const pool   = online.length > 0 ? online : candidates;
 
+      // Helper: check if a candidate supports an executor (registry first, old flags fallback)
+      function supportsExecutor(a, exec) {
+        if (a.manifest?.executors?.includes(exec)) return true;
+        if (exec === 'gpu')           return !!a.capabilities?.gpu;
+        if (exec === 'claude_cli')    return !!a.capabilities?.claude_cli;
+        if (exec === 'inference_key') return a.capabilities?.inference_key !== false;
+        return false;
+      }
+
+      // Helper: GPU VRAM from registry or old capabilities
+      function gpuVram(a) {
+        return a.manifest?.gpuSpec?.vram_gb ?? a.capabilities?.gpu_vram_gb ?? 0;
+      }
+
       let best = null;
 
-      if (GPU_TASKS.has(task)) {
-        const gpu = pool.filter(a => a.capabilities?.gpu);
-        if (gpu.length) best = gpu.sort((a, b) => (b.capabilities.gpu_vram_gb || 0) - (a.capabilities.gpu_vram_gb || 0))[0];
+      if (preferredExec) {
+        // Direct executor routing — consult registry, fall back to old flags
+        const capable = pool.filter(a => supportsExecutor(a, preferredExec));
+        if (capable.length) {
+          best = preferredExec === 'gpu'
+            ? capable.sort((a, b) => gpuVram(b) - gpuVram(a))[0]
+            : capable[0];
+        }
+        // If no online capable agent, try all registered agents
+        if (!best && online.length > 0) {
+          const anyCapable = candidates.filter(a => supportsExecutor(a, preferredExec));
+          if (anyCapable.length) {
+            best = preferredExec === 'gpu'
+              ? anyCapable.sort((a, b) => gpuVram(b) - gpuVram(a))[0]
+              : anyCapable[0];
+          }
+        }
+      } else if (GPU_TASKS.has(task)) {
+        const gpu = pool.filter(a => supportsExecutor(a, 'gpu'));
+        if (gpu.length) best = gpu.sort((a, b) => gpuVram(b) - gpuVram(a))[0];
       } else if (CLAUDE_TASKS.has(task)) {
-        const cli = pool.filter(a => a.capabilities?.claude_cli);
-        if (cli.length) best = cli.sort((a, b) => (CTX_PRIORITY[b.capabilities.context_size] || 0) - (CTX_PRIORITY[a.capabilities.context_size] || 0))[0];
+        const cli = pool.filter(a => supportsExecutor(a, 'claude_cli'));
+        if (cli.length) best = cli.sort((a, b) =>
+          (CTX_PRIORITY[b.capabilities?.context_size] || 0) - (CTX_PRIORITY[a.capabilities?.context_size] || 0)
+        )[0];
       }
 
       if (!best) {
-        // match preferred_tasks
-        const byPref = pool.filter(a => (a.capabilities?.preferred_tasks || []).includes(task));
-        if (byPref.length) best = byPref[0];
+        // Match skills in registry manifest OR preferred_tasks in old capabilities
+        const bySkill = pool.filter(a =>
+          (a.manifest?.skills || []).includes(task) ||
+          (a.capabilities?.preferred_tasks || []).includes(task)
+        );
+        if (bySkill.length) best = bySkill[0];
       }
 
       if (!best && pool.length) best = pool[0];
       if (!best) return json(res, 404, { error: 'No agents available' });
-      return json(res, 200, { agent: best, task });
+      return json(res, 200, { agent: best, task, executor: preferredExec });
     }
 
     if (method === 'GET' && path === '/api/heartbeats') {
       return json(res, 200, heartbeats);
+    }
+
+    // ── GET /api/capabilities — list all registered agent manifests (public) ─
+    if (method === 'GET' && path === '/api/capabilities') {
+      return json(res, 200, registry.list());
+    }
+
+    // ── GET /api/capabilities/:agent — single agent manifest (public) ────────
+    const capSingleMatch = path.match(/^\/api\/capabilities\/([^/]+)$/);
+    if (method === 'GET' && capSingleMatch) {
+      const agentName = decodeURIComponent(capSingleMatch[1]);
+      const manifest  = registry.get(agentName);
+      if (!manifest) return json(res, 404, { error: `Agent '${agentName}' not registered in capability registry` });
+      return json(res, 200, manifest);
     }
 
     if (method === 'GET' && path === '/api/brain/status') {
@@ -527,6 +592,18 @@ async function handleRequest(req, res) {
     // ── Auth-required endpoints ───────────────────────────────────────────
     if (!isAuthed(req)) {
       return json(res, 401, { error: 'Unauthorized' });
+    }
+
+    // ── POST /api/capabilities — agent publishes its manifest (auth required) ─
+    if (method === 'POST' && path === '/api/capabilities') {
+      const body = await readBody(req);
+      try {
+        const manifest = registry.publish(body);
+        console.log(`[rcc-api] Capability manifest published: ${manifest.agent} (${manifest.executors.join(', ')})`);
+        return json(res, 200, { ok: true, manifest });
+      } catch (err) {
+        return json(res, 400, { error: err.message });
+      }
     }
 
     // ── POST /api/queue — create item ─────────────────────────────────────
@@ -1167,6 +1244,24 @@ async function handleRequest(req, res) {
 
 // ── Start server ───────────────────────────────────────────────────────────
 export function startServer(port = PORT) {
+  // Load persisted capability registry and publish Rocky's own manifest
+  (async () => {
+    try {
+      await registry.load();
+      registry.publish({
+        agent:     'rocky',
+        host:      process.env.HOSTNAME || hostname(),
+        executors: ['claude_cli', 'inference_key'],
+        gpuSpec:   null,
+        skills:    ['code', 'review', 'debug', 'triage', 'ci'],
+        status:    'online',
+      });
+      console.log('[rcc-api] Rocky capability manifest published to registry');
+    } catch (err) {
+      console.error('[rcc-api] Registry init error:', err.message);
+    }
+  })();
+
   const server = createServer(handleRequest);
   server.listen(port, '0.0.0.0', () => {
     console.log(`[rcc-api] 🐿️ RCC API running on http://0.0.0.0:${port}`);
