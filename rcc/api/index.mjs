@@ -441,13 +441,32 @@ async function handleRequest(req, res) {
       const CLAUDE_TASKS     = new Set(['claude', 'code', 'review', 'debug', 'triage']);
       const CTX_PRIORITY     = { large: 3, medium: 2, small: 1 };
 
-      const candidates = Object.entries(agents).map(([name, agent]) => ({
+      // Build candidates from agents store; supplement with any registry-only agents
+      // (agents that published via /api/capabilities but never called /api/agents/register)
+      const agentCandidates = Object.entries(agents).map(([name, agent]) => ({
         name,
         ...agent,
         capabilities: { ...(agent.capabilities || {}), ...(caps[name] || {}) },
-        manifest:  manifestMap.get(name) || null,   // new capability registry
+        manifest:  manifestMap.get(name) || null,
         heartbeat: heartbeats[name] || null,
       }));
+      const agentNames = new Set(agentCandidates.map(a => a.name));
+      const registryOnlyCandidates = manifests
+        .filter(m => !agentNames.has(m.agent))
+        .map(m => ({
+          name:         m.agent,
+          capabilities: {
+            gpu:           m.executors.includes('gpu'),
+            claude_cli:    m.executors.includes('claude_cli'),
+            inference_key: m.executors.includes('inference_key'),
+            gpu_vram_gb:   m.gpuSpec?.vram_gb ?? 0,
+            context_size:  null,
+            preferred_tasks: m.skills || [],
+          },
+          manifest:  m,
+          heartbeat: heartbeats[m.agent] || null,
+        }));
+      const candidates = [...agentCandidates, ...registryOnlyCandidates];
 
       // Prefer online agents (heartbeat within last 10 min); fall back to all
       const onlineCutoff = Date.now() - 10 * 60 * 1000;
