@@ -242,6 +242,8 @@ const HTML_STYLE = `
     .inc-comment-input:focus{outline:none;border-color:#8957e5}
     .btn-promote{background:#1a2f1a;color:#3fb950;border:1px solid #3fb95055;border-radius:4px;padding:.25rem .65rem;font-size:.78rem;cursor:pointer;font-weight:600}
     .btn-promote:hover{background:#1f3a1f}
+    .inc-pri-sel{background:#0d1117;border:1px solid #30363d;color:#8b949e;border-radius:4px;padding:.2rem .4rem;font-size:.75rem;cursor:pointer;transition:border-color .15s}
+    .inc-pri-sel:hover,.inc-pri-sel:focus{border-color:#8957e5;outline:none}
     .btn-send-comment{background:#2a1f3d;color:#d2a8ff;border:1px solid #8957e555;border-radius:4px;padding:.25rem .65rem;font-size:.78rem;cursor:pointer}
     .btn-send-comment:hover{background:#321e4f}
     .gh-panel{margin-top:1rem}
@@ -310,8 +312,8 @@ function projectDetailHtml(projectId) {
     function renderPR(pr){const rc=pr.reviewDecision==='APPROVED'?'review-approved':pr.reviewDecision==='CHANGES_REQUESTED'?'review-changes':'review-pending';const rl=pr.reviewDecision==='APPROVED'?'✓ approved':pr.reviewDecision==='CHANGES_REQUESTED'?'✗ changes req':'⏳ pending review';const mc=pr.mergeable==='MERGEABLE'?'merge-ok':pr.mergeable==='CONFLICTING'?'merge-conflict':'';const ml=pr.mergeable==='MERGEABLE'?'mergeable':pr.mergeable==='CONFLICTING'?'⚠ conflicts':'';return\`<div class="gh-item"><div class="gh-item-title"><span class="gh-num">#\${pr.number}</span>\${pr.isDraft?'<span class="draft-badge">draft</span>':''}<a href="\${pr.url}" target="_blank">\${esc(pr.title||'')}</a></div><div class="gh-meta">\${(pr.labels||[]).map(labelChip).join('')}<span>\${esc(pr.author||'')}</span><span class="\${rc}">\${rl}</span>\${ml?\`<span class="\${mc}">\${ml}</span>\`:''}<span title="\${pr.createdAt||''}">\${timeAgo(pr.createdAt)}</span></div></div>\`;}
     function renderGitHub(ghData){if(!ghData)return'';if(ghData.error)return\`<div class="card gh-panel"><p class="gh-error">GitHub data unavailable: \${esc(ghData.error)}</p></div>\`;const issues=ghData.issues||[];const prs=ghData.prs||[];return\`<div class="card gh-panel"><div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.85rem"><h2 style="font-size:1.05rem;font-weight:600">🐙 GitHub</h2><span><span class="gh-fetched">fetched \${timeAgo(ghData.fetchedAt)}</span><button class="gh-refresh-btn" onclick="refreshGitHub()">↻ Refresh</button></span></div><div class="gh-columns"><div><div class="gh-col-header">🔴 Issues <span style="color:#8b949e;font-size:.82rem;font-weight:400">\${issues.length} open</span></div>\${issues.length?issues.map(renderIssue).join(''):'<p class="gh-empty">No open issues ✓</p>'}</div><div><div class="gh-col-header">🟣 Pull Requests <span style="color:#8b949e;font-size:.82rem;font-weight:400">\${prs.length} open</span></div>\${prs.length?prs.map(renderPR).join(''):'<p class="gh-empty">No open PRs ✓</p>'}</div></div></div>\`;}
     function refreshGitHub(){const panel=document.querySelector('.gh-panel');if(panel)panel.style.opacity='0.5';fetch('/api/projects/'+encodedId+'/github?refresh=1').then(()=>location.reload()).catch(()=>{if(panel)panel.style.opacity='1';});}
-    function promoteIdea(id,priority){if(!priority)priority=prompt('Promote to what priority? (urgent/high/medium/normal)','medium');if(!priority)return;fetch('/api/item/'+encodeURIComponent(id)+'/promote',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({priority,author:'jkh'})}).then(r=>r.json()).then(d=>{if(d.ok)location.reload();else alert('Error: '+d.error);});}
-    function sendIncComment(id){const inp=document.getElementById('inc-inp-'+id);const text=(inp?.value||'').trim();if(!text)return;fetch('/api/item/'+encodeURIComponent(id)+'/comment',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,author:'jkh'})}).then(r=>r.json()).then(d=>{if(d.ok)location.reload();else alert('Error: '+d.error);});}
+    function promoteIdea(id,priority){if(!priority){const sel=document.getElementById('inc-pri-'+id);priority=sel?sel.value:'medium';}if(!priority)return;const rationale=prompt('Rationale: ground this in the project — what empirical evidence, docs, or observed behavior supports it?','');if(rationale===null)return;const btn=document.querySelector('#inc-'+id+' .btn-promote');if(btn){btn.disabled=true;btn.textContent='Promoting…';}fetch('/api/item/'+encodeURIComponent(id)+'/promote',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({priority,rationale,author:'jkh'})}).then(r=>r.json()).then(d=>{if(d.ok)location.reload();else{if(btn){btn.disabled=false;btn.textContent='✓ Promote to work item';}alert('Cannot promote: '+d.error);}}).catch(()=>{if(btn){btn.disabled=false;btn.textContent='✓ Promote to work item';}});}
+    function sendIncComment(id,author){const inp=document.getElementById('inc-inp-'+id);const text=(inp?.value||'').trim();if(!text)return;const btn=document.querySelector('#inc-'+id+' .btn-send-comment');if(btn){btn.disabled=true;btn.textContent='Sending…';}fetch('/api/item/'+encodeURIComponent(id)+'/comment',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({text,author:author||'jkh'})}).then(r=>r.json()).then(d=>{if(d.ok)location.reload();else{if(btn){btn.disabled=false;btn.textContent='Comment';}alert('Error: '+d.error);}}).catch(()=>{if(btn){btn.disabled=false;btn.textContent='Comment';}});}
     function renderIncubatorItem(i){
       const journal=(i.journal||[]).filter(e=>e.type==='comment'||e.type==='ai'||e.type==='incubate-feedback');
       const journalHtml=journal.length?'<div class="inc-journal">'+journal.map(e=>\`<div class="inc-journal-entry"><span class="je-ts">\${timeAgo(e.ts)}</span><span class="je-author">\${esc(e.author||'?')}:</span>\${esc(e.text||'')}</div>\`).join('')+'</div>':'';
@@ -324,6 +326,7 @@ function projectDetailHtml(projectId) {
           <button class="btn-send-comment" onclick="sendIncComment('\${i.id}')">Comment</button>
         </div>
         <div class="inc-actions">
+          <select class="inc-pri-sel" id="inc-pri-\${i.id}"><option value="medium">medium</option><option value="normal">normal</option><option value="high">high</option><option value="urgent">urgent</option><option value="low">low</option></select>
           <button class="btn-promote" onclick="promoteIdea('\${i.id}')">✓ Promote to work item</button>
           <span style="font-size:.72rem;color:#8b949e">\${timeAgo(i.created||i.createdAt)} · \${i.source||'api'}</span>
         </div>
@@ -884,6 +887,12 @@ async function handleRequest(req, res) {
     }
 
     // ── POST /api/item/:id/promote — graduate incubating idea to work item ─
+    // Promotion gate rules (enforced server-side):
+    //   1. Must have at least 1 comment/discussion entry in the journal
+    //   2. Must provide a `rationale` field grounding the idea in project reality
+    //      (relevant to the project, based on empirical info, docs, goals, or data)
+    //   3. Must have a `project` field linking it to a specific project
+    // Use `force: true` to bypass rules (e.g. jkh override)
     const promoteMatch = path.match(/^\/api\/item\/([^/]+)\/promote$/);
     if (method === 'POST' && promoteMatch) {
       const id = decodeURIComponent(promoteMatch[1]);
@@ -891,16 +900,50 @@ async function handleRequest(req, res) {
       const q = await readQueue();
       const item = q.items?.find(i => i.id === id);
       if (!item) return json(res, 404, { error: 'Item not found' });
+
+      // Gate check (skip if force:true)
+      if (!body.force) {
+        const discussionEntries = (item.journal || []).filter(e =>
+          ['comment', 'ai', 'incubate-feedback'].includes(e.type)
+        );
+        if (discussionEntries.length === 0) {
+          return json(res, 422, {
+            error: 'Promotion blocked: idea needs at least one comment or discussion entry before promotion. Refine the idea first.',
+            gate: 'needs_discussion',
+          });
+        }
+        if (!body.rationale || body.rationale.trim().length < 20) {
+          return json(res, 422, {
+            error: 'Promotion blocked: provide a `rationale` (≥20 chars) grounding this idea in the project — relevant to project goals, based on empirical info, docs, or observed behavior.',
+            gate: 'needs_rationale',
+          });
+        }
+        if (!item.project && !item.repo) {
+          return json(res, 422, {
+            error: 'Promotion blocked: idea must be linked to a specific project. Set `project` field first.',
+            gate: 'needs_project',
+          });
+        }
+      }
+
       const now = new Date().toISOString();
       const prevStatus = item.status;
       item.status = 'pending';
       item.priority = body.priority || item.priority || 'medium';
       if (!item.journal) item.journal = [];
+      if (body.rationale) {
+        item.journal.push({
+          ts: now,
+          author: body.author || 'api',
+          type: 'promotion-rationale',
+          text: `Rationale: ${body.rationale}`,
+        });
+      }
       item.journal.push({
         ts: now,
         author: body.author || 'api',
         type: 'promoted',
-        text: `Promoted from incubation (was: ${prevStatus}) with priority: ${item.priority}`,
+        text: `Promoted from incubation (was: ${prevStatus}) with priority: ${item.priority}${body.force ? ' [force]' : ''}`,
       });
       item.itemVersion = (item.itemVersion || 0) + 1;
       await writeQueue(q);
