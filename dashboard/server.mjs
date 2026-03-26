@@ -2448,86 +2448,168 @@ const V2_MOCK_PROJECTS = [
   { id: 'itsallgeektome', full_name: 'jordanhubbard/itsallgeektome', display_name: 'itsallgeektome', description: 'The geek blog — posts, tools, long-form writing', kind: 'personal', activeAgent: 'natasha', lastCommit: new Date(Date.now() - 4 * 24 * 3600 * 1000).toISOString(), branch: 'main', openIssues: 0, openPRs: 0, queueItems: 0, slackChannel: '#itsallgeektome (offtera)', ciStatus: 'passing' },
 ];
 
-// In-memory stores (Phase 1 will back these with MinIO)
+// In-memory stores (fallback when RCC is unreachable)
 const v2CalendarStore = [...V2_CALENDAR_EVENTS];
 const v2CronStore     = JSON.parse(JSON.stringify(V2_CRON_STATUS));
 const v2ProviderStore = JSON.parse(JSON.stringify(V2_PROVIDER_HEALTH));
 
-// ── API Stub Routes ────────────────────────────────────────────────────────────
+// ── RCC Proxy Helper ───────────────────────────────────────────────────────────
 
-app.get('/api/calendar', (req, res) => {
-  let events = v2CalendarStore;
-  if (req.query.start) events = events.filter(e => new Date(e.end) >= new Date(req.query.start));
-  if (req.query.end)   events = events.filter(e => new Date(e.start) <= new Date(req.query.end));
-  if (req.query.resource) events = events.filter(e => e.resource === req.query.resource);
-  res.json({ ok: true, events });
+const RCC_BASE = 'http://localhost:8789';
+
+async function rccFetch(authHeader, path, options = {}) {
+  const ctrl = new AbortController();
+  const tid = setTimeout(() => ctrl.abort(), 8000);
+  try {
+    const resp = await fetch(`${RCC_BASE}${path}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(authHeader ? { Authorization: authHeader } : {}),
+        ...options.headers,
+      },
+      signal: ctrl.signal,
+    });
+    if (!resp.ok) throw new Error(`RCC ${resp.status}`);
+    return await resp.json();
+  } finally {
+    clearTimeout(tid);
+  }
+}
+
+// ── API Routes (proxy to RCC, fallback to stub) ────────────────────────────────
+
+app.get('/api/calendar', async (req, res) => {
+  try {
+    const qs = new URLSearchParams(req.query).toString();
+    const data = await rccFetch(req.headers.authorization, `/api/calendar${qs ? '?' + qs : ''}`);
+    return res.json(data);
+  } catch {
+    let events = v2CalendarStore;
+    if (req.query.start) events = events.filter(e => new Date(e.end) >= new Date(req.query.start));
+    if (req.query.end)   events = events.filter(e => new Date(e.start) <= new Date(req.query.end));
+    if (req.query.resource) events = events.filter(e => e.resource === req.query.resource);
+    res.json({ ok: true, events });
+  }
 });
 
-app.post('/api/calendar', requireAuth, (req, res) => {
-  const event = { id: 'cal-' + Date.now(), ...req.body, created: new Date().toISOString() };
-  v2CalendarStore.push(event);
-  res.json({ ok: true, event });
+app.post('/api/calendar', requireAuth, async (req, res) => {
+  try {
+    const data = await rccFetch(req.headers.authorization, '/api/calendar', {
+      method: 'POST', body: JSON.stringify(req.body),
+    });
+    return res.json(data);
+  } catch {
+    const event = { id: 'cal-' + Date.now(), ...req.body, created: new Date().toISOString() };
+    v2CalendarStore.push(event);
+    res.json({ ok: true, event });
+  }
 });
 
-app.delete('/api/calendar/:id', requireAuth, (req, res) => {
-  const idx = v2CalendarStore.findIndex(e => e.id === req.params.id);
-  if (idx === -1) return res.status(404).json({ error: 'Event not found' });
-  const [removed] = v2CalendarStore.splice(idx, 1);
-  res.json({ ok: true, removed });
+app.delete('/api/calendar/:id', requireAuth, async (req, res) => {
+  try {
+    const data = await rccFetch(req.headers.authorization, `/api/calendar/${req.params.id}`, { method: 'DELETE' });
+    return res.json(data);
+  } catch {
+    const idx = v2CalendarStore.findIndex(e => e.id === req.params.id);
+    if (idx === -1) return res.status(404).json({ error: 'Event not found' });
+    const [removed] = v2CalendarStore.splice(idx, 1);
+    res.json({ ok: true, removed });
+  }
 });
 
-app.get('/api/appeal', (req, res) => {
-  res.json({ ok: true, items: V2_APPEAL_ITEMS });
+app.get('/api/appeal', async (req, res) => {
+  try {
+    const data = await rccFetch(req.headers.authorization, '/api/appeal');
+    return res.json(data);
+  } catch {
+    res.json({ ok: true, items: V2_APPEAL_ITEMS });
+  }
 });
 
-app.post('/api/appeal/:id', requireAuth, (req, res) => {
+app.post('/api/appeal/:id', requireAuth, async (req, res) => {
   const { action, comment } = req.body;
   if (!action) return res.status(400).json({ error: 'action required' });
-  res.json({ ok: true, id: req.params.id, action, comment, ts: new Date().toISOString() });
-});
-
-app.get('/api/heartbeat/:agent/history', (req, res) => {
-  // Generate 288 synthetic 5-min slots for the last 24h
-  const agent = req.params.agent;
-  const now = Date.now();
-  const slots = [];
-  const outageStart = agent === 'boris' ? 7 * 12 : -1; // simulate 7h gap for boris around slot 84
-  for (let i = 287; i >= 0; i--) {
-    const ts = new Date(now - i * 5 * 60 * 1000).toISOString();
-    let status = 'online';
-    if (agent === 'boris' && i >= 84 && i <= 168) status = 'offline';
-    else if (agent === 'boris' && i >= 169 && i <= 180) status = 'stale';
-    else if (Math.random() < 0.015) status = 'stale'; // occasional stale blip
-    slots.push({ ts, status });
+  try {
+    const data = await rccFetch(req.headers.authorization, `/api/appeal/${req.params.id}`, {
+      method: 'POST', body: JSON.stringify(req.body),
+    });
+    return res.json(data);
+  } catch {
+    res.json({ ok: true, id: req.params.id, action, comment, ts: new Date().toISOString() });
   }
-  res.json({ ok: true, agent, slots });
 });
 
-app.get('/api/crons', (req, res) => {
-  res.json({ ok: true, crons: v2CronStore });
-});
-
-app.post('/api/crons/:agent', requireAuth, (req, res) => {
+app.get('/api/heartbeat/:agent/history', async (req, res) => {
   const agent = req.params.agent;
-  if (!v2CronStore[agent]) v2CronStore[agent] = [];
-  const { name, status, lastSuccess, lastFailure, streak } = req.body;
-  const existing = v2CronStore[agent].find(c => c.name === name);
-  if (existing) {
-    Object.assign(existing, { status, lastSuccess, lastFailure, streak, updatedAt: new Date().toISOString() });
-  } else {
-    v2CronStore[agent].push({ name, status, lastSuccess, lastFailure, streak: streak || 0, schedule: req.body.schedule || '?' });
+  try {
+    const data = await rccFetch(req.headers.authorization, `/api/heartbeat/${agent}/history`);
+    return res.json(data);
+  } catch {
+    // Synthetic fallback: 288 5-min slots for the last 24h
+    const now = Date.now();
+    const slots = [];
+    for (let i = 287; i >= 0; i--) {
+      const ts = new Date(now - i * 5 * 60 * 1000).toISOString();
+      let status = 'online';
+      if (agent === 'boris' && i >= 84 && i <= 168) status = 'offline';
+      else if (agent === 'boris' && i >= 169 && i <= 180) status = 'stale';
+      else if (Math.random() < 0.015) status = 'stale';
+      slots.push({ ts, status });
+    }
+    res.json({ ok: true, agent, slots });
   }
-  res.json({ ok: true });
 });
 
-app.get('/api/provider-health', (req, res) => {
-  res.json({ ok: true, providers: v2ProviderStore });
+app.get('/api/crons', async (req, res) => {
+  try {
+    const data = await rccFetch(req.headers.authorization, '/api/cron-status');
+    return res.json(data);
+  } catch {
+    res.json({ ok: true, crons: v2CronStore });
+  }
 });
 
-app.post('/api/provider-health/:agent', requireAuth, (req, res) => {
+app.post('/api/crons/:agent', requireAuth, async (req, res) => {
   const agent = req.params.agent;
-  v2ProviderStore[agent] = { ...v2ProviderStore[agent], ...req.body, updatedAt: new Date().toISOString() };
-  res.json({ ok: true });
+  try {
+    const data = await rccFetch(req.headers.authorization, `/api/cron-status/${agent}`, {
+      method: 'POST', body: JSON.stringify(req.body),
+    });
+    return res.json(data);
+  } catch {
+    if (!v2CronStore[agent]) v2CronStore[agent] = [];
+    const { name, status, lastSuccess, lastFailure, streak } = req.body;
+    const existing = v2CronStore[agent].find(c => c.name === name);
+    if (existing) {
+      Object.assign(existing, { status, lastSuccess, lastFailure, streak, updatedAt: new Date().toISOString() });
+    } else {
+      v2CronStore[agent].push({ name, status, lastSuccess, lastFailure, streak: streak || 0, schedule: req.body.schedule || '?' });
+    }
+    res.json({ ok: true });
+  }
+});
+
+app.get('/api/provider-health', async (req, res) => {
+  try {
+    const data = await rccFetch(req.headers.authorization, '/api/provider-health');
+    return res.json(data);
+  } catch {
+    res.json({ ok: true, providers: v2ProviderStore });
+  }
+});
+
+app.post('/api/provider-health/:agent', requireAuth, async (req, res) => {
+  const agent = req.params.agent;
+  try {
+    const data = await rccFetch(req.headers.authorization, `/api/provider-health/${agent}`, {
+      method: 'POST', body: JSON.stringify(req.body),
+    });
+    return res.json(data);
+  } catch {
+    v2ProviderStore[agent] = { ...v2ProviderStore[agent], ...req.body, updatedAt: new Date().toISOString() };
+    res.json({ ok: true });
+  }
 });
 
 // ── Shared v2 Rendering Helpers ────────────────────────────────────────────────
@@ -2854,7 +2936,7 @@ app.get('/kanban', (req, res) => {
   </div>
 ` + v2Foot(`
 const AGENTS = ['rocky','bullwinkle','natasha','boris'];
-let kItems = [], kAppeals = [], kTypeFilter = 'all', kPrioFilter = 'all';
+let kItems = [], kAppeals = [], kHeartbeats = {}, kTypeFilter = 'all', kPrioFilter = 'all';
 
 const TYPE_COLORS = { bug:'#f85149', feature:'#3fb950', idea:'#d29922', proposal:'#a371f7', task:'#8b949e' };
 const TYPE_EMOJIS = { bug:'🔴', feature:'🟢', idea:'💡', proposal:'🟣', task:'⬜' };
@@ -2926,7 +3008,9 @@ function renderBoard() {
   const appealFiltered = filterItems(kAppeals);
 
   board.innerHTML = visibleCols.map(col => {
-    const hbColor = '#3fb950'; // TODO: derive from heartbeat
+    const hb = kHeartbeats[col.id];
+    const hbAge = hb && hb.ts ? (Date.now() - new Date(hb.ts).getTime()) / 1000 : Infinity;
+    const hbColor = !hb ? '#484f58' : hbAge < 300 ? '#3fb950' : hbAge < 1800 ? '#d29922' : '#f85149';
     return '<div class="column" id="col-'+col.id+'" ondragover="onDragOver(event)" ondrop="onDrop(event,\''+col.id+'\')" ondragleave="onDragLeave(event)">' +
       '<div class="col-header">' +
         '<div class="col-title">'+col.emoji+' '+col.label+'</div>' +
@@ -2988,12 +3072,14 @@ async function onDrop(e, targetAgent) {
 function openItemModal(id) { window.open('/api/item/'+id,'_blank'); }
 
 async function loadKanban() {
-  const [qData, appealData] = await Promise.all([
+  const [qData, appealData, hbData] = await Promise.all([
     fetch('/api/queue').then(r=>r.json()).catch(()=>({items:[]})),
     fetch('/api/appeal').then(r=>r.json()).catch(()=>({items:[]})),
+    fetch('/api/heartbeats').then(r=>r.json()).catch(()=>({})),
   ]);
   kItems = qData.items || [];
   kAppeals = (appealData.items || []).map(a => ({...a, created: a.waitingSince}));
+  kHeartbeats = hbData && typeof hbData === 'object' && !Array.isArray(hbData) ? hbData : {};
   renderBoard();
 }
 
