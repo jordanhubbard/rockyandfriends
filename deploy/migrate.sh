@@ -84,13 +84,19 @@ echo "      DIRECTIVES.md found — OK"
 echo "[4/7] Updating .env..."
 touch "$ENV_FILE"
 
+# macOS vs Linux sed -i compatibility
+if [[ "$(uname)" == "Darwin" ]]; then
+  SED_I() { sed -i '' "$@"; }
+else
+  SED_I() { sed -i "$@"; }
+fi
+
 # Helper: set or add a key in the env file (preserves all other keys)
 set_env_key() {
   local key="$1"
   local value="$2"
   if grep -q "^${key}=" "$ENV_FILE" 2>/dev/null; then
-    # Update existing line (portable sed -i)
-    sed -i "s|^${key}=.*|${key}=${value}|" "$ENV_FILE"
+    SED_I "s|^${key}=.*|${key}=${value}|" "$ENV_FILE"
   else
     echo "${key}=${value}" >> "$ENV_FILE"
   fi
