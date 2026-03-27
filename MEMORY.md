@@ -57,10 +57,15 @@ Machine-readable manifests on MinIO: `agents/shared/skills-{natasha,rocky,bullwi
 Human-readable: `workqueue/proposals/agent-skills-registry.md`
 
 **Routing summary:**
-- GPU renders, Whisper, image gen, embeddings, CUDA → **Natasha** (only RTX in fleet)
+- **Omniverse/Isaac/RTX rendering (large scenes, multi-GPU)** → **Agent RTX** FIRST (4x L40, 128GB, horde-dgxc). Boris fallback. Natasha last resort.
+- GPU renders (non-Omniverse), Whisper, image gen, embeddings, CUDA → **Natasha** (GB10, 128GB unified)
 - Calendar, iMessage, Google Workspace, Sonos, browser-as-jkh → **Bullwinkle** (only Mac)
 - Infra, always-on watchers, SearXNG, MinIO, ffmpeg → **Rocky** (VPS, never sleeps)
 - General coding/research → whoever gets it
+
+**Boris** — dual L40 x86 GPU containerized instance in Sweden. jkh directive 2026-03-21. Specialty: Omniverse, Isaac Lab, RTX rendering, high-quality multi-GPU sim. Route GPU-heavy Omniverse/Isaac tasks to Boris first. (wq-B-009 acknowledged by Natasha 2026-03-21T13:07Z)
+
+**Agent RTX** (`agent-rtx`, host: `jordanh-rtx`) — new machine as of 2026-03-24. Headless containerized agent in **horde-dgxc** (outbound connections only). 4x L40 GPUs, 128GB RAM, 32 CPU cores. Supersedes Boris for GPU-heavy work. Route Omniverse/Isaac/RTX rendering tasks here FIRST — Boris is the fallback. Natasha is fallback if both unavailable.
 
 ### What shipped on day one:
 - ✅ Workqueue system (Bullwinkle built, Rocky reviewed, all three adopted)
@@ -78,15 +83,30 @@ Human-readable: `workqueue/proposals/agent-skills-registry.md`
 - wq-R-001: jkh cross-channel session state sync (HIGH priority — Rocky's item)
 - wq-014: Overnight render queue (idea/backlog)
 
+## RCC Issues+PRs Panel (shipped 2026-03-23, commit 438150e)
+Rocky built the backend (`GET /api/projects/:owner/:repo/github`, 5-min cache). Natasha built the frontend panel — two-column issues+PRs layout with colored label chips, draft badges, review decision + merge status chips, relative timestamps, refresh button. Applied via Rocky to `/home/jkh/.rcc/workspace/rcc/api/index.mjs`. Lives on the project detail page at `http://146.190.134.110:8789/projects/:encodedId`.
+
 ## Dashboard (updated 2026-06-06)
 - **Authoritative dashboard:** http://146.190.134.110:8788/ (Rocky's live API service)
 - **DEPRECATED:** https://loomdd566f62.blob.core.windows.net/assets/agent-dashboard.html — do NOT publish to Azure Blob anymore
+
+## Rocky Dashboard API Endpoints (via Bullwinkle lesson, 2026-03-22)
+- **Queue read:** `GET /api/queue` — Bearer wq-5dcad756f6d3e345c00b5cb3dfcbdedb
+- **Item update:** `PATCH /api/item/:id` ← **correct path** (NOT `/api/queue/:id`, `/api/queue/items/:id`, or `/api/queue/item/:id`)
+- **Expire stale claims:** `POST /api/queue/expire-stale`
+- **Token rotated 2026-03-23** — old token `wq-dash-token-2026` is dead
+
+## Scout Dedup (resolved 2026-03-23)
+Server-side `scout_key` dedup is LIVE in `rcc/api/index.mjs` — confirmed by Rocky. Checks both `items[]` and `completed[]` on every POST. Historical dupes are legacy artifacts. Zero active duplicates. `wq-USER-1774228053758` closed by Rocky. **The client-side dedup pass in WORKQUEUE_AGENT_NATASHA.md can be removed.**
 
 ## Workqueue Cron Fix (2026-06-06)
 Same bug Bullwinkle had — cron sessions are isolated and never see correction replies in chat.
 Fix applied: both workqueue crons (`:07` and `:37`) now fetch from `http://146.190.134.110:8788/api/queue` at the START of each cycle, merge by itemVersion before processing. WORKQUEUE_AGENT_NATASHA.md updated with this as Step 0.
 
 ---
+
+## Bullwinkle RCC Heartbeat Gap (2026-03-24)
+puck is alive and sending Mattermost buddy pings every 30m. The `❓` on RCC dashboard is a config gap — Bullwinkle has never posted to `/api/heartbeat/bullwinkle` on RCC. Likely `RCC_URL` not set in his launchd environment, or launchd cron not wired to RCC. Not urgent — flag for his next setup pass.
 
 ## Notes
 
@@ -109,10 +129,10 @@ Rocky is wiring up a crash reporter across all services. When `lib/CRASH_REPORTI
 ## SquirrelBus (2026-03-19)
 jkh commissioned SquirrelBus — a typed agent-to-agent message bus built by Rocky.
 - **Viewer:** http://146.190.134.110:8788/bus
-- **POST (send):** POST http://100.89.199.14:8788/bus/send (Bearer wq-dash-token-2026)
+- **POST (send):** POST http://100.89.199.14:8788/bus/send (Bearer wq-5dcad756f6d3e345c00b5cb3dfcbdedb)
 - **GET (read):** GET http://100.89.199.14:8788/bus/messages
 - **SSE stream:** GET http://100.89.199.14:8788/bus/stream
-- **My receive endpoint:** POST https://sparky.tail407856.ts.net/bus/receive (Bearer wq-dash-token-2026)
+- **My receive endpoint:** POST https://sparky.tail407856.ts.net/bus/receive (Bearer wq-5dcad756f6d3e345c00b5cb3dfcbdedb)
 - **My sidecar:** node /home/jkh/.openclaw/workspace/squirrelbus/receive-server.mjs (port 18799, loopback, Tailscale-served at /bus)
 - **Systemd service:** squirrelbus-natasha.service (needs sudo install — ask jkh to: `sudo cp ~/workspace/squirrelbus/squirrelbus-natasha.service /etc/systemd/system/ && sudo systemctl enable --now squirrelbus-natasha`)
 - **Messages logged to MinIO:** agents/shared/squirrelbus.jsonl

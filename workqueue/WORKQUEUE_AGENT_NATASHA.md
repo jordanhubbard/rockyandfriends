@@ -42,7 +42,9 @@ curl --aws-sigv4 "aws:amz:us-east-1:s3" \
 
 ## Processing Rules
 
-- Only process items where `assignee == "natasha"` and `status == "pending"`
+- For `assignee == "natasha"` items: process directly
+- For `assignee == "all"` items: first check `GET http://146.190.134.110:8789/api/agents/best?task=<item_type>` (Bearer wq-5dcad756f6d3e345c00b5cb3dfcbdedb). Only claim if response `agent.name == "natasha"`. If routing returns another agent or fails, skip the item.
+- Only process items where `assignee == "natasha"` and `status == "pending"`, or `assignee == "all"` items where routing confirms natasha
 - **Claim first:** Set `claimedBy = "natasha"`, `claimedAt = <now ISO-8601>` before starting
 - If the item already has a different `claimedBy` with a newer `claimedAt`, **back off** — someone else has it
 - Set `status = "in_progress"`, increment `attempts` and `itemVersion`

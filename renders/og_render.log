@@ -1,0 +1,238 @@
+Loading user config located at: '/home/jkh/.local/share/ov/data/Kit/omni.app.full/1.0/user.config.json'
+[Info] [carb] Logging to file: /home/jkh/.nvidia-omniverse/logs/Kit/omni.app.full/1.0/kit_20260320_070943.log
+[0.094s] [ext: omni.assets.plugins-0.0.0] startup
+[0.095s] [ext: omni.blobkey-1.1.2] startup
+[0.095s] [ext: omni.kit.async_engine-0.0.3] startup
+[0.143s] [ext: omni.client.lib-1.1.1] startup
+[0.150s] [ext: omni.client-1.3.0] startup
+[0.153s] [ext: omni.protobuf.lib-1.0.0] startup
+[0.153s] [ext: omni.grpc.lib-1.0.0] startup
+[0.157s] [ext: omni.metrics.core-0.0.3] startup
+[0.157s] [ext: omni.datastore-0.0.0] startup
+WARNING: All log messages before absl::InitializeLog() is called are written to STDERR
+E0000 00:00:1774015783.420769  355742 descriptor_database.cc:633] File already exists in database: grpc/health/v1/health.proto
+W0000 00:00:1774015783.420786  355742 message.cc:301] Protobuf GeneratedMessageFactory: File is already registered: grpc/health/v1/health.proto
+[0.157s] [ext: omni.gpu_foundation.shadercache.vulkan-1.0.0] startup
+[0.160s] [ext: omni.hsscclient-1.1.4] startup
+[0.160s] [ext: omni.stats-1.0.1] startup
+[0.161s] [ext: omni.ujitso.default-1.0.0] startup
+[0.163s] [ext: omni.gpu_foundation-0.0.0] startup
+[0.167s] [ext: carb.windowing.plugins-1.0.1] startup
+[0.168s] [ext: omni.kit.renderer.init-1.0.1] startup
+
+|---------------------------------------------------------------------------------------------|
+| Driver Version: 580.126.09    | Graphics API: Vulkan
+|=============================================================================================|
+| GPU | Name                             | Active | LDA | GPU Memory | Vendor-ID | LUID       |
+|     |                                  |        |     |            | Device-ID | UUID       |
+|     |                                  |        |     |            | Bus-ID    |            |
+|---------------------------------------------------------------------------------------------|
+| 0   | NVIDIA GB10                      | Yes: 0 |     | 93457   MB | 10de      | 0          |
+|     |                                  |        |     |            | 2e12      | 80f79155.. |
+|     |                                  |        |     |            | 1         |            |
+|=============================================================================================|
+| OS: 24.04.4 LTS (Noble Numbat) ubuntu, Version: 24.04.4, Kernel: 6.17.0-1008-nvidia
+| XServer Vendor: The X.Org Foundation, XServer Version: 12101011 (1.21.1.11)
+| Processor: Cortex-A725
+| Cores: 20 | Logical Cores: 20
+|---------------------------------------------------------------------------------------------|
+| Total Memory (MB): 124610 | Free Memory: 103174
+| Total Page/Swap (MB): 16383 | Free Page/Swap: 16383
+|---------------------------------------------------------------------------------------------|
+[1.059s] [ext: omni.kit.pipapi-0.0.0] startup
+[1.061s] [ext: omni.kit.pip_archive-0.0.0] startup
+[1.062s] [ext: omni.kit.telemetry-0.5.2] startup
+[1.078s] [ext: omni.kit.loop-default-0.2.2] startup
+[1.079s] [ext: omni.kit.test-2.0.6] startup
+[1.124s] [ext: omni.materialx.libs-1.0.9] startup
+[1.130s] [ext: omni.gpucompute.plugins-0.0.0] startup
+[1.131s] [ext: omni.usd.config-1.0.6] startup
+[1.133s] [ext: omni.usd.libs-1.0.1] startup
+[1.183s] [ext: omni.iray.libs-0.0.1] startup
+[1.186s] [ext: omni.mdl-57.0.1] startup
+[1.225s] [ext: omni.mdl.neuraylib-0.2.19] startup
+[1.226s] [ext: omni.kit.usd.mdl-1.1.9] startup
+[1.297s] [ext: omni.usd.schema.anim-0.0.1] startup
+[1.307s] [ext: omni.usd.schema.audio-0.0.1] startup
+[1.309s] [ext: omni.usd.schema.geospatial-0.0.1] startup
+[1.310s] [ext: carb.audio-0.1.0] startup
+[1.312s] [ext: omni.activity.core-1.0.3] startup
+[1.313s] [ext: omni.appwindow-1.2.1] startup
+[1.314s] [ext: omni.cubric-0.1.0] startup
+[1.315s] [ext: omni.graph.exec-0.9.6] startup
+[1.315s] [ext: omni.usd_resolver-1.0.0] startup
+[1.317s] [ext: omni.usd.core-1.8.0] startup
+[1.318s] [ext: omni.hydra.scene_delegate-0.3.5] startup
+[1.319s] [ext: usdrt.scenegraph-7.6.2] startup
+[1.336s] [ext: omni.hydra.usdrt_delegate-7.5.2] startup
+[1.339s] [ext: omni.kit.actions.core-1.0.0] startup
+[1.340s] [ext: omni.kit.audiodeviceenum-1.0.2] startup
+[1.341s] [ext: omni.kit.commands-1.5.0] startup
+[1.343s] [ext: omni.kit.exec.core-0.13.5] startup
+[1.344s] [ext: omni.kit.renderer.core-1.2.1] startup
+[2.237s] [ext: omni.kit.renderer.capture-2.0.1] startup
+[2.240s] [ext: omni.kit.renderer.imgui-2.0.6] startup
+[2.273s] [ext: omni.kit.usd_undo-0.1.8] startup
+[2.274s] [ext: omni.ui-3.0.6] startup
+[2.280s] [ext: omni.kit.window.popup_dialog-2.0.25] startup
+[2.283s] [ext: omni.kit.widget.nucleus_connector-2.3.0] startup
+[2.285s] [ext: omni.timeline-1.1.0] startup
+[2.287s] [ext: omni.usd-1.13.61] startup
+2026-03-20T14:09:45Z [2,291ms] [Warning] [carb] Acquiring non optional plugin interface which is not listed as dependency: [carb::datasource::IDataSource v1.1] (plugin: carb.datasource-omniclient.plugin), by client: omni.usd. Add it to CARB_PLUGIN_IMPL_DEPS() macro of a client.
+[2.318s] [ext: omni.rpm.core-2.2.0] startup
+2026-03-20T14:09:45Z [2,299ms] [Warning] [omni.log] Source: omni.rpm.core was already registered.
+[2.321s] [ext: omni.kit.mainwindow-1.0.3] startup
+[2.321s] [ext: omni.uiaudio-1.0.0] startup
+[2.322s] [ext: omni.kit.uiapp-0.0.0] startup
+[2.322s] [ext: omni.usd.schema.omni_projectors-1.0.0] startup
+[2.322s] [ext: omni.usd.schema.omnigraph-1.0.1] startup
+[2.325s] [ext: omni.usd.schema.physical_lighting-0.1.0] startup
+[2.327s] [ext: omni.usd.schema.render_settings.rtx-1.0.1] startup
+[2.328s] [ext: omni.usd.schema.usd_particle_field-1.0.0] startup
+[2.328s] [ext: omni.kit.tagging-0.1.10] startup
+[2.390s] [ext: omni.hydra.engine.stats-1.0.4] startup
+[2.391s] [ext: omni.hydra.pxr-1.2.6] startup
+[2.393s] [ext: omni.hydra.rtx.shadercache.vulkan-1.0.0] startup
+[2.394s] [ext: omni.index.libs-387500.3473.0] startup
+[2.394s] [ext: omni.index-1.0.1] startup
+[2.394s] [ext: omni.ujitso.client-0.0.0] startup
+[2.394s] [ext: omni.usd.schema.playback-1.0.0] startup
+[2.396s] [ext: omni.volume-0.5.2] startup
+[2.399s] [ext: omni.hydra.rtx-1.0.2] startup
+2026-03-20T14:09:45Z [2,387ms] [Warning] [omni.log] Source: omni.hydra was already registered.
+[2.418s] [ext: omni.hydra.scene_api-0.1.3] startup
+[2.420s] [ext: omni.kit.clipboard-1.1.1] startup
+[2.421s] [ext: omni.kit.collaboration.telemetry-1.1.0] startup
+[2.421s] [ext: omni.kit.collaboration.channel_manager-1.1.0] startup
+[2.422s] [ext: omni.kit.usd.layers-2.5.2] startup
+[2.427s] [ext: omni.kit.collaboration.presence_layer-1.2.1] startup
+[2.429s] [ext: omni.kit.menu.core-1.2.0] startup
+[2.430s] [ext: omni.kit.widget.context_menu-1.3.0] startup
+[2.431s] [ext: omni.kit.context_menu-1.8.6] startup
+[2.432s] [ext: omni.kit.helper.file_utils-0.1.10] startup
+[2.433s] [ext: omni.kit.hydra_texture-1.6.0] startup
+[2.436s] [ext: omni.kit.menu.utils-2.2.3] startup
+[2.440s] [ext: omni.kit.notification_manager-1.0.10] startup
+[2.441s] [ext: omni.kit.widget.path_field-2.0.13] startup
+[2.441s] [ext: omni.kit.widget.browser_bar-2.0.10] startup
+[2.442s] [ext: omni.kit.widget.filebrowser-2.13.1] startup
+[2.444s] [ext: omni.kit.widget.options_menu-1.1.6] startup
+[2.446s] [ext: omni.kit.widget.options_button-1.0.3] startup
+[2.446s] [ext: omni.kit.widget.versioning-1.4.11] startup
+[2.448s] [ext: omni.ui.scene-2.0.1] startup
+[2.451s] [ext: omni.kit.window.filepicker-2.15.2] startup
+[2.458s] [ext: omni.kit.window.file_importer-1.1.20] startup
+[2.459s] [ext: omni.kit.material.library-3.1.0] startup
+[2.463s] [ext: omni.kit.raycast.query-1.2.0] startup
+[2.465s] [ext: omni.kit.viewport.legacy_gizmos-1.0.24] startup
+[2.467s] [ext: omni.kit.viewport.registry-104.0.6] startup
+[2.467s] [ext: omni.kit.widget.viewport-109.1.1] startup
+[2.470s] [ext: omni.kit.window.drop_support-1.0.8] startup
+[2.470s] [ext: omni.kit.viewport.window-109.0.1] startup
+[2.479s] [ext: omni.kit.viewport.utility-2.0.1] startup
+[2.480s] [ext: omni.kit.collaboration.selection_outline-1.1.5] startup
+[2.481s] [ext: omni.kit.hotkeys.core-1.3.12] startup
+[2.482s] [ext: omni.kit.widget.filter-1.1.5] startup
+[2.482s] [ext: omni.kit.widget.prompt-1.0.7] startup
+[2.482s] [ext: omni.kit.widget.live_session_management.ui-1.0.4] startup
+[2.484s] [ext: omni.kit.widget.searchable_combobox-1.0.7] startup
+[2.484s] [ext: omni.kit.widget.settings-1.2.6] startup
+[2.486s] [ext: omni.kit.window.preferences-1.8.3] startup
+[2.490s] [ext: omni.kit.widget.live_session_management-1.2.28] startup
+[2.491s] [ext: omni.kit.widget.searchfield-1.1.8] startup
+[2.492s] [ext: omni.kit.window.file_exporter-1.0.35] startup
+[2.492s] [ext: omni.kit.widget.stage-4.1.0] startup
+[2.505s] [ext: omni.kit.collaboration.stage_columns-1.1.1] startup
+[2.506s] [ext: omni.kit.window.cursor-1.1.5] startup
+[2.506s] [ext: omni.kit.viewport.menubar.core-107.2.2] startup
+[2.515s] [ext: omni.kit.viewport.menubar.camera-107.0.9] startup
+[2.518s] [ext: omni.kit.collaboration.viewport.camera-2.1.4] startup
+[2.520s] [ext: omni.kit.manipulator.camera-109.1.0] startup
+[2.522s] [ext: omni.kit.manipulator.selector-1.1.4] startup
+[2.523s] [ext: omni.kit.manipulator.transform-107.0.0] startup
+[2.525s] [ext: omni.kit.widget.toolbar-2.1.0] startup
+[2.529s] [ext: omni.kit.manipulator.tool.snap-1.5.14] startup
+[2.532s] [ext: omni.kit.viewport.manipulator.transform-107.0.4] startup
+[2.533s] [ext: omni.kit.manipulator.prim.core-108.0.1] startup
+[2.537s] [ext: omni.kit.manipulator.prim.usd-107.0.3] startup
+[2.538s] [ext: omni.kit.manipulator.prim-108.0.0] startup
+[2.538s] [ext: omni.kit.manipulator.selection-109.0.1] startup
+[2.538s] [ext: omni.kit.stage_template.core-1.1.22] startup
+[2.539s] [ext: omni.kit.window.content_browser_registry-0.0.6] startup
+[2.539s] [ext: omni.kit.window.file-2.0.9] startup
+[2.540s] [ext: omni.kit.window.content_browser-3.1.7] startup
+[2.548s] [ext: omni.kit.widget.layers-1.9.0] startup
+[2.556s] [ext: omni.kit.menu.aov-1.1.6] startup
+[2.556s] [ext: omni.kit.ui.actions-1.0.5] startup
+[2.561s] [ext: omni.kit.menu.common-2.0.2] startup
+[2.562s] [ext: omni.kit.menu.create-2.0.1] startup
+[2.563s] [ext: omni.kit.selection-0.1.6] startup
+[2.563s] [ext: omni.kit.menu.edit-2.0.8] startup
+[2.566s] [ext: omni.kit.menu.file-1.1.22] startup
+[2.567s] [ext: omni.kit.primitive.mesh-1.1.0] startup
+[2.569s] [ext: omni.kit.profiler.window-2.4.0] startup
+[2.572s] [ext: omni.kit.property.adapter.core-1.1.1] startup
+[2.574s] [ext: omni.kit.property.adapter.usd-1.0.5] startup
+[2.574s] [ext: omni.kit.widget.highlight_label-1.0.3] startup
+[2.575s] [ext: omni.kit.window.property-1.15.0] startup
+[2.583s] [ext: omni.kit.property.usd-4.8.1] startup
+[2.590s] [ext: omni.kit.property.audio-1.0.16] startup
+[2.592s] [ext: omni.kit.property.camera-1.0.14] startup
+[2.593s] [ext: omni.kit.property.geometry-2.1.2] startup
+[2.595s] [ext: omni.kit.property.light-1.0.14] startup
+[2.618s] [ext: omni.kit.property.material-1.13.0] startup
+[2.622s] [ext: omni.kit.property.render-1.2.2] startup
+[2.622s] [ext: omni.kit.property.transform-1.6.9] startup
+[2.625s] [ext: omni.kit.property.bundle-1.5.0] startup
+[2.625s] [ext: omni.kit.stage_column.active-1.0.4] startup
+[2.626s] [ext: omni.kit.stage_templates-2.0.2] startup
+[2.628s] [ext: omni.kit.usd.collect-3.0.1] startup
+[2.629s] [ext: omni.kit.tool.collect-2.2.19] startup
+[2.630s] [ext: omni.kit.viewport.actions-107.0.2] startup
+[2.633s] [ext: omni.kit.viewport.menubar.display-107.1.3] startup
+[2.634s] [ext: omni.kit.viewport.menubar.render-107.0.10] startup
+[2.636s] [ext: omni.kit.viewport.menubar.settings-107.0.6] startup
+[2.638s] [ext: omni.kit.viewport.bundle-107.0.0] startup
+[2.638s] [ext: omni.kit.viewport.pxr-107.0.0] startup
+[2.638s] [ext: omni.rtx.window.settings-0.7.2] startup
+[2.641s] [ext: omni.kit.viewport.rtx-107.0.0] startup
+[2.641s] [ext: omni.kit.widget.live-2.1.12] startup
+[2.641s] [ext: omni.kit.widget.cache_indicator-3.0.9] startup
+2026-03-20T14:09:45Z [2,621ms] [Warning] [omni.kit.pipapi.pipapi] extension omni.kit.widget.cache_indicator-3.0.9 has a [python.pipapi] entry, but use_online_index=true is not set. It doesn't do anything and can be removed.
+2026-03-20T14:09:45Z [2,622ms] [Warning] [omni.kit.widget.cache_indicator.cache_state_menu] Unable to detect Omniverse Cache Server. File /home/jkh/.nvidia-omniverse/config/omniverse.toml is not found. Consider installing it for better IO performance.
+[2.644s] [ext: omni.kit.widget.stage_icons-1.0.8] startup
+[2.644s] [ext: omni.kit.widget.text_editor-1.1.1] startup
+[2.646s] [ext: omni.kit.window.about-1.3.1] startup
+[2.647s] [ext: omni.kit.window.console-1.1.7] startup
+[2.649s] [ext: omni.kit.window.extensions-1.5.5] startup
+[2.653s] [ext: omni.kit.window.script_editor-2.0.7] startup
+[2.654s] [ext: omni.kit.window.stage-2.6.1] startup
+[2.657s] [ext: omni.kit.window.status_bar-0.1.9] startup
+[2.659s] [ext: omni.kit.window.tests-0.3.9] startup
+[2.660s] [ext: omni.kit.window.title-1.1.8] startup
+[2.660s] [ext: omni.kit.window.toolbar-3.0.3] startup
+[2.661s] [ext: omni.ocio-0.1.1] startup
+[2.662s] [ext: omni.resourcemonitor-107.1.1] startup
+[2.664s] [ext: omni.rpm.ui-2.2.0] startup
+2026-03-20T14:09:45Z [2,643ms] [Warning] [omni.log] Source: omni.rpm.ui was already registered.
+[2.665s] [ext: omni.rtx.settings.core-0.6.7] startup
+[2.666s] [ext: omni.kit.window.stats-0.1.8] startup
+[2.667s] [ext: omni.app.dev-1.0.0] startup
+[2.667s] [ext: omni.inspect-1.0.2] startup
+[2.668s] [ext: omni.graph.core-3.1.0] startup
+[2.670s] [ext: omni.kit.property.tagging-1.1.1] startup
+[2.671s] [ext: omni.kit.window.usd_paths-1.0.9] startup
+[2.672s] [ext: omni.app.full-1.0.1] startup
+2026-03-20T14:09:46Z [2,792ms] [Warning] [omni.kit.renderer.plugin] Reducing '/app/runLoops/present/rateLimitFrequency' from 120.000000 to primary monitor's refresh rate of 60.000000 ('HDMI-0', '/output:396/crtc:392')
+[5.705s] app ready
+2026-03-20T14:12:39Z [175,822ms] [Warning] [carb] Acquiring non optional plugin interface which is not listed as dependency: [carb::datasource::IDataSource v1.1] (plugin: carb.datasource-omniclient.plugin), by client: omni.usd. Add it to CARB_PLUGIN_IMPL_DEPS() macro of a client.
+2026-03-20T14:12:39Z [175,848ms] [Error] [asyncio] Task exception was never retrieved
+future: <Task finished name='Task-63' coro=<create_render_product() done, defined at /home/jkh/.openclaw/workspace/renders/natasha_og_render.py:70> exception=ModuleNotFoundError("No module named 'omni.graph'")>
+Traceback (most recent call last):
+  File "/home/jkh/.openclaw/workspace/renders/natasha_og_render.py", line 73, in create_render_product
+    import omni.graph.core as og  # deferred import — extension must be fully loaded first
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ModuleNotFoundError: No module named 'omni.graph'
+2026-03-20T14:12:39Z [175,951ms] [Warning] [carb] Acquiring non optional plugin interface which is not listed as dependency: [carb::datasource::IDataSource v1.1] (plugin: carb.datasource-omniclient.plugin), by client: omni.usd. Add it to CARB_PLUGIN_IMPL_DEPS() macro of a client.
+graph'
+2026-03-20T14:12:39Z [175,951ms] [Warning] [carb] Acquiring non optional plugin interface which is not listed as dependency: [carb::datasource::IDataSource v1.1] (plugin: carb.datasource-omniclient.plugin), by client: omni.usd. Add it to CARB_PLUGIN_IMPL_DEPS() macro of a client.

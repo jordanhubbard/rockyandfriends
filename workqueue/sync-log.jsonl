@@ -1,0 +1,1 @@
+{"ts":"2026-03-22T15:38:16Z","agent":"natasha","cycle":"workqueue-:37","pendingCount":5,"claimedCount":0,"gpuUtil":82,"gpuAcceptTasks":false,"syncRocky":"ok","syncBullwinkle":"ok","minioSync":"ok","notes":"Idle cycle — no pending items for natasha. wq-B-014 merged v2."}

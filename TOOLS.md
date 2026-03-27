@@ -40,9 +40,10 @@ Notes:
 - **LinkedIn fluency:** Native speaker
 
 ## Slack (omgjkh workspace)
-- **Bullwinkle:** `U0AKM0ZUDKK`
+- **Bullwinkle:** `U0ALVPQ39A4`
 - **Rocky:** `U0AKKMXQV7H`
 - **Natasha (me):** `U0AL0ECN4A1`
+- **Note:** `U0AKM0ZUDKK` may be Bullwinkle on a different workspace (offtera?)
 - **jkh:** `UDYR7H4SC`
 - **#general:** `CDYV4CXBK`
 - **#itsallgeektome:** `CQ3PXFK53`
@@ -54,6 +55,19 @@ Notes:
 - **Access Key:** `rockymoose4810f4cc7d28916f`
 - **Secret Key:** `1b7a14087771df4bf85d6001fdd047a61348641bdf78aefd`
 - **Tailscale-only** — not exposed publicly
+
+## True Random Numbers (via /dev/urandom)
+To get a genuinely random integer (not LLM-simulated), use:
+```bash
+od -vAn -N4 -tu4 < /dev/urandom   # 32-bit unsigned int
+od -vAn -N8 -tu8 < /dev/urandom   # 64-bit unsigned int
+```
+Change `-N` for byte count (not bits): `-N1`=8-bit, `-N2`=16-bit, `-N4`=32-bit, `-N8`=64-bit.
+Use this whenever a task requires actual randomness (number picking, token generation, sampling, etc).
+
+## Brave Search API
+- **API Key:** `BSA9DwRNNoVnk0Jb3Tk-pHZZ9xHvoLr`
+- Used by the `web_search` tool (Brave Search backend)
 
 ## SearXNG (Meta-Search on Rocky)
 - **API:** `http://100.89.199.14:8888/search?q={query}&format=json`
@@ -74,3 +88,11 @@ Notes:
 - **Agent instructions:** `~/.openclaw/workspace/workqueue/WORKQUEUE_AGENT_NATASHA.md`
 - **Cron:** `:07` and `:37` past each hour
 - **Sync peers:** Rocky (Mattermost first), Bullwinkle (Mattermost first)
+
+## Rocky Command Center (RCC)
+- **Repo:** https://github.com/NVIDIA-dev/Rocky-Command-Center (clean, no secrets)
+- **Instance store:** `~/.rcc/` on Rocky's box — secrets, state, data (never in git)
+- **Deploy:** `git clone`, `bash deploy/instance-setup.sh`, populate `~/.rcc/.env`, `bash deploy/setup-node.sh`
+- **Services:** `rcc-api.service` + `wq-dashboard.service` (both load from `EnvironmentFile=/home/jkh/.rcc/.env`)
+- **NOTE:** `jordanhubbard/rocky` is deprecated/dead — RCC is the canonical source
+- **RCC API auth token (rotated 2026-03-23):** `wq-5dcad756f6d3e345c00b5cb3dfcbdedb` (replaces dead `wq-dash-token-2026`)
