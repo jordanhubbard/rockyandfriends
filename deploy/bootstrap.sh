@@ -6,6 +6,10 @@
 #   curl -sSL https://raw.githubusercontent.com/jordanhubbard/rockyandfriends/main/deploy/bootstrap.sh | \
 #     bash -s -- --rcc=http://146.190.134.110:8789 --token=<bootstrap-token> --agent=boris
 #
+# NOTE: Port 8789 is the OpenClaw gateway (RCC API). Port 8788 is the workqueue dashboard.
+# Use 8789 for --rcc. If you have a pre-known agent token, pass --agent-token=<token> to skip
+# the bootstrap API call (useful if the API is down or the token is already known).
+#
 # All secrets (NVIDIA key, Mattermost token, etc.) are fetched automatically
 # from RCC via the bootstrap token. No --nvidia-key or channel tokens needed.
 set -euo pipefail
@@ -13,6 +17,7 @@ set -euo pipefail
 RCC=""
 TOKEN=""
 AGENT=""
+AGENT_TOKEN_OVERRIDE=""
 # These may be overridden by CLI args, but RCC secrets take precedence if not provided
 NVIDIA_KEY=""
 TELEGRAM_TOKEN=""
@@ -23,14 +28,21 @@ for arg in "$@"; do
     --rcc=*)               RCC="${arg#--rcc=}"               ;;
     --token=*)             TOKEN="${arg#--token=}"             ;;
     --agent=*)             AGENT="${arg#--agent=}"             ;;
+    --agent-token=*)       AGENT_TOKEN_OVERRIDE="${arg#--agent-token=}" ;;
     --nvidia-key=*)        NVIDIA_KEY="${arg#--nvidia-key=}"   ;;
     --telegram-token=*)    TELEGRAM_TOKEN="${arg#--telegram-token=}" ;;
     --mattermost-token=*)  MATTERMOST_TOKEN="${arg#--mattermost-token=}" ;;
   esac
 done
 
-if [[ -z "$RCC" || -z "$TOKEN" || -z "$AGENT" ]]; then
-  echo "Usage: bootstrap.sh --rcc=<url> --token=<bootstrap-token> --agent=<name>" >&2
+if [[ -z "$RCC" || -z "$AGENT" ]]; then
+  echo "Usage: bootstrap.sh --rcc=<url> --token=<bootstrap-token> --agent=<name> [--agent-token=<token>]" >&2
+  echo "  --token is required unless --agent-token is provided directly." >&2
+  exit 1
+fi
+
+if [[ -z "$TOKEN" && -z "$AGENT_TOKEN_OVERRIDE" ]]; then
+  echo "ERROR: Either --token=<bootstrap-token> or --agent-token=<known-token> is required." >&2
   exit 1
 fi
 
@@ -46,11 +58,34 @@ echo "🐻 RCC Agent Bootstrap: ${AGENT}"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-# ── 0. Clean slate ───────────────────────────────────────────────────────
+# ── 0. Clean slate (safe) ────────────────────────────────────────────────
 info "Cleaning up previous install..."
 pkill -f "openclaw.*gateway" 2>/dev/null || true
+
+# Back up .rcc/.env before wiping — we restore it if bootstrap fails
+ENV_BACKUP=""
+if [[ -f "$HOME/.rcc/.env" ]]; then
+  ENV_BACKUP="$(mktemp /tmp/rcc-env-backup.XXXXXX)"
+  cp "$HOME/.rcc/.env" "$ENV_BACKUP"
+  info "Backed up existing .env to $ENV_BACKUP"
+fi
+
+# Remove old directories but NOT .env backup (we restore below on failure)
 rm -rf "$HOME/.openclaw" "$HOME/.rcc" 2>/dev/null || true
 success "Clean slate ready"
+
+# Trap: restore .env backup if we exit unexpectedly before step 8
+_restore_env_on_failure() {
+  local code=$?
+  if [[ $code -ne 0 && -n "$ENV_BACKUP" && -f "$ENV_BACKUP" ]]; then
+    mkdir -p "$HOME/.rcc"
+    cp "$ENV_BACKUP" "$HOME/.rcc/.env"
+    chmod 600 "$HOME/.rcc/.env"
+    echo "⚠ Bootstrap failed (exit $code) — restored previous .env from backup" >&2
+    rm -f "$ENV_BACKUP"
+  fi
+}
+trap _restore_env_on_failure EXIT
 
 # ── 1. Dependency check ───────────────────────────────────────────────────
 info "Checking dependencies..."
@@ -84,30 +119,53 @@ fi
 success "RCC workspace ready"
 
 # ── 4. Call bootstrap API ─────────────────────────────────────────────────
-info "Consuming bootstrap token..."
-BOOTSTRAP_RESP=$(curl -sf "${RCC}/api/bootstrap?token=${TOKEN}" 2>&1) || true
 BOOTSTRAP_JSON=""
-# Verify it looks like JSON (not an error page or empty)
-if echo "$BOOTSTRAP_RESP" | grep -q '"ok":true'; then
-  BOOTSTRAP_JSON="$BOOTSTRAP_RESP"
+REPO_URL=""
+AGENT_TOKEN=""
+RCC_URL="${RCC}"  # default to the --rcc URL; may be overridden by API response
+DEPLOY_KEY=""
+
+if [[ -n "$AGENT_TOKEN_OVERRIDE" ]]; then
+  # Skip bootstrap API call — use the provided token directly
+  AGENT_TOKEN="$AGENT_TOKEN_OVERRIDE"
+  info "Using pre-provided agent token (skipping bootstrap API call)"
+  success "Agent token set from --agent-token"
+else
+  info "Consuming bootstrap token..."
+  BOOTSTRAP_RESP=$(curl -sf "${RCC}/api/bootstrap?token=${TOKEN}" 2>&1) || true
+  # Verify it looks like JSON (not an error page or empty)
+  if echo "$BOOTSTRAP_RESP" | grep -q '"ok":true'; then
+    BOOTSTRAP_JSON="$BOOTSTRAP_RESP"
+  fi
+
+  if [[ -z "$BOOTSTRAP_JSON" ]]; then
+    # If we have a previous .env with a working token, offer to use it
+    if [[ -n "$ENV_BACKUP" ]]; then
+      PREV_TOKEN=$(grep '^RCC_AGENT_TOKEN=' "$ENV_BACKUP" 2>/dev/null | cut -d= -f2 | tr -d '"' || true)
+      if [[ -n "$PREV_TOKEN" ]]; then
+        warn "Bootstrap API failed — re-using previous agent token from .env backup"
+        warn "To use a fresh token, re-run with a valid --token or --agent-token"
+        AGENT_TOKEN="$PREV_TOKEN"
+      fi
+    fi
+    if [[ -z "$AGENT_TOKEN" ]]; then
+      error "Bootstrap API call failed or returned invalid response.\nResponse: ${BOOTSTRAP_RESP:-<empty>}\nCheck that RCC is reachable at ${RCC} (port 8788) and the token is valid/unexpired.\nAlternatively, pass --agent-token=<known-token> to skip the API call."
+    fi
+  else
+    # Parse core fields using node (handles nested JSON safely)
+    _parse() { node -e "try{const d=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));process.stdout.write(String(d${1}||''))}catch(e){}" <<< "$BOOTSTRAP_JSON" 2>/dev/null || true; }
+
+    REPO_URL=$(_parse   ".repoUrl")
+    AGENT_TOKEN=$(_parse ".agentToken")
+    RCC_URL=$(_parse    ".rccUrl")
+    DEPLOY_KEY=$(_parse  ".deployKey")
+
+    if [[ -z "$AGENT_TOKEN" ]]; then
+      error "Bootstrap response missing agentToken. Response: ${BOOTSTRAP_JSON}"
+    fi
+    success "Bootstrap token consumed — agent token issued"
+  fi
 fi
-
-if [[ -z "$BOOTSTRAP_JSON" ]]; then
-  error "Bootstrap API call failed or returned invalid response.\nResponse: ${BOOTSTRAP_RESP:-<empty>}\nCheck that RCC is reachable at ${RCC} and the token is valid/unexpired."
-fi
-
-# Parse core fields using node (handles nested JSON safely)
-_parse() { node -e "try{const d=JSON.parse(require('fs').readFileSync('/dev/stdin','utf8'));process.stdout.write(String(d${1}||''))}catch(e){}" <<< "$BOOTSTRAP_JSON" 2>/dev/null || true; }
-
-REPO_URL=$(_parse   ".repoUrl")
-AGENT_TOKEN=$(_parse ".agentToken")
-RCC_URL=$(_parse    ".rccUrl")
-DEPLOY_KEY=$(_parse  ".deployKey")
-
-if [[ -z "$AGENT_TOKEN" ]]; then
-  error "Bootstrap response missing agentToken. Response: ${BOOTSTRAP_JSON}"
-fi
-success "Bootstrap token consumed — agent token issued"
 
 # ── 4b. Extract secrets from bootstrap response ───────────────────────────
 # The bootstrap API returns the full secrets bundle. Extract what we need now
@@ -322,7 +380,23 @@ NVIDIA_API_BASE=https://inference-api.nvidia.com/v1
 NVIDIA_API_KEY=${NVIDIA_KEY}
 ENVEOF
 chmod 600 "$ENV_FILE"
-success "~/.rcc/.env written"
+
+# ── 8 smoke test: verify critical vars are non-empty ─────────────────────
+_env_val() { grep "^${1}=" "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"' || true; }
+_SMOKE_OK=true
+for _VAR in AGENT_NAME RCC_AGENT_TOKEN RCC_URL; do
+  _VAL=$(_env_val "$_VAR")
+  if [[ -z "$_VAL" ]]; then
+    warn "SMOKE TEST FAIL: ${_VAR} is empty in .env — bootstrap may be incomplete"
+    _SMOKE_OK=false
+  fi
+done
+if [[ "$_SMOKE_OK" == true ]]; then
+  success "~/.rcc/.env written and smoke-tested (all critical vars non-empty)"
+else
+  # Don't exit — secrets may be written in 8b. But flag it.
+  warn "~/.rcc/.env has empty critical vars — check the file before using this agent"
+fi
 
 # ── 8b. Write full secrets bundle to .env ────────────────────────────────
 # Secrets were already fetched as part of the bootstrap response in step 4b.
@@ -441,6 +515,10 @@ curl -s -X POST "${RCC_URL}/api/heartbeat/${AGENT}" \
   > /dev/null || warn "Heartbeat post failed (non-fatal)"
 
 # ── 11. Done ──────────────────────────────────────────────────────────────
+# Clear the failure trap — we succeeded
+trap - EXIT
+[[ -n "${ENV_BACKUP:-}" && -f "${ENV_BACKUP:-/dev/null}" ]] && rm -f "$ENV_BACKUP"
+
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo -e "${GREEN}✅ Bootstrap complete!${NC} ${AGENT^} is alive."
