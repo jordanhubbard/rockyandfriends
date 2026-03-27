@@ -113,10 +113,12 @@ app.use('/api', (req, res, next) => {
 });
 
 // Auth middleware for write endpoints
+// AUTH_TOKEN may be a comma-separated list of allowed tokens (RCC_AUTH_TOKENS)
+const AUTH_TOKEN_LIST = AUTH_TOKEN.split(',').map(t => t.trim()).filter(Boolean);
 function requireAuth(req, res, next) {
   const auth = (req.headers.authorization || '').trim();
-  const expected = `Bearer ${AUTH_TOKEN}`;
-  if (!auth || auth !== expected) {
+  const token = auth.startsWith('Bearer ') ? auth.slice(7) : auth;
+  if (!token || !AUTH_TOKEN_LIST.includes(token)) {
     return res.status(401).json({ error: 'Unauthorized — check your auth token ($RCC_AGENT_TOKEN)' });
   }
   next();
