@@ -37,8 +37,34 @@ const SECRETS_PATH    = process.env.SECRETS_PATH    || '../data/secrets.json';
 
 // ── Slack config ───────────────────────────────────────────────────────────
 const SLACK_SIGNING_SECRET = process.env.SLACK_SIGNING_SECRET || '';
-const SLACK_BOT_TOKEN      = process.env.SLACK_BOT_TOKEN      || '';
+const SLACK_BOT_TOKEN      = process.env.SLACK_BOT_TOKEN      || process.env.OMGJKH_BOT || '';
 const SLACK_API            = 'https://slack.com/api';
+
+// ── jkh completion notifications ──────────────────────────────────────────
+const JKH_SLACK_USER       = process.env.SLACK_NOTIFY_USER || 'UDYR7H4SC';  // omgjkh
+const notifiedCompletions  = new Set(); // dedup within process lifetime
+
+async function notifyJkhCompletion(item, agent) {
+  try {
+    // Skip: ideas, jkh-assigned items, silent-tagged items, already notified
+    if (!item || !item.id) return;
+    if (notifiedCompletions.has(item.id)) return;
+    if ((item.priority === 'idea') || (item.assignee === 'jkh')) return;
+    if ((item.tags || []).some(t => t === 'silent' || t === 'no-notify')) return;
+    const token = SLACK_BOT_TOKEN;
+    if (!token) return;
+    notifiedCompletions.add(item.id);
+    const resolution = (item.resolution || item.result || '').slice(0, 200);
+    const text = `✅ *${item.title}* — completed by ${agent || item.claimedBy || 'unknown'}\n${resolution ? resolution + '\n' : ''}_${item.id}_`;
+    fetch(`${SLACK_API}/chat.postMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ channel: JKH_SLACK_USER, text }),
+    }).catch(e => console.warn('[notify-jkh] Slack DM failed:', e.message));
+  } catch (e) {
+    console.warn('[notify-jkh] error:', e.message);
+  }
+}
 
 // ── Stale claim thresholds (ms) by executor type ───────────────────────────
 // claude_cli: real coding agents, can run 60-90min on complex tasks
@@ -1142,6 +1168,7 @@ echo "✅ $AGENT_NAME is online. Token: ${agentToken}"
       if (!q.completed) q.completed = [];
       q.completed.push(item);
       await writeQueue(q);
+      notifyJkhCompletion(item, agent); // fire-and-forget
       return json(res, 200, { ok: true, item });
     }
 
@@ -1222,6 +1249,7 @@ echo "✅ $AGENT_NAME is online. Token: ${agentToken}"
           q.items = q.items.filter(i => i.id !== item.id);
           if (!q.completed) q.completed = [];
           q.completed.push(item);
+          if (item.status === 'completed') notifyJkhCompletion(item, body._author); // fire-and-forget
         }
         await writeQueue(q);
       }
@@ -1469,6 +1497,7 @@ echo "✅ $AGENT_NAME is online. Token: ${agentToken}"
       item.itemVersion = (item.itemVersion || 0) + 1;
       if (body?.result) item.result = body.result;
       await writeQueue(q);
+      notifyJkhCompletion(item, body?._author || body?.agent); // fire-and-forget
 
       // ── requestId linkage: resolve matching delegation on parent ticket ──
       if (item.requestId) {
