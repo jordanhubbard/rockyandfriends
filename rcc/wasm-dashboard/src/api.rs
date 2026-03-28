@@ -1,0 +1,169 @@
+use gloo_net::http::Request;
+use crate::types::{QueueItem, HeartbeatMap, BusMessage, Project, CalEvent};
+
+pub const AUTH_TOKEN: &str = "wq-5dcad756f6d3e345c00b5cb3dfcbdedb";
+
+fn auth_header() -> String {
+    format!("Bearer {}", AUTH_TOKEN)
+}
+
+// ── Queue ─────────────────────────────────────────────────────────────────────
+
+pub async fn fetch_queue() -> Result<Vec<QueueItem>, String> {
+    let resp = Request::get("/api/queue")
+        .header("Authorization", &auth_header())
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !resp.ok() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+
+    resp.json::<Vec<QueueItem>>()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+pub async fn patch_item(id: &str, patch: serde_json::Value) -> Result<QueueItem, String> {
+    let resp = Request::patch(&format!("/api/item/{}", id))
+        .header("Authorization", &auth_header())
+        .header("Content-Type", "application/json")
+        .body(patch.to_string())
+        .map_err(|e| e.to_string())?
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !resp.ok() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+
+    resp.json::<QueueItem>().await.map_err(|e| e.to_string())
+}
+
+pub async fn upvote_item(id: &str) -> Result<(), String> {
+    let resp = Request::post(&format!("/api/upvote/{}", id))
+        .header("Authorization", &auth_header())
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !resp.ok() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+    Ok(())
+}
+
+pub async fn add_comment(id: &str, text: &str, author: &str) -> Result<(), String> {
+    let body = serde_json::json!({ "text": text, "author": author });
+    let resp = Request::post(&format!("/api/item/{}/comment", id))
+        .header("Authorization", &auth_header())
+        .header("Content-Type", "application/json")
+        .body(body.to_string())
+        .map_err(|e| e.to_string())?
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !resp.ok() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+    Ok(())
+}
+
+// ── Heartbeats ────────────────────────────────────────────────────────────────
+
+pub async fn fetch_heartbeats() -> Result<HeartbeatMap, String> {
+    let resp = Request::get("/api/heartbeats")
+        .header("Authorization", &auth_header())
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !resp.ok() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+
+    resp.json::<HeartbeatMap>()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+// ── Bus messages ──────────────────────────────────────────────────────────────
+
+pub async fn fetch_bus_messages(limit: u32) -> Result<Vec<BusMessage>, String> {
+    let resp = Request::get(&format!("/bus/messages?limit={}", limit))
+        .header("Authorization", &auth_header())
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !resp.ok() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+
+    resp.json::<Vec<BusMessage>>()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+pub async fn send_bus_message(from: &str, to: &str, msg_type: &str, body: &str) -> Result<(), String> {
+    let payload = serde_json::json!({
+        "from": from,
+        "to": to,
+        "type": msg_type,
+        "body": body,
+        "mime": "text/plain"
+    });
+
+    let resp = Request::post("/bus/send")
+        .header("Authorization", &auth_header())
+        .header("Content-Type", "application/json")
+        .body(payload.to_string())
+        .map_err(|e| e.to_string())?
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !resp.ok() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+    Ok(())
+}
+
+// ── Projects ──────────────────────────────────────────────────────────────────
+
+pub async fn fetch_projects() -> Result<Vec<Project>, String> {
+    let resp = Request::get("/api/projects")
+        .header("Authorization", &auth_header())
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !resp.ok() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+
+    resp.json::<Vec<Project>>()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+// ── Calendar ──────────────────────────────────────────────────────────────────
+
+pub async fn fetch_calendar() -> Result<Vec<CalEvent>, String> {
+    let resp = Request::get("/api/calendar")
+        .header("Authorization", &auth_header())
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !resp.ok() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+
+    resp.json::<Vec<CalEvent>>()
+        .await
+        .map_err(|e| e.to_string())
+}
