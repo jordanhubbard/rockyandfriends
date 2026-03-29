@@ -1223,6 +1223,13 @@ echo "  CUDA version: $CUDA_VER"
 # ── 3. Python venv + vLLM ────────────────────────────────────────────────
 echo "→ Setting up Python venv and installing vLLM..."
 VLLM_VENV="$HOME/.vllm-venv"
+export HF_HOME="$HOME/.cache/huggingface"
+
+# Fix cache permissions in case any previous sudo pip run created dirs as root
+sudo mkdir -p "$HF_HOME"
+sudo chown -R "$(id -u):$(id -g)" "$HF_HOME"
+mkdir -p "$HF_HOME"
+
 python3 -m venv "$VLLM_VENV"
 source "$VLLM_VENV/bin/activate"
 
@@ -1312,6 +1319,8 @@ print(' '.join(seeders))
   if [ "\$MODEL_ACQUIRED" = "false" ]; then
     echo "  → No peers available — downloading from HuggingFace (this will take a while for 128 GB)..."
     source "$VLLM_VENV/bin/activate"
+    export HF_HOME="$HOME/.cache/huggingface"
+    sudo chown -R "$(id -u):$(id -g)" "$HF_HOME" 2>/dev/null || true
     python3 -c "
 from huggingface_hub import snapshot_download
 snapshot_download(
