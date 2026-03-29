@@ -1,8 +1,11 @@
 use leptos::*;
 
 use crate::components::{
+    activity_feed::ActivityFeed,
     agent_cards::AgentCards,
     agent_detail::AgentDetail,
+    bus_send::BusSend,
+    changelog::Changelog,
     geek_view::GeekView,
     idea_incubator::IdeaIncubator,
     kanban::Kanban,
@@ -67,10 +70,15 @@ pub fn App() -> impl IntoView {
                             </div>
                             <div class="dash-row">
                                 <WorkQueue />
+                                <ActivityFeed />
                             </div>
                             <div class="dash-row">
                                 <SquirrelBus />
+                                <BusSend />
                                 <IdeaIncubator />
+                            </div>
+                            <div class="dash-row">
+                                <Changelog />
                             </div>
                         </div>
                     }.into_view(),
