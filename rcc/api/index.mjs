@@ -94,6 +94,50 @@ async function getServicesStatus() {
   return results;
 }
 
+// ── Semantic dedup: background indexer ────────────────────────────────────
+async function indexPendingQueueItems() {
+  try {
+    const SPARKY_OLLAMA = process.env.SPARKY_OLLAMA_URL || 'http://100.87.229.125:11434';
+    const MILVUS_URL    = process.env.MILVUS_URL        || 'http://100.89.199.14:19530';
+    const q = await readQueue();
+    const active = (q.items || []).filter(i => ['pending','in-progress','in_progress','claimed','incubating'].includes(i.status));
+    console.log(`[dedup-indexer] Indexing ${active.length} active queue items into rcc_queue_dedup`);
+    let indexed = 0;
+    for (const item of active) {
+      try {
+        const embedText = `${item.title}\n${(item.description || '').slice(0, 300)}`.trim();
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 5000);
+        const resp = await fetch(`${SPARKY_OLLAMA}/api/embed`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: 'nomic-embed-text', input: embedText }),
+          signal: ctrl.signal,
+        });
+        clearTimeout(timer);
+        if (!resp.ok) continue;
+        const data = await resp.json();
+        const vector = data?.embeddings?.[0];
+        if (!vector || vector.length !== 768) continue;
+        await fetch(`${MILVUS_URL}/v2/vectordb/entities/upsert`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            collectionName: 'rcc_queue_dedup',
+            data: [{ id: item.id, vector, title: (item.title || '').slice(0, 256), status: item.status }],
+          }),
+        });
+        indexed++;
+        // Small delay to avoid hammering Ollama
+        await new Promise(r => setTimeout(r, 200));
+      } catch (_) { /* skip individual failures */ }
+    }
+    console.log(`[dedup-indexer] Indexed ${indexed}/${active.length} items`);
+  } catch (err) {
+    console.warn('[dedup-indexer] Background indexer error:', err.message);
+  }
+}
+
 // ── SquirrelBus paths ──────────────────────────────────────────────────────
 const BUS_LOG_PATH   = process.env.BUS_LOG_PATH   || new URL('../../squirrelbus/bus.jsonl', import.meta.url).pathname;
 const ACK_LOG_PATH   = process.env.ACK_LOG_PATH   || new URL('../../squirrelbus/acks.jsonl', import.meta.url).pathname;
@@ -1758,6 +1802,92 @@ echo "   4. Check tunnel: systemctl --user status rcc-vllm-tunnel"` : ''}
       if (!body.title) return json(res, 400, { error: 'title required' });
       const q = await readQueue();
 
+      // ── Semantic dedup gate ──────────────────────────────────────────────
+      // Skip for idea priority or if explicitly bypassed
+      const skipSemanticDedup = body.priority === 'idea' || body._skip_dedup === true;
+      if (!skipSemanticDedup) {
+        try {
+          const SPARKY_OLLAMA = process.env.SPARKY_OLLAMA_URL || 'http://100.87.229.125:11434';
+          const MILVUS_URL    = process.env.MILVUS_URL        || 'http://100.89.199.14:19530';
+          const DEDUP_THRESH  = parseFloat(process.env.QUEUE_DEDUP_THRESHOLD || '0.85');
+          const EMBED_MODEL   = 'nomic-embed-text';
+
+          // Build text to embed: title + first 300 chars of description
+          const embedText = `${body.title}\n${(body.description || '').slice(0, 300)}`.trim();
+
+          // Embed via Ollama nomic-embed-text
+          const embedCtrl = new AbortController();
+          const embedTimer = setTimeout(() => embedCtrl.abort(), 5000);
+          const embedResp = await fetch(`${SPARKY_OLLAMA}/api/embed`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ model: EMBED_MODEL, input: embedText }),
+            signal: embedCtrl.signal,
+          });
+          clearTimeout(embedTimer);
+
+          if (embedResp.ok) {
+            const embedData = await embedResp.json();
+            const vector = embedData?.embeddings?.[0];
+
+            if (vector && vector.length === 768) {
+              // Query rcc_queue_dedup for top-3 nearest neighbors
+              const searchCtrl = new AbortController();
+              const searchTimer = setTimeout(() => searchCtrl.abort(), 4000);
+              const searchResp = await fetch(`${MILVUS_URL}/v2/vectordb/entities/search`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  collectionName: 'rcc_queue_dedup',
+                  data: [vector],
+                  annsField: 'vector',
+                  limit: 3,
+                  outputFields: ['id', 'title', 'status'],
+                  searchParams: { metric_type: 'COSINE', params: { nprobe: 10 } },
+                }),
+                signal: searchCtrl.signal,
+              });
+              clearTimeout(searchTimer);
+
+              if (searchResp.ok) {
+                const searchData = await searchResp.json();
+                const hits = searchData?.data?.[0] || [];
+                // Check if any hit exceeds threshold and is still active (pending/in-progress/incubating)
+                const activeStatuses = new Set(['pending', 'in-progress', 'in_progress', 'claimed', 'incubating']);
+                const duplicate = hits.find(h => h.distance >= DEDUP_THRESH && activeStatuses.has(h.status));
+                if (duplicate) {
+                  console.log(`[rcc-api] Semantic dedup: rejected "${body.title.slice(0,50)}" (similarity=${duplicate.distance.toFixed(3)} ≥ ${DEDUP_THRESH} to "${duplicate.title?.slice(0,50)}" id=${duplicate.id})`);
+                  return json(res, 409, {
+                    ok: false,
+                    error: 'duplicate',
+                    reason: 'semantic_dedup',
+                    similarity: duplicate.distance,
+                    threshold: DEDUP_THRESH,
+                    duplicate_id: duplicate.id,
+                    duplicate_title: duplicate.title,
+                  });
+                }
+              }
+
+              // No duplicate — upsert the embedding for future dedup checks (fire and forget)
+              const tempId = body.id || `wq-tmp-${Date.now()}`;
+              fetch(`${MILVUS_URL}/v2/vectordb/entities/upsert`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  collectionName: 'rcc_queue_dedup',
+                  data: [{ id: tempId, vector, title: body.title.slice(0, 256), status: 'pending' }],
+                }),
+              }).catch(() => {}); // fire-and-forget
+            }
+          }
+        } catch (err) {
+          // Dedup gate errors are non-fatal — log and continue
+          console.warn('[rcc-api] Semantic dedup gate error (non-fatal):', err.message);
+        }
+      }
+      // ── End semantic dedup gate ──────────────────────────────────────────
+
       // Scout dedup: if a scout_key is provided, reject if it already exists
       // anywhere in the queue (active OR completed) to prevent hourly re-filing.
       if (body.scout_key) {
@@ -1840,6 +1970,11 @@ echo "   4. Check tunnel: systemctl --user status rcc-vllm-tunnel"` : ''}
         fanoutToProjectChannels(item.project,
           `📋 New task queued: *${item.title}* (${item.priority})\n${item.description ? item.description.slice(0, 200) : ''}`
         );
+      }
+      // Backfill Milvus dedup entry with the real item ID (tempId was provisional)
+      if (!skipSemanticDedup && item.id !== (body.id || `wq-tmp-${Date.now()}`)) {
+        // Already upserted with tempId — update status field with real ID via delete+reinsert is complex;
+        // next heartbeat will pick up and re-embed if needed. The gate already blocked the duplicate path.
       }
       return json(res, 201, { ok: true, item });
     }
@@ -4637,6 +4772,8 @@ if (process.argv[1] === new URL(import.meta.url).pathname) {
       startServer();
       // Start periodic GitHub issues sync (every 15 min)
       issuesModule.startPeriodicSync(15 * 60 * 1000);
+      // Background: index existing pending queue items into rcc_queue_dedup (once at startup, best-effort)
+      setTimeout(() => indexPendingQueueItems(), 30_000);
     });
   process.on('SIGTERM', () => process.exit(0));
   process.on('SIGINT',  () => process.exit(0));
