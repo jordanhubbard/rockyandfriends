@@ -1,48 +1,14 @@
 use leptos::*;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use wasm_bindgen::prelude::*;
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ─── Types (imported from shared module) ─────────────────────────────────────
+// All SC data structures live in sc_types.rs — import from there, not here.
 
-#[derive(Clone, Debug, Serialize, Deserialize, Default, PartialEq)]
-pub struct ScMessage {
-    pub id: Option<String>,
-    pub from: Option<String>,
-    pub text: Option<String>,
-    pub channel: Option<String>,
-    pub ts: Option<String>,
-    pub mentions: Option<Vec<String>>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, Default, PartialEq)]
-pub struct ScAgent {
-    pub id: Option<String>,
-    pub name: String,
-    pub online: Option<bool>,
-    pub status: Option<String>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, Default, PartialEq)]
-pub struct ScProject {
-    pub id: String,
-    pub name: String,
-    pub description: Option<String>,
-    pub status: Option<String>,
-    pub assignee: Option<String>,
-    pub tags: Option<Vec<String>>,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, Default, PartialEq)]
-pub struct ScFile {
-    pub name: String,
-    pub size: Option<u64>,
-    pub created_at: Option<String>,
-}
-
-// ─── Constants ───────────────────────────────────────────────────────────────
-
-const CHANNELS: &[&str] = &["general", "agents", "ops", "random"];
-const FALLBACK_AGENTS: &[&str] = &["natasha", "rocky", "bullwinkle", "sparky", "boris"];
+use crate::components::sc_types::{
+    ScChannel, ScFile, ScIdentity, ScMessage, ScProject, ScUser,
+    DEFAULT_CHANNELS, FALLBACK_AGENT_NAMES,
+};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -71,21 +37,116 @@ fn render_text_with_mentions(text: &str) -> impl IntoView {
     view! { <span class="sc-msg-body">{parts}</span> }
 }
 
+// ─── Auth helpers ────────────────────────────────────────────────────────────
+
+/// Get the localStorage Storage object
+fn local_storage() -> Option<web_sys::Storage> {
+    web_sys::window()
+        .and_then(|w| w.local_storage().ok())
+        .flatten()
+}
+
+/// Read the stored auth token from localStorage (key: "sc_token")
+fn sc_token() -> Option<String> {
+    local_storage()
+        .and_then(|s| s.get_item("sc_token").ok())
+        .flatten()
+        .filter(|t: &String| !t.is_empty())
+}
+
+/// Read the stored identity from localStorage (key: "sc_identity" as JSON)
+fn sc_stored_identity() -> Option<ScIdentity> {
+    let raw: String = local_storage()
+        .and_then(|s| s.get_item("sc_identity").ok())
+        .flatten()?;
+    serde_json::from_str(&raw).ok()
+}
+
+/// Attach the auth token to a request builder if available
+fn with_auth(req: gloo_net::http::RequestBuilder) -> gloo_net::http::RequestBuilder {
+    if let Some(token) = sc_token() {
+        req.header("Authorization", &format!("Bearer {}", token))
+    } else {
+        req
+    }
+}
+
 // ─── Async fetchers ───────────────────────────────────────────────────────────
 
 async fn fetch_sc_messages(channel: String) -> Vec<ScMessage> {
     let url = format!("/sc/api/messages?channel={}&limit=50", channel);
-    let Ok(resp) = gloo_net::http::Request::get(&url).send().await else {
+    let Ok(req) = with_auth(gloo_net::http::Request::get(&url)).build() else {
         return vec![];
     };
+    let Ok(resp) = req.send().await else { return vec![] };
     resp.json::<Vec<ScMessage>>().await.unwrap_or_default()
 }
 
-async fn fetch_sc_agents() -> Vec<ScAgent> {
-    let Ok(resp) = gloo_net::http::Request::get("/sc/api/agents").send().await else {
+/// Fetch dynamic channel list; falls back to DEFAULT_CHANNELS if the endpoint
+/// doesn't exist yet (e.g. before Track A lands the /sc/api/channels route).
+async fn fetch_sc_channels() -> Vec<ScChannel> {
+    let Ok(req) = with_auth(gloo_net::http::Request::get("/sc/api/channels")).build() else {
+        return default_channels();
+    };
+    match req.send().await {
+        Ok(resp) if resp.ok() => resp.json::<Vec<ScChannel>>().await.unwrap_or_else(|_| default_channels()),
+        _ => default_channels(),
+    }
+}
+
+fn default_channels() -> Vec<ScChannel> {
+    DEFAULT_CHANNELS
+        .iter()
+        .map(|(id, name)| ScChannel {
+            id: id.to_string(),
+            name: name.to_string(),
+            kind: Some("public".to_string()),
+            ..Default::default()
+        })
+        .collect()
+}
+
+/// Fetch current user identity from /sc/api/me; falls back to localStorage,
+/// then to a generic "anonymous" identity.
+async fn fetch_sc_identity() -> ScIdentity {
+    // Try server first
+    if let Ok(req) = with_auth(gloo_net::http::Request::get("/sc/api/me")).build() {
+        if let Ok(resp) = req.send().await {
+            if resp.ok() {
+                if let Ok(id) = resp.json::<ScIdentity>().await {
+                    return id;
+                }
+            }
+        }
+    }
+    // Fall back to localStorage
+    if let Some(id) = sc_stored_identity() {
+        return id;
+    }
+    // Final fallback
+    ScIdentity {
+        id: "anonymous".to_string(),
+        name: "anonymous".to_string(),
+        token: None,
+    }
+}
+
+async fn fetch_sc_agents() -> Vec<ScUser> {
+    let Ok(req) = with_auth(gloo_net::http::Request::get("/sc/api/agents")).build() else {
         return vec![];
     };
-    resp.json::<Vec<ScAgent>>().await.unwrap_or_default()
+    let Ok(resp) = req.send().await else { return vec![] };
+    resp.json::<Vec<ScUser>>().await.unwrap_or_else(|_| {
+        // Legacy fallback: server returns old {name, online, status} shape
+        FALLBACK_AGENT_NAMES
+            .iter()
+            .map(|n| ScUser {
+                id: n.to_string(),
+                name: n.to_string(),
+                ..Default::default()
+            })
+            .collect()
+    })
 }
 
 async fn fetch_sc_projects() -> Vec<ScProject> {
@@ -113,42 +174,47 @@ fn trigger_send(
     sending: ReadSignal<bool>,
     set_sending: WriteSignal<bool>,
     set_mention_query: WriteSignal<Option<String>>,
+    identity: ReadSignal<ScIdentity>,
 ) {
     let text = input_text.get_untracked().trim().to_string();
     if text.is_empty() || sending.get_untracked() {
         return;
     }
     let channel = selected_channel.get_untracked();
+    let sender_name = identity.get_untracked().name;
+    let token = identity.get_untracked().token.clone();
     set_sending.set(true);
     set_input_text.set(String::new());
     set_mention_query.set(None);
 
     let text_clone = text.clone();
     let channel_clone = channel.clone();
+    let sender_name_clone = sender_name.clone();
 
     spawn_local(async move {
-        #[derive(Serialize)]
-        struct SendPayload {
-            from: String,
-            text: String,
-            channel: String,
-        }
         let payload = serde_json::json!({
-            "from": "jkh",
+            "from": sender_name_clone,
             "text": text_clone,
             "channel": channel_clone,
         });
-        if let Ok(req) = gloo_net::http::Request::post("/sc/api/messages").json(&payload) {
+        let req_builder = gloo_net::http::Request::post("/sc/api/messages");
+        let req_builder = if let Some(tok) = &token {
+            req_builder.header("Authorization", &format!("Bearer {}", tok))
+        } else {
+            req_builder
+        };
+        if let Ok(req) = req_builder.json(&payload) {
             let _ = req.send().await;
         }
         set_messages.update(|msgs| {
             msgs.push(ScMessage {
                 id: None,
-                from: Some("jkh".into()),
+                from: Some(sender_name.clone()),
                 text: Some(text_clone),
                 channel: Some(channel_clone),
                 ts: None,
                 mentions: None,
+                ..Default::default()
             });
         });
         set_sending.set(false);
@@ -161,7 +227,23 @@ fn trigger_send(
 pub fn SquirrelChat() -> impl IntoView {
     let (selected_channel, set_selected_channel) = create_signal("general".to_string());
     let (messages, set_messages) = create_signal(Vec::<ScMessage>::new());
-    let (agents, set_agents) = create_signal(Vec::<ScAgent>::new());
+    let (agents, set_agents) = create_signal(Vec::<ScUser>::new());
+    let (channels, set_channels) = create_signal(
+        DEFAULT_CHANNELS
+            .iter()
+            .map(|(id, name)| ScChannel {
+                id: id.to_string(),
+                name: name.to_string(),
+                kind: Some("public".to_string()),
+                ..Default::default()
+            })
+            .collect::<Vec<_>>(),
+    );
+    let (identity, set_identity) = create_signal(ScIdentity {
+        id: "anonymous".to_string(),
+        name: "anonymous".to_string(),
+        token: None,
+    });
     let (projects, set_projects) = create_signal(Vec::<ScProject>::new());
     let (project_files, set_project_files) = create_signal(Vec::<ScFile>::new());
     let (input_text, set_input_text) = create_signal(String::new());
@@ -183,6 +265,19 @@ pub fn SquirrelChat() -> impl IntoView {
     create_effect(move |_| {
         if let Some(msgs) = messages_res.get() {
             set_messages.set(msgs);
+        }
+    });
+
+    // ── Bootstrap identity + channels on load ─────────────────────────────────
+    spawn_local(async move {
+        let id = fetch_sc_identity().await;
+        set_identity.set(id);
+    });
+
+    spawn_local(async move {
+        let ch = fetch_sc_channels().await;
+        if !ch.is_empty() {
+            set_channels.set(ch);
         }
     });
 
@@ -274,7 +369,7 @@ pub fn SquirrelChat() -> impl IntoView {
                 .filter(|n| n.to_lowercase().starts_with(&q_lower))
                 .collect();
             if from_agents.is_empty() {
-                FALLBACK_AGENTS
+                FALLBACK_AGENT_NAMES
                     .iter()
                     .filter(|n| n.to_lowercase().starts_with(&q_lower))
                     .map(|s| s.to_string())
@@ -295,21 +390,24 @@ pub fn SquirrelChat() -> impl IntoView {
                 // Channels
                 <div class="sc-sidebar-section">
                     <div class="sc-section-header">"Channels"</div>
-                    {CHANNELS.iter().map(|&ch| {
-                        let ch_str = ch.to_string();
+                    {move || channels.get().into_iter().map(|ch| {
+                        let ch_id = ch.id.clone();
+                        let ch_id2 = ch.id.clone();
+                        let ch_id3 = ch.id.clone();
+                        let ch_name = ch.name.clone();
                         view! {
                             <div
                                 class="sc-channel-item"
-                                class:sc-channel-active=move || selected_channel.get() == ch
+                                class:sc-channel-active=move || selected_channel.get() == ch_id
                                 on:click=move |_| {
-                                    set_selected_channel.set(ch_str.clone());
-                                    set_unread.update(|u| { u.remove(&ch_str.clone()); });
+                                    set_selected_channel.set(ch_id2.clone());
+                                    set_unread.update(|u| { u.remove(&ch_id2.clone()); });
                                     set_selected_project.set(None);
                                 }
                             >
-                                <span>"#" {ch}</span>
+                                <span>"#" {ch_name}</span>
                                 {move || {
-                                    let n = unread.get().get(ch).copied().unwrap_or(0);
+                                    let n = unread.get().get(&ch_id3).copied().unwrap_or(0);
                                     if n > 0 {
                                         view! { <span class="sc-unread">{n}</span> }.into_view()
                                     } else {
@@ -327,7 +425,7 @@ pub fn SquirrelChat() -> impl IntoView {
                     {move || {
                         let ag_list = agents.get();
                         if ag_list.is_empty() {
-                            FALLBACK_AGENTS.iter().map(|&name| {
+                            FALLBACK_AGENT_NAMES.iter().map(|&name| {
                                 view! {
                                     <div class="sc-agent-item">
                                         <span class="sc-presence">"🔴"</span>
@@ -654,6 +752,7 @@ pub fn SquirrelChat() -> impl IntoView {
                                                         input_text, set_input_text,
                                                         selected_channel, set_messages,
                                                         sending, set_sending, set_mention_query,
+                                                        identity,
                                                     );
                                                 }
                                             }
@@ -666,6 +765,7 @@ pub fn SquirrelChat() -> impl IntoView {
                                                     input_text, set_input_text,
                                                     selected_channel, set_messages,
                                                     sending, set_sending, set_mention_query,
+                                                    identity,
                                                 );
                                             }
                                         >
@@ -707,13 +807,14 @@ pub fn SquirrelChat() -> impl IntoView {
                                     if name.is_empty() { return; }
                                     let desc = new_proj_desc.get_untracked();
                                     let id = name.to_lowercase().replace(' ', "-");
+                                    let assignee = identity.get_untracked().name;
                                     spawn_local(async move {
                                         let payload = serde_json::json!({
                                             "id": id,
                                             "name": name,
                                             "description": desc,
                                             "tags": [],
-                                            "assignee": "jkh",
+                                            "assignee": assignee,
                                         });
                                         if let Ok(req) = gloo_net::http::Request::post("/sc/api/projects")
                                             .json(&payload) {
