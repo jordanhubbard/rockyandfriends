@@ -22,17 +22,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Tailscale
-        uses: tailscale/github-action@v2
-        with:
-          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
-          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
-          tags: tag:ci
+      # No Tailscale needed — sparky.tail407856.ts.net has a stable Tailscale IP (100.87.229.125)
+      # and SPARKY_SSH_KEY is sufficient for direct SSH over Tailscale mesh.
+      # If the Tailscale IP ever changes, update SPARKY_HOST secret accordingly.
 
       - name: Run build on sparky via SSH
         uses: appleboy/ssh-action@v1
         with:
-          host: sparky.tail407856.ts.net
+          host: ${{ secrets.SPARKY_HOST }}
           username: jkh
           key: ${{ secrets.SPARKY_SSH_KEY }}
           timeout: 300s
@@ -62,7 +59,7 @@ jobs:
       - name: Package and publish dist artifact to MinIO
         uses: appleboy/ssh-action@v1
         with:
-          host: sparky.tail407856.ts.net
+          host: ${{ secrets.SPARKY_HOST }}
           username: jkh
           key: ${{ secrets.SPARKY_SSH_KEY }}
           timeout: 60s
@@ -130,7 +127,7 @@ jobs:
       - name: Run dashboard-server unit tests on sparky
         uses: appleboy/ssh-action@v1
         with:
-          host: sparky.tail407856.ts.net
+          host: ${{ secrets.SPARKY_HOST }}
           username: jkh
           key: ${{ secrets.SPARKY_SSH_KEY }}
           timeout: 120s
