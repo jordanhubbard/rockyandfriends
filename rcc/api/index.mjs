@@ -3914,7 +3914,8 @@ echo "   4. Check tunnel: systemctl --user status rcc-vllm-tunnel"` : ''}
     // POST /bus/send
     if (method === 'POST' && path === '/bus/send') {
       if (!isAuthed(req)) return json(res, 401, { error: 'Unauthorized' });
-      const msg = await _busAppend(body);
+      const busBody = await readBody(req);
+      const msg = await _busAppend(busBody);
       return json(res, 200, { ok: true, message: msg });
     }
 
@@ -3930,10 +3931,11 @@ echo "   4. Check tunnel: systemctl --user status rcc-vllm-tunnel"` : ''}
     // POST /bus/heartbeat
     if (method === 'POST' && path === '/bus/heartbeat') {
       if (!isAuthed(req)) return json(res, 401, { error: 'Unauthorized' });
-      const from = body.from;
+      const busHbBody = await readBody(req);
+      const from = busHbBody.from;
       if (!from) return json(res, 400, { error: 'from required' });
-      _busPresence[from] = { agent: from, ts: new Date().toISOString(), status: 'online', ...body };
-      await _busAppend({ from, to: 'all', type: 'heartbeat', body: JSON.stringify({ status: 'online', ...body }), mime: 'application/json' });
+      _busPresence[from] = { agent: from, ts: new Date().toISOString(), status: 'online', ...busHbBody };
+      await _busAppend({ from, to: 'all', type: 'heartbeat', body: JSON.stringify({ status: 'online', ...busHbBody }), mime: 'application/json' });
       return json(res, 200, { ok: true, presence: _busPresence });
     }
 
@@ -3945,7 +3947,8 @@ echo "   4. Check tunnel: systemctl --user status rcc-vllm-tunnel"` : ''}
     // POST /bus/ack
     if (method === 'POST' && path === '/bus/ack') {
       if (!isAuthed(req)) return json(res, 401, { error: 'Unauthorized' });
-      const { messageId, agent } = body;
+      const busAckBody = await readBody(req);
+      const { messageId, agent } = busAckBody;
       if (!messageId || !agent) return json(res, 400, { error: 'messageId and agent required' });
       const ack = { messageId, agent, ts: new Date().toISOString() };
       _busAcks.set(messageId, ack);
