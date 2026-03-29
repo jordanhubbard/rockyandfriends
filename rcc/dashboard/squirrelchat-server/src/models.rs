@@ -57,6 +57,9 @@ pub struct MessageWire {
     pub reply_count: i64,
     pub reactions: Vec<Reaction>,
     pub slash_result: Option<String>,
+    /// Inline attachment metadata (content fetched separately via /api/attachments/:id)
+    #[serde(skip_serializing_if = "Vec::is_empty", default)]
+    pub attachments: Vec<Attachment>,
 }
 
 impl From<Message> for MessageWire {
@@ -66,6 +69,7 @@ impl From<Message> for MessageWire {
             id: m.id, ts: m.ts, from_agent: m.from_agent, text: m.text,
             channel: m.channel, mentions: m.mentions, thread_id: m.thread_id,
             reply_count: m.reply_count, reactions, slash_result: m.slash_result,
+            attachments: vec![],
         }
     }
 }
@@ -118,6 +122,18 @@ pub struct FileInfo {
     pub filename: String,
     pub size: Option<i64>,
     pub encoding: String,
+    pub created_at: i64,
+}
+
+// ── Message Attachment ────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Attachment {
+    pub id: i64,
+    pub message_id: i64,
+    pub filename: String,
+    pub mime_type: String,
+    pub size: Option<i64>,
     pub created_at: i64,
 }
 

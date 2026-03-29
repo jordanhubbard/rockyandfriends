@@ -48,6 +48,13 @@ pub fn build_router(state: SharedState) -> Router {
         .route("/api/messages/:id/reply", post(reply_message))
         // Reactions
         .route("/api/messages/:id/react", post(add_reaction).delete(del_reaction))
+        // Attachments (file sharing)
+        .route("/api/messages/:id/attachments", post(upload_attachment))
+        .route("/api/attachments/:id", get(get_attachment))
+        // Search
+        .route("/api/search", get(search_messages))
+        // Direct Messages
+        .route("/api/dms", get(list_dms).post(open_dm))
         // Agents / Presence
         .route("/api/agents", get(list_agents))
         .route("/api/agents/:id/heartbeat", post(agent_heartbeat))
@@ -366,6 +373,133 @@ async fn get_project_file(
         Ok(None) => (StatusCode::NOT_FOUND, "not found").into_response(),
         Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     }
+}
+
+// ── Search ────────────────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct SearchQuery {
+    q: String,
+    channel: Option<String>,
+    limit: Option<i64>,
+}
+
+async fn search_messages(
+    Extension(state): Extension<SharedState>,
+    Query(q): Query<SearchQuery>,
+) -> R<Json<serde_json::Value>> {
+    if q.q.trim().is_empty() {
+        return Ok(Json(json!({ "results": [], "count": 0 })));
+    }
+    let limit = q.limit.unwrap_or(30).min(100);
+    // FTS5 query — escape asterisks for prefix matching
+    let fts_query = format!("\"{}\"*", q.q.replace('"', "\"\""));
+    let msgs = match state.db.search_messages(&fts_query, q.channel.as_deref(), limit) {
+        Ok(m) => m,
+        Err(_) => {
+            // Fallback: plain LIKE search if FTS fails (e.g. special chars)
+            let like_query = format!("%{}%", q.q);
+            state.db.search_messages(&like_query, q.channel.as_deref(), limit)
+                .unwrap_or_default()
+        }
+    };
+    let wires: Vec<MessageWire> = msgs.into_iter().map(MessageWire::from).collect();
+    let count = wires.len();
+    Ok(Json(json!({ "results": wires, "count": count, "query": q.q })))
+}
+
+// ── Attachments ───────────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct AttachmentMeta {
+    filename: String,
+    mime_type: Option<String>,
+    /// Base64-encoded content
+    content_b64: String,
+    from: Option<String>,
+}
+
+async fn upload_attachment(
+    Extension(state): Extension<SharedState>,
+    Path(message_id): Path<i64>,
+    Json(body): Json<AttachmentMeta>,
+) -> R<Json<serde_json::Value>> {
+    use base64::Engine;
+    let content = base64::engine::general_purpose::STANDARD
+        .decode(&body.content_b64)
+        .map_err(|e| anyhow::anyhow!("base64 decode error: {e}"))?;
+    let mime = body.mime_type.as_deref().unwrap_or("application/octet-stream");
+    let att_id = state.db.insert_attachment(message_id, &body.filename, mime, &content)?;
+
+    // Notify connected clients about the new attachment
+    if let Ok(Some(msg)) = state.db.get_message(message_id) {
+        let atts = state.db.get_attachments(message_id).unwrap_or_default();
+        let mut wire = MessageWire::from(msg);
+        wire.attachments = atts;
+        state.hub.broadcast(&ServerFrame::Message { message: wire });
+    }
+
+    Ok(Json(json!({
+        "ok": true,
+        "attachment_id": att_id,
+        "message_id": message_id,
+        "filename": body.filename,
+        "url": format!("/sc/api/attachments/{}", att_id),
+    })))
+}
+
+async fn get_attachment(
+    Extension(state): Extension<SharedState>,
+    Path(att_id): Path<i64>,
+) -> Response {
+    match state.db.get_attachment_content(att_id) {
+        Ok(Some((filename, mime_type, content))) => (
+            StatusCode::OK,
+            [
+                (axum::http::header::CONTENT_TYPE, mime_type),
+                (axum::http::header::CONTENT_DISPOSITION, format!("inline; filename=\"{}\"", filename)),
+            ],
+            content,
+        ).into_response(),
+        Ok(None) => (StatusCode::NOT_FOUND, "attachment not found").into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
+// ── Direct Messages ───────────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct DmQuery {
+    agent: Option<String>,
+}
+
+async fn list_dms(
+    Extension(state): Extension<SharedState>,
+    Query(q): Query<DmQuery>,
+) -> R<Json<serde_json::Value>> {
+    let agent = q.agent.as_deref().unwrap_or("");
+    let dms = if agent.is_empty() {
+        // Return all DM channels (admin view)
+        state.db.get_channels()?.into_iter().filter(|c| c.channel_type == "dm").collect()
+    } else {
+        state.db.get_dms_for_agent(agent)?
+    };
+    Ok(Json(json!(dms)))
+}
+
+#[derive(Deserialize)]
+struct OpenDmBody {
+    from: String,
+    to: String,
+}
+
+async fn open_dm(
+    Extension(state): Extension<SharedState>,
+    Json(body): Json<OpenDmBody>,
+) -> R<Json<serde_json::Value>> {
+    let ch = state.db.get_or_create_dm(&body.from, &body.to)?;
+    state.hub.broadcast(&ServerFrame::Channel { action: "dm_opened".into(), channel: ch.clone() });
+    Ok(Json(json!({ "ok": true, "channel": ch })))
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

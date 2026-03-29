@@ -1,7 +1,7 @@
 use rusqlite::{Connection, Result, params};
 use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
-use crate::models::{Message, Channel, User, Project, FileInfo};
+use crate::models::{Message, Channel, User, Project, FileInfo, Attachment};
 
 #[derive(Clone)]
 pub struct Db(pub Arc<Mutex<Connection>>);
@@ -83,6 +83,47 @@ impl Db {
                 ('general',  'general',  'public', 'rocky', 'General chat'),
                 ('ops',      'ops',      'public', 'rocky', 'Ops and infra'),
                 ('agents',   'agents',   'public', 'rocky', 'Agent coordination');
+
+            -- Message attachments (file sharing)
+            CREATE TABLE IF NOT EXISTS attachments (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                message_id  INTEGER NOT NULL,
+                filename    TEXT NOT NULL,
+                mime_type   TEXT DEFAULT 'application/octet-stream',
+                size        INTEGER,
+                content     BLOB,
+                created_at  INTEGER DEFAULT (unixepoch() * 1000)
+            );
+
+            -- FTS5 full-text search index over messages
+            CREATE VIRTUAL TABLE IF NOT EXISTS messages_fts USING fts5(
+                text,
+                from_agent,
+                channel,
+                content='messages',
+                content_rowid='id'
+            );
+
+            -- Keep FTS in sync via triggers
+            CREATE TRIGGER IF NOT EXISTS messages_fts_insert
+            AFTER INSERT ON messages BEGIN
+                INSERT INTO messages_fts(rowid, text, from_agent, channel)
+                VALUES (new.id, new.text, new.from_agent, new.channel);
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS messages_fts_delete
+            AFTER DELETE ON messages BEGIN
+                INSERT INTO messages_fts(messages_fts, rowid, text, from_agent, channel)
+                VALUES ('delete', old.id, old.text, old.from_agent, old.channel);
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS messages_fts_update
+            AFTER UPDATE ON messages BEGIN
+                INSERT INTO messages_fts(messages_fts, rowid, text, from_agent, channel)
+                VALUES ('delete', old.id, old.text, old.from_agent, old.channel);
+                INSERT INTO messages_fts(rowid, text, from_agent, channel)
+                VALUES (new.id, new.text, new.from_agent, new.channel);
+            END;
         "#)?;
         Ok(())
     }
@@ -411,6 +452,131 @@ impl Db {
         let conn = self.0.lock().unwrap();
         let n = conn.execute("DELETE FROM projects WHERE id = ?", [id])?;
         Ok(n > 0)
+    }
+
+    // ── Full-Text Search ──────────────────────────────────────────────────────
+
+    /// Search messages using FTS5. Returns up to `limit` results ordered by rank.
+    /// Optionally filter by channel.
+    pub fn search_messages(&self, query: &str, channel: Option<&str>, limit: i64) -> Result<Vec<Message>> {
+        let conn = self.0.lock().unwrap();
+        let msgs: Vec<Message> = if let Some(ch) = channel {
+            let mut stmt = conn.prepare(
+                "SELECT m.id, m.ts, m.from_agent, m.text, m.channel, m.thread_id, m.mentions, m.slash_result
+                 FROM messages m
+                 JOIN messages_fts fts ON fts.rowid = m.id
+                 WHERE messages_fts MATCH ?1 AND m.channel = ?2
+                 ORDER BY fts.rank LIMIT ?3"
+            )?;
+            let x: Vec<Message> = stmt.query_map(params![query, ch, limit], |row| self.row_to_message(&conn, row))?
+                .filter_map(|r| r.ok()).collect();
+            x
+        } else {
+            let mut stmt = conn.prepare(
+                "SELECT m.id, m.ts, m.from_agent, m.text, m.channel, m.thread_id, m.mentions, m.slash_result
+                 FROM messages m
+                 JOIN messages_fts fts ON fts.rowid = m.id
+                 WHERE messages_fts MATCH ?1
+                 ORDER BY fts.rank LIMIT ?2"
+            )?;
+            let x: Vec<Message> = stmt.query_map(params![query, limit], |row| self.row_to_message(&conn, row))?
+                .filter_map(|r| r.ok()).collect();
+            x
+        };
+        Ok(msgs)
+    }
+
+    // ── Attachments ───────────────────────────────────────────────────────────
+
+    pub fn insert_attachment(&self, message_id: i64, filename: &str, mime_type: &str, content: &[u8]) -> Result<i64> {
+        let conn = self.0.lock().unwrap();
+        let size = content.len() as i64;
+        conn.execute(
+            "INSERT INTO attachments (message_id, filename, mime_type, size, content) VALUES (?, ?, ?, ?, ?)",
+            params![message_id, filename, mime_type, size, content],
+        )?;
+        Ok(conn.last_insert_rowid())
+    }
+
+    pub fn get_attachments(&self, message_id: i64) -> Result<Vec<Attachment>> {
+        let conn = self.0.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT id, message_id, filename, mime_type, size, created_at FROM attachments WHERE message_id = ? ORDER BY created_at ASC"
+        )?;
+        let attachments: Vec<Attachment> = stmt.query_map([message_id], |row| {
+            Ok(Attachment {
+                id: row.get(0)?,
+                message_id: row.get(1)?,
+                filename: row.get(2)?,
+                mime_type: row.get(3)?,
+                size: row.get(4)?,
+                created_at: row.get(5)?,
+            })
+        })?.filter_map(|r| r.ok()).collect();
+        Ok(attachments)
+    }
+
+    pub fn get_attachment_content(&self, attachment_id: i64) -> Result<Option<(String, String, Vec<u8>)>> {
+        let conn = self.0.lock().unwrap();
+        let result = conn.query_row(
+            "SELECT filename, mime_type, content FROM attachments WHERE id = ?",
+            [attachment_id],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, Vec<u8>>(2)?)),
+        ).ok();
+        Ok(result)
+    }
+
+    // ── DMs ───────────────────────────────────────────────────────────────────
+
+    /// Get or create a DM channel between two agents. ID is canonical: dm-{a}-{b} (sorted).
+    pub fn get_or_create_dm(&self, agent_a: &str, agent_b: &str) -> Result<Channel> {
+        let conn = self.0.lock().unwrap();
+        // Canonical ID: sort the two agents alphabetically
+        let (first, second) = if agent_a <= agent_b { (agent_a, agent_b) } else { (agent_b, agent_a) };
+        let dm_id = format!("dm-{}-{}", first, second);
+        let dm_name = format!("{} & {}", first, second);
+
+        // Upsert the DM channel
+        conn.execute(
+            "INSERT OR IGNORE INTO channels (id, name, type, created_by, description) VALUES (?, ?, 'dm', ?, 'Direct message')",
+            params![dm_id, dm_name, agent_a],
+        )?;
+
+        let ch = conn.query_row(
+            "SELECT id, name, type, created_by, created_at, description FROM channels WHERE id = ?",
+            [&dm_id],
+            |row| Ok(Channel {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                channel_type: row.get(2)?,
+                created_by: row.get(3)?,
+                created_at: row.get(4)?,
+                description: row.get(5)?,
+            }),
+        )?;
+        Ok(ch)
+    }
+
+    /// List all DM channels that involve a given agent (either side).
+    pub fn get_dms_for_agent(&self, agent: &str) -> Result<Vec<Channel>> {
+        let conn = self.0.lock().unwrap();
+        let pattern = format!("%{}%", agent);
+        let mut stmt = conn.prepare(
+            "SELECT id, name, type, created_by, created_at, description FROM channels
+             WHERE type = 'dm' AND id LIKE ?
+             ORDER BY created_at DESC"
+        )?;
+        let channels: Vec<Channel> = stmt.query_map([pattern], |row| {
+            Ok(Channel {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                channel_type: row.get(2)?,
+                created_by: row.get(3)?,
+                created_at: row.get(4)?,
+                description: row.get(5)?,
+            })
+        })?.filter_map(|r| r.ok()).collect();
+        Ok(channels)
     }
 
     // ── Project Files ─────────────────────────────────────────────────────────

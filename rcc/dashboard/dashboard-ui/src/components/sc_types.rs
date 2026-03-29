@@ -29,8 +29,23 @@ pub struct ScMessage {
     /// Aggregated reactions: [{emoji, count, agents}]
     #[serde(default)]
     pub reactions: Vec<ScReaction>,
+    /// File attachments on this message
+    #[serde(default)]
+    pub attachments: Vec<ScAttachment>,
     /// legacy slash command result field
     pub slash_result: Option<String>,
+}
+
+// ─── Attachment ───────────────────────────────────────────────────────────────
+
+#[derive(Clone, Debug, Serialize, Deserialize, Default, PartialEq)]
+pub struct ScAttachment {
+    pub id: i64,
+    pub message_id: i64,
+    pub filename: String,
+    pub mime_type: String,
+    pub size: Option<i64>,
+    pub created_at: i64,
 }
 
 impl ScMessage {

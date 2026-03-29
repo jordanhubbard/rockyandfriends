@@ -849,3 +849,207 @@
 .sc-msg {
   position: relative;
 }
+
+/* ── Phase 3: DMs, Search, Attachments ─────────────────────────────────────── */
+
+/* Search bar */
+.sc-search-bar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--surface2);
+  background: var(--surface1);
+  flex-shrink: 0;
+}
+
+.sc-search-input {
+  flex: 1;
+  background: var(--surface2);
+  border: 1px solid var(--overlay0);
+  border-radius: 6px;
+  color: var(--text);
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+.sc-search-input:focus {
+  outline: none;
+  border-color: var(--blue);
+}
+
+.sc-search-clear {
+  background: none;
+  border: none;
+  color: var(--subtext0);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px 6px;
+}
+
+.sc-search-results {
+  position: absolute;
+  top: 56px;
+  left: 240px;
+  right: 0;
+  background: var(--mantle);
+  border: 1px solid var(--surface2);
+  border-radius: 8px;
+  max-height: 400px;
+  overflow-y: auto;
+  z-index: 100;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+}
+
+.sc-search-results-header {
+  padding: 8px 12px;
+  font-size: 11px;
+  color: var(--subtext0);
+  border-bottom: 1px solid var(--surface2);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.sc-search-empty {
+  padding: 16px;
+  color: var(--subtext0);
+  text-align: center;
+  font-size: 13px;
+}
+
+.sc-search-result-item {
+  padding: 8px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--surface2, #313244);
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  grid-template-rows: auto auto;
+  gap: 2px 8px;
+  align-items: baseline;
+}
+
+.sc-search-result-item:hover {
+  background: var(--surface1);
+}
+
+.sc-search-ch {
+  font-size: 11px;
+  color: var(--blue);
+  font-weight: 600;
+}
+
+.sc-search-from {
+  font-size: 11px;
+  color: var(--mauve);
+  font-weight: 600;
+}
+
+.sc-search-ts {
+  font-size: 10px;
+  color: var(--overlay0);
+  text-align: right;
+}
+
+.sc-search-text {
+  grid-column: 1 / -1;
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* DM items in sidebar */
+.sc-dm-item {
+  color: var(--teal);
+}
+
+/* Attachments */
+.sc-attachments {
+  margin-top: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sc-attachment {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  padding: 4px 8px;
+  background: var(--surface2);
+  border-radius: 6px;
+  max-width: 360px;
+}
+
+.sc-attachment-image {
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.sc-attachment-img {
+  max-width: 240px;
+  max-height: 160px;
+  border-radius: 4px;
+  cursor: pointer;
+  object-fit: contain;
+}
+
+.sc-attachment-name a {
+  color: var(--blue);
+  text-decoration: none;
+}
+
+.sc-attachment-name a:hover {
+  text-decoration: underline;
+}
+
+.sc-attachment-size {
+  color: var(--subtext0);
+  font-size: 11px;
+}
+
+/* Attach button in composer */
+.sc-attach-btn {
+  cursor: pointer;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: var(--surface2);
+  color: var(--text);
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  transition: background 0.1s;
+  user-select: none;
+}
+
+.sc-attach-btn:hover {
+  background: var(--surface3, var(--overlay0));
+}
+
+.sc-attach-preview {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--subtext1);
+  background: var(--surface2);
+  padding: 2px 8px;
+  border-radius: 12px;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sc-attach-clear {
+  background: none;
+  border: none;
+  color: var(--overlay0);
+  cursor: pointer;
+  padding: 0;
+  font-size: 11px;
+  flex-shrink: 0;
+}
