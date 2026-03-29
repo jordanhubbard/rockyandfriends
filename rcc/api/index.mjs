@@ -913,6 +913,26 @@ async function handleRequest(req, res) {
       return json(res, 200, enriched);
     }
 
+    if (method === 'GET' && path === '/api/drift') {
+      // IntentDriftDetector — behavioral drift analysis for agents
+      // ?agent=natasha  ?window=20  ?baseline=50  ?threshold=0.25
+      try {
+        const { detectDrift, driftReport } = await import('./decision-journal/intent-drift-detector.mjs');
+        const { DecisionJournal } = await import('./decision-journal/index.mjs');
+        const agentFilter = url.searchParams.get('agent') || null;
+        const windowSize  = parseInt(url.searchParams.get('window')    || '20', 10);
+        const baselineWin = parseInt(url.searchParams.get('baseline')  || '50', 10);
+        const threshold   = parseFloat(url.searchParams.get('threshold') || '0.25');
+        const logPath = process.env.DECISION_JOURNAL_PATH ||
+          new URL('../logs/decision-journal.jsonl', import.meta.url).pathname;
+        const journal = new DecisionJournal({ agent: agentFilter || '_rcc', logPath, silent: true });
+        const result = detectDrift({ journal, agent: agentFilter, windowSize, baselineWindow: baselineWin, driftThreshold: threshold });
+        return json(res, 200, { ...result, report: driftReport(result) });
+      } catch (err) {
+        return json(res, 500, { ok: false, error: err.message });
+      }
+    }
+
     if (method === 'GET' && path === '/api/brain/status') {
       const b = brain;
       if (!b) return json(res, 200, { ok: true, status: 'not started' });
