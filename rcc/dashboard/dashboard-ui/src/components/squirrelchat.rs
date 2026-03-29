@@ -12,12 +12,13 @@ use crate::components::sc_types::{
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-fn format_msg_ts(ts: &str) -> String {
-    ts.split('T')
-        .nth(1)
-        .and_then(|t| t.split('.').next())
-        .map(|t| t.trim_end_matches('Z').to_string())
-        .unwrap_or_else(|| ts.chars().take(16).collect())
+/// Format a unix-ms timestamp as HH:MM:SS for display.
+fn format_msg_ts(ts_ms: u64) -> String {
+    let secs = ts_ms / 1000;
+    let h = (secs / 3600) % 24;
+    let m = (secs / 60) % 60;
+    let s = secs % 60;
+    format!("{:02}:{:02}:{:02}", h, m, s)
 }
 
 fn render_text_with_mentions(text: &str) -> impl IntoView {
@@ -127,7 +128,8 @@ async fn fetch_sc_identity() -> ScIdentity {
     ScIdentity {
         id: "anonymous".to_string(),
         name: "anonymous".to_string(),
-        token: None,
+        needs_name: true,
+        ..Default::default()
     }
 }
 
@@ -242,7 +244,8 @@ pub fn SquirrelChat() -> impl IntoView {
     let (identity, set_identity) = create_signal(ScIdentity {
         id: "anonymous".to_string(),
         name: "anonymous".to_string(),
-        token: None,
+        needs_name: true,
+        ..Default::default()
     });
     let (projects, set_projects) = create_signal(Vec::<ScProject>::new());
     let (project_files, set_project_files) = create_signal(Vec::<ScFile>::new());
@@ -435,13 +438,7 @@ pub fn SquirrelChat() -> impl IntoView {
                             }).collect::<Vec<_>>().into_view()
                         } else {
                             ag_list.into_iter().map(|a| {
-                                let icon = match a.online {
-                                    Some(true) => match a.status.as_deref() {
-                                        Some("idle") => "🟡",
-                                        _ => "🟢",
-                                    },
-                                    _ => "🔴",
-                                };
+                                let icon = a.presence_icon();
                                 view! {
                                     <div class="sc-agent-item">
                                         <span class="sc-presence">{icon}</span>
@@ -665,7 +662,7 @@ pub fn SquirrelChat() -> impl IntoView {
                                             }.into_view();
                                         }
                                         msgs.into_iter().enumerate().map(|(i, msg)| {
-                                            let ts = msg.ts.as_deref()
+                                            let ts = msg.ts
                                                 .map(format_msg_ts)
                                                 .unwrap_or_default();
                                             let from = msg.from.clone()
