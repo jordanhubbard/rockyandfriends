@@ -830,12 +830,13 @@ pub fn SquirrelChat() -> impl IntoView {
                                                                         set_picker_msg_id.set(None);
                                                                         let mid = msg_id;
                                                                         let user = identity.get_untracked().id.clone();
+                                                                        let emoji_for_req = emoji.clone();
                                                                         // POST reaction to server
                                                                         spawn_local(async move {
                                                                             let url = format!("/sc/api/messages/{}/react", mid);
                                                                             let payload = serde_json::json!({
                                                                                 "from": user,
-                                                                                "emoji": emoji,
+                                                                                "emoji": emoji_for_req,
                                                                             });
                                                                             if let Ok(req) = gloo_net::http::Request::post(&url).json(&payload) {
                                                                                 let _ = req.send().await;
@@ -873,12 +874,13 @@ pub fn SquirrelChat() -> impl IntoView {
                                                         message_id=msg_id
                                                         on_toggle=Callback::new(move |(mid, emoji): (i64, String)| {
                                                             let user = identity.get_untracked().id.clone();
+                                                            let emoji_for_req = emoji.clone();
                                                             // POST toggle reaction
                                                             spawn_local(async move {
                                                                 let url = format!("/sc/api/messages/{}/react", mid);
                                                                 let payload = serde_json::json!({
                                                                     "from": user,
-                                                                    "emoji": emoji,
+                                                                    "emoji": emoji_for_req,
                                                                 });
                                                                 if let Ok(req) = gloo_net::http::Request::post(&url).json(&payload) {
                                                                     let _ = req.send().await;
