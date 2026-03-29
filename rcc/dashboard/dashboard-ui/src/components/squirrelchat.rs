@@ -6,7 +6,7 @@ use wasm_bindgen::prelude::*;
 // All SC data structures live in sc_types.rs — import from there, not here.
 
 use crate::components::sc_types::{
-    ScChannel, ScFile, ScIdentity, ScMessage, ScProject, ScUser, ScWsFrame,
+    ScAttachment, ScChannel, ScFile, ScIdentity, ScMessage, ScProject, ScUser, ScWsFrame,
     DEFAULT_CHANNELS, FALLBACK_AGENT_NAMES,
 };
 use crate::components::sc_reactions::{EmojiPicker, ReactionsBar};
@@ -319,6 +319,14 @@ pub fn SquirrelChat() -> impl IntoView {
     let (picker_msg_id, set_picker_msg_id) = create_signal(Option::<i64>::None);
     // Channel create modal
     let (show_new_channel, set_show_new_channel) = create_signal(false);
+    // Search
+    let (search_query, set_search_query) = create_signal(String::new());
+    let (search_results, set_search_results) = create_signal(Vec::<ScMessage>::new());
+    let (search_active, set_search_active) = create_signal(false);
+    // DMs
+    let (dm_channels, set_dm_channels) = create_signal(Vec::<ScChannel>::new());
+    // File attach
+    let (attach_data, set_attach_data) = create_signal(Option::<(String, String, String)>::None); // (filename, mime, b64)
 
     let chat_ref = create_node_ref::<leptos::html::Div>();
 
@@ -446,12 +454,20 @@ pub fn SquirrelChat() -> impl IntoView {
                                 }
                             });
                         }
-                        ScWsFrame::Channel { action: _, channel } => {
-                            set_channels.update(|chs| {
-                                if !chs.iter().any(|c| c.id == channel.id) {
-                                    chs.push(channel);
-                                }
-                            });
+                        ScWsFrame::Channel { action, channel } => {
+                            if action == "dm_opened" || channel.channel_type.as_deref() == Some("dm") {
+                                set_dm_channels.update(|dms| {
+                                    if !dms.iter().any(|c| c.id == channel.id) {
+                                        dms.push(channel);
+                                    }
+                                });
+                            } else {
+                                set_channels.update(|chs| {
+                                    if !chs.iter().any(|c| c.id == channel.id) {
+                                        chs.push(channel);
+                                    }
+                                });
+                            }
                         }
                         _ => {}
                     }
@@ -607,10 +623,142 @@ pub fn SquirrelChat() -> impl IntoView {
                         }).collect::<Vec<_>>()
                     }}
                 </div>
+
+                // Direct Messages
+                <div class="sc-sidebar-section">
+                    <div class="sc-section-header">
+                        "💬 DMs"
+                        <button class="sc-new-btn" title="Start a DM" on:click=move |_| {
+                            // Simple prompt-based DM open — production would use a modal
+                            let my_id = identity.get_untracked().id.clone();
+                            spawn_local(async move {
+                                // Open DM with current identity — noop placeholder that wires the endpoint
+                                // Full modal handled by future PR; endpoint is live
+                                let _ = gloo_net::http::Request::post("/sc/api/dms")
+                                    .json(&serde_json::json!({ "from": my_id, "to": "rocky" }))
+                                    .ok()
+                                    .unwrap()
+                                    .send()
+                                    .await;
+                            });
+                        }>"+"</button>
+                    </div>
+                    {move || {
+                        let dms = dm_channels.get();
+                        dms.iter().map(|dm| {
+                            let dm_id = dm.id.clone();
+                            let dm_id2 = dm.id.clone();
+                            let dm_id3 = dm.id.clone();
+                            let dm_name = dm.name.clone();
+                            view! {
+                                <div
+                                    class="sc-channel-item sc-dm-item"
+                                    class:sc-channel-active=move || selected_channel.get() == dm_id
+                                    on:click=move |_| {
+                                        set_selected_channel.set(dm_id2.clone());
+                                        set_unread.update(|u| { u.remove(&dm_id2.clone()); });
+                                        set_mentions_unread.update(|u| { u.remove(&dm_id2.clone()); });
+                                        set_selected_project.set(None);
+                                    }
+                                >
+                                    <span>"💬 " {dm_name}</span>
+                                    {move || {
+                                        let n = unread.get().get(&dm_id3).copied().unwrap_or(0);
+                                        if n > 0 {
+                                            view! { <span class="sc-unread">{n}</span> }.into_view()
+                                        } else {
+                                            ().into_view()
+                                        }
+                                    }}
+                                </div>
+                            }
+                        }).collect::<Vec<_>>()
+                    }}
+                </div>
             </aside>
 
             // ── Main area ─────────────────────────────────────────────────────
             <div class="sc-main">
+                // ── Search bar ────────────────────────────────────────────────
+                <div class="sc-search-bar">
+                    <input
+                        type="text"
+                        class="sc-search-input"
+                        placeholder="🔍 Search messages..."
+                        prop:value=move || search_query.get()
+                        on:input=move |ev| {
+                            use leptos::ev::Event;
+                            let val = event_target_value(&ev);
+                            set_search_query.set(val.clone());
+                            if val.trim().is_empty() {
+                                set_search_active.set(false);
+                                set_search_results.set(vec![]);
+                            } else {
+                                set_search_active.set(true);
+                                // Fetch search results
+                                let q = val.clone();
+                                spawn_local(async move {
+                                    let url = format!("/sc/api/search?q={}&limit=20", js_sys::encode_uri_component(&q));
+                                    if let Ok(resp) = gloo_net::http::Request::get(&url).send().await {
+                                        if let Ok(data) = resp.json::<serde_json::Value>().await {
+                                            if let Some(results) = data["results"].as_array() {
+                                                let msgs: Vec<ScMessage> = results.iter()
+                                                    .filter_map(|v| serde_json::from_value(v.clone()).ok())
+                                                    .collect();
+                                                set_search_results.set(msgs);
+                                            }
+                                        }
+                                    }
+                                });
+                            }
+                        }
+                    />
+                    {move || if search_active.get() {
+                        view! {
+                            <button class="sc-search-clear" on:click=move |_| {
+                                set_search_query.set(String::new());
+                                set_search_active.set(false);
+                                set_search_results.set(vec![]);
+                            }>"✕"</button>
+                        }.into_view()
+                    } else { ().into_view() }}
+                </div>
+                // ── Search results overlay ────────────────────────────────────
+                {move || if search_active.get() {
+                    let results = search_results.get();
+                    view! {
+                        <div class="sc-search-results">
+                            <div class="sc-search-results-header">
+                                {format!("{} result(s) for '{}'", results.len(), search_query.get())}
+                            </div>
+                            {if results.is_empty() {
+                                view! { <div class="sc-search-empty">"No messages found."</div> }.into_view()
+                            } else {
+                                results.iter().map(|msg| {
+                                    let ch = msg.channel.clone().unwrap_or_default();
+                                    let from = msg.from_agent.clone().unwrap_or_default();
+                                    let text = msg.text.clone().unwrap_or_default();
+                                    let ts = msg.format_ts();
+                                    let ch_clone = ch.clone();
+                                    view! {
+                                        <div class="sc-search-result-item" on:click=move |_| {
+                                            set_selected_channel.set(ch_clone.clone());
+                                            set_search_active.set(false);
+                                            set_search_query.set(String::new());
+                                            set_search_results.set(vec![]);
+                                        }>
+                                            <span class="sc-search-ch">"#" {ch}</span>
+                                            <span class="sc-search-from">{from}</span>
+                                            <span class="sc-search-ts">{ts}</span>
+                                            <div class="sc-search-text">{text}</div>
+                                        </div>
+                                    }
+                                }).collect::<Vec<_>>().into_view()
+                            }}
+                        </div>
+                    }.into_view()
+                } else { ().into_view() }}
+
                 {move || {
                     if let Some(proj) = selected_project.get() {
                         // ── Project panel ──────────────────────────────────────
@@ -797,6 +945,7 @@ pub fn SquirrelChat() -> impl IntoView {
                                             let text = msg.text.clone().unwrap_or_default();
                                             let msg_id = msg.id.unwrap_or(0);
                                             let reactions = msg.reactions.clone();
+                                            let attachments = msg.attachments.clone();
                                             let reply_count = msg.reply_count;
                                             let current_user = identity.get_untracked().id.clone();
                                             let current_user_name = identity.get_untracked().name.clone();
@@ -880,6 +1029,38 @@ pub fn SquirrelChat() -> impl IntoView {
                                                     <div class="sc-msg-content">
                                                         {render_text_with_mentions(&text)}
                                                     </div>
+                                                    // Inline attachments
+                                                    {if !attachments.is_empty() {
+                                                        let atts = attachments.clone();
+                                                        view! {
+                                                            <div class="sc-attachments">
+                                                                {atts.iter().map(|att| {
+                                                                    let url = format!("/sc/api/attachments/{}", att.id);
+                                                                    let fname = att.filename.clone();
+                                                                    let mime = att.mime_type.clone();
+                                                                    let size_kb = att.size.map(|s| format!("{:.1}KB", s as f64 / 1024.0)).unwrap_or_default();
+                                                                    if mime.starts_with("image/") {
+                                                                        view! {
+                                                                            <div class="sc-attachment sc-attachment-image">
+                                                                                <img src=url.clone() alt=fname.clone() class="sc-attachment-img" />
+                                                                                <div class="sc-attachment-name"><a href=url target="_blank">{fname}</a> {size_kb}</div>
+                                                                            </div>
+                                                                        }.into_view()
+                                                                    } else {
+                                                                        view! {
+                                                                            <div class="sc-attachment sc-attachment-file">
+                                                                                <span class="sc-attachment-icon">"📎"</span>
+                                                                                <a href=url target="_blank" class="sc-attachment-name">{fname}</a>
+                                                                                <span class="sc-attachment-size">{size_kb}</span>
+                                                                            </div>
+                                                                        }.into_view()
+                                                                    }
+                                                                }).collect::<Vec<_>>()}
+                                                            </div>
+                                                        }.into_view()
+                                                    } else {
+                                                        ().into_view()
+                                                    }}
                                                     // Emoji picker (shown when this msg's react btn is clicked)
                                                     {move || {
                                                         if picker_msg_id.get() == Some(msg_id) {
@@ -1017,16 +1198,104 @@ pub fn SquirrelChat() -> impl IntoView {
                                                 }
                                             }
                                         />
+                                        // File attach button
+                                        <label class="sc-attach-btn" title="Attach file">
+                                            "📎"
+                                            <input
+                                                type="file"
+                                                style="display:none"
+                                                on:change=move |ev| {
+                                                    use web_sys::HtmlInputElement;
+                                                    let input: HtmlInputElement = ev.target().unwrap().unchecked_into();
+                                                    if let Some(file) = input.files().and_then(|fl| fl.item(0)) {
+                                                        let fname = file.name();
+                                                        let ftype = file.type_();
+                                                        let reader = web_sys::FileReader::new().unwrap();
+                                                        let reader_clone = reader.clone();
+                                                        let set_attach = set_attach_data.clone();
+                                                        let fname_c = fname.clone();
+                                                        let ftype_c = ftype.clone();
+                                                        let closure = wasm_bindgen::closure::Closure::once(move || {
+                                                            if let Ok(result) = reader_clone.result() {
+                                                                let ab: js_sys::ArrayBuffer = result.dyn_into().unwrap();
+                                                                let ua = js_sys::Uint8Array::new(&ab);
+                                                                let bytes = ua.to_vec();
+                                                                use base64::Engine;
+                                                                let b64 = base64::engine::general_purpose::STANDARD.encode(&bytes);
+                                                                set_attach.set(Some((fname_c, ftype_c, b64)));
+                                                            }
+                                                        });
+                                                        reader.set_onloadend(Some(closure.as_ref().unchecked_ref()));
+                                                        reader.read_as_array_buffer(&file).unwrap();
+                                                        closure.forget();
+                                                    }
+                                                }
+                                            />
+                                        </label>
+                                        {move || if let Some((fname, _, _)) = attach_data.get() {
+                                            view! {
+                                                <span class="sc-attach-preview">
+                                                    {format!("📎 {}", fname)}
+                                                    <button class="sc-attach-clear" on:click=move |_| {
+                                                        set_attach_data.set(None);
+                                                    }>"✕"</button>
+                                                </span>
+                                            }.into_view()
+                                        } else { ().into_view() }}
                                         <button
                                             class="sc-send-btn"
                                             class:sc-sending=move || sending.get()
                                             on:click=move |_| {
-                                                trigger_send(
-                                                    input_text, set_input_text,
-                                                    selected_channel, set_messages,
-                                                    sending, set_sending, set_mention_query,
-                                                    identity,
-                                                );
+                                                // If there's an attachment, send message first then upload
+                                                if let Some((fname, mime, b64)) = attach_data.get_untracked() {
+                                                    // Send the message text (or empty placeholder)
+                                                    let text = input_text.get_untracked();
+                                                    let ch = selected_channel.get_untracked();
+                                                    let user = identity.get_untracked().id.clone();
+                                                    let set_att = set_attach_data;
+                                                    let set_msgs = set_messages;
+                                                    let set_inp = set_input_text;
+                                                    spawn_local(async move {
+                                                        let msg_text = if text.trim().is_empty() {
+                                                            format!("📎 {}", fname)
+                                                        } else {
+                                                            text
+                                                        };
+                                                        let payload = serde_json::json!({
+                                                            "from": user,
+                                                            "text": msg_text,
+                                                            "channel": ch,
+                                                        });
+                                                        if let Ok(req) = gloo_net::http::Request::post("/sc/api/messages").json(&payload) {
+                                                            if let Ok(resp) = req.send().await {
+                                                                if let Ok(data) = resp.json::<serde_json::Value>().await {
+                                                                    let msg_id = data["message"]["id"].as_i64();
+                                                                    if let Some(mid) = msg_id {
+                                                                        // Upload attachment to the message
+                                                                        let att_payload = serde_json::json!({
+                                                                            "filename": fname,
+                                                                            "mime_type": mime,
+                                                                            "content_b64": b64,
+                                                                        });
+                                                                        let url = format!("/sc/api/messages/{}/attachments", mid);
+                                                                        if let Ok(req2) = gloo_net::http::Request::post(&url).json(&att_payload) {
+                                                                            let _ = req2.send().await;
+                                                                        }
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
+                                                        set_inp.set(String::new());
+                                                        set_att.set(None);
+                                                    });
+                                                } else {
+                                                    trigger_send(
+                                                        input_text, set_input_text,
+                                                        selected_channel, set_messages,
+                                                        sending, set_sending, set_mention_query,
+                                                        identity,
+                                                    );
+                                                }
                                             }
                                         >
                                             {move || if sending.get() { "Sending..." } else { "Send" }}
