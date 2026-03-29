@@ -76,6 +76,8 @@ pub fn CodingAgent() -> impl IntoView {
     let cwd = create_rw_signal::<String>(String::new());
     let model = create_rw_signal::<String>(String::new());
     let show_diff = create_rw_signal::<bool>(false);
+    // Provider tracking: "crush" | "claude-code" | "" (unknown/idle)
+    let active_provider = create_rw_signal::<String>(String::new());
 
     // Load sessions on mount + refresh
     let fetch_sessions = {
@@ -146,6 +148,7 @@ pub fn CodingAgent() -> impl IntoView {
         let output = output.clone();
         let running = running.clone();
         let error = error.clone();
+        let active_provider = active_provider.clone();
         let fetch_sessions_after = {
             let fetch_sessions = fetch_sessions.clone();
             fetch_sessions
@@ -175,6 +178,7 @@ pub fn CodingAgent() -> impl IntoView {
             let running2 = running.clone();
             let error2 = error.clone();
             let selected2 = selected_session.clone();
+            let active_provider2 = active_provider.clone();
             let fetch_after = fetch_sessions_after.clone();
 
             spawn_local(async move {
@@ -262,10 +266,28 @@ pub fn CodingAgent() -> impl IntoView {
                                                 let decoded = data.replace("\\n", "\n");
                                                 output2.update(|o| o.push_str(&decoded));
                                             }
+                                            "provider" => {
+                                                // Failover notification from crush-server
+                                                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&data) {
+                                                    if let Some(p) = v.get("provider").and_then(|s| s.as_str()) {
+                                                        active_provider2.set(p.to_string());
+                                                    }
+                                                    // Surface failover reason as a subtle status note
+                                                    if let Some(reason) = v.get("reason").and_then(|s| s.as_str()) {
+                                                        output2.update(|o| {
+                                                            o.push_str(&format!("\n⚡ Failover to crush: {}\n", reason));
+                                                        });
+                                                    }
+                                                }
+                                            }
                                             "done" => {
                                                 if let Ok(v) = serde_json::from_str::<serde_json::Value>(&data) {
                                                     if let Some(sid) = v.get("sessionId").and_then(|s| s.as_str()) {
                                                         selected2.set(Some(sid.to_string()));
+                                                    }
+                                                    // Update provider badge from done payload
+                                                    if let Some(p) = v.get("provider").and_then(|s| s.as_str()) {
+                                                        active_provider2.set(p.to_string());
                                                     }
                                                 }
                                                 running2.set(false);
@@ -453,6 +475,22 @@ pub fn CodingAgent() -> impl IntoView {
                                             view! { <span class="ca-running">"⏳ Running..."</span> }.into_view()
                                         } else {
                                             view! { <span class="ca-done">"✅ Done"</span> }.into_view()
+                                        }}
+                                        // Provider badge: shows which backend handled the request
+                                        {move || {
+                                            let p = active_provider.get();
+                                            if p.is_empty() {
+                                                view! {}.into_view()
+                                            } else {
+                                                let (badge_class, label): (&'static str, String) = match p.as_str() {
+                                                    "claude-code" => ("ca-provider-badge ca-provider-claude", "⚙ claude-code".to_string()),
+                                                    "crush"       => ("ca-provider-badge ca-provider-crush", "🫎 crush".to_string()),
+                                                    _             => ("ca-provider-badge", p.clone()),
+                                                };
+                                                view! {
+                                                    <span class={badge_class}>{label}</span>
+                                                }.into_view()
+                                            }
                                         }}
                                         {if has_diff {
                                             view! {

@@ -1048,6 +1048,18 @@ html, body {
 }
 .ca-diff-toggle:hover { border-color: var(--accent); color: var(--accent); }
 
+/* Provider badge — shows which backend handled the run (claude-code vs crush failover) */
+.ca-provider-badge {
+  font-size: 10px; padding: 1px 6px; border-radius: 9px; font-weight: 600;
+  letter-spacing: 0.02em; margin-left: 4px;
+}
+.ca-provider-claude {
+  background: rgba(115, 72, 234, 0.18); color: #a78bfa; border: 1px solid rgba(115,72,234,0.35);
+}
+.ca-provider-crush {
+  background: rgba(63, 185, 80, 0.15); color: #3fb950; border: 1px solid rgba(63,185,80,0.3);
+}
+
 .ca-diff-container { flex: 1; overflow: auto; }
 
 /* ── DiffView component ─────────────────────────────────────────────────── */
