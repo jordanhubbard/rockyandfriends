@@ -1531,7 +1531,22 @@ echo "└───────────────────────�
 
 if command -v openclaw &>/dev/null; then
   echo "→ openclaw found — repairing config and restarting gateway..."
-  openclaw doctor --fix 2>/dev/null || true
+  # Strip known-invalid extra properties from mattermost channel config
+  if [ -f ~/.openclaw/openclaw.json ] && command -v node &>/dev/null; then
+    node -e "
+      const fs = require('fs');
+      const p = process.env.HOME + '/.openclaw/openclaw.json';
+      try {
+        const cfg = JSON.parse(fs.readFileSync(p, 'utf8'));
+        if (cfg.channels && cfg.channels.mattermost) {
+          delete cfg.channels.mattermost.chatmode;
+          delete cfg.channels.mattermost.groupPolicy;
+        }
+        fs.writeFileSync(p, JSON.stringify(cfg, null, 2));
+        console.log('  ✅ openclaw.json patched');
+      } catch(e) { console.log('  ⚠️  openclaw.json patch skipped:', e.message); }
+    " 2>/dev/null || true
+  fi
   openclaw config set gateway.mode local 2>/dev/null || true
   openclaw gateway restart 2>/dev/null || openclaw gateway start
 else
@@ -1540,7 +1555,6 @@ else
   sudo apt-get install -y nodejs
   npm --version || { echo "ERROR: npm missing"; exit 1; }
   sudo npm install -g openclaw || { echo "ERROR: npm install -g openclaw failed"; exit 1; }
-  openclaw doctor --fix 2>/dev/null || true
   openclaw config set gateway.mode local 2>/dev/null || true
   openclaw gateway start
 fi
