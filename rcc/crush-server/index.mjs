@@ -22,6 +22,7 @@ import express from 'express';
 import cors from 'cors';
 import { spawn } from 'child_process';
 import { createRequire } from 'module';
+import { shouldFailover, sseWithFailover, runCrushStream } from './failover.mjs';
 
 const PORT = parseInt(process.env.CRUSH_SERVER_PORT || '8793', 10);
 const CRUSH_BIN = process.env.CRUSH_BIN || 'crush';
@@ -57,6 +58,19 @@ function crushCmd(args, env = {}) {
 
 app.get('/health', (_req, res) => {
   res.json({ ok: true, service: 'crush-server', bin: CRUSH_BIN });
+});
+
+// GET /failover-status — current routing config snapshot
+app.get('/failover-status', (_req, res) => {
+  res.json({
+    mode:          process.env.CRUSH_ONLY === '1'     ? 'crush-only'
+                 : process.env.CLAUDE_THROTTLED === '1' ? 'crush-forced'
+                 : 'auto',
+    crushBin:      CRUSH_BIN,
+    claudeBin:     process.env.CLAUDE_BIN || 'claude',
+    rccUrl:        process.env.RCC_URL || 'http://localhost:8789',
+    ts:            new Date().toISOString(),
+  });
 });
 
 app.get('/sessions', async (req, res) => {
@@ -109,26 +123,22 @@ app.get('/projects', async (req, res) => {
   }
 });
 
-// POST /run — streaming SSE
-app.post('/run', (req, res) => {
+// POST /run — streaming SSE with automatic claude-code → crush failover
+//
+// If claude-code is available (CLAUDE_BIN in PATH), it is tried first.
+// On rate-limit / quota exhaustion (429, 529, exit 2, etc.) the request
+// transparently falls over to crush and the SSE stream emits:
+//   event: provider  data: { provider: "crush", status: "failover", reason: "..." }
+// before the first chunk arrives.
+//
+// Set CLAUDE_THROTTLED=1 to force crush routing without attempting claude-code.
+// Set CRUSH_ONLY=1 to skip failover entirely and always use crush directly.
+app.post('/run', async (req, res) => {
   const { prompt, sessionId, cwd, model, yolo } = req.body || {};
 
   if (!prompt) {
     return res.status(400).json({ error: 'prompt required' });
   }
-
-  // Build crush run args
-  const args = ['run', '--quiet'];
-  if (sessionId) args.push('--session', sessionId);
-  if (model) args.push('--model', model);
-  if (yolo) args.push('--yolo');
-  args.push(prompt);
-
-  const env = {};
-  if (cwd) env.CRUSH_CWD = cwd; // crush uses --cwd flag
-
-  // Rebuild with --cwd if provided
-  if (cwd) args.splice(1, 0, '--cwd', cwd);
 
   // SSE headers
   res.setHeader('Content-Type', 'text/event-stream');
@@ -136,47 +146,41 @@ app.post('/run', (req, res) => {
   res.setHeader('Connection', 'keep-alive');
   res.flushHeaders();
 
-  const proc = spawn(CRUSH_BIN, args, {
-    env: { ...process.env },
-    stdio: ['ignore', 'pipe', 'pipe'],
-  });
-
-  let sessionIdOut = null;
-
-  proc.stdout.on('data', (chunk) => {
-    const text = chunk.toString();
-    // Check if crush prints session id on first line (some versions do)
-    if (!sessionIdOut && text.startsWith('Session:')) {
-      const match = text.match(/Session:\s*(\S+)/);
-      if (match) sessionIdOut = match[1];
-    }
-    // Escape SSE data (newlines → \n literal in SSE data field)
-    const escaped = text.replace(/\n/g, '\\n');
-    res.write(`event: chunk\ndata: ${escaped}\n\n`);
-  });
-
-  proc.stderr.on('data', (chunk) => {
-    const text = chunk.toString().trim();
-    if (text) {
+  // CRUSH_ONLY=1 → skip claude-code entirely (direct crush, no failover logic)
+  if (process.env.CRUSH_ONLY === '1') {
+    const ee = runCrushStream({ prompt, sessionId, cwd, model, yolo });
+    ee.on('chunk', text => {
+      res.write(`event: chunk\ndata: ${text.replace(/\n/g, '\\n')}\n\n`);
+    });
+    ee.on('log', text => {
       res.write(`event: log\ndata: ${JSON.stringify(text)}\n\n`);
+    });
+    ee.on('done', ({ exitCode, sessionId: sid }) => {
+      res.write(`event: done\ndata: ${JSON.stringify({ exitCode, sessionId: sid, provider: 'crush' })}\n\n`);
+      res.end();
+    });
+    ee.on('error', msg => {
+      res.write(`event: error\ndata: ${JSON.stringify(msg)}\n\n`);
+      res.end();
+    });
+    req.on('close', () => ee.kill());
+    return;
+  }
+
+  // Default: try claude-code → crush failover
+  try {
+    await sseWithFailover({
+      res, prompt, cwd, model, sessionId, yolo,
+      onThrottle: (reason) => {
+        console.warn(`[crush-server] claude-code throttled: ${reason} — failing over to crush`);
+      },
+    });
+  } catch (err) {
+    if (!res.writableEnded) {
+      res.write(`event: error\ndata: ${JSON.stringify(err.message)}\n\n`);
+      res.end();
     }
-  });
-
-  proc.on('close', (code) => {
-    const payload = JSON.stringify({ exitCode: code, sessionId: sessionIdOut });
-    res.write(`event: done\ndata: ${payload}\n\n`);
-    res.end();
-  });
-
-  proc.on('error', (err) => {
-    res.write(`event: error\ndata: ${JSON.stringify(err.message)}\n\n`);
-    res.end();
-  });
-
-  // Clean up if client disconnects
-  req.on('close', () => {
-    if (proc.exitCode === null) proc.kill('SIGTERM');
-  });
+  }
 });
 
 // ── start ──────────────────────────────────────────────────────────────────
