@@ -9,6 +9,8 @@ pub mod geek_view;
 pub mod idea_incubator;
 pub mod kanban;
 pub mod metrics;
+pub mod providers;
+pub mod sc_types;
 pub mod squirrelbus;
 pub mod squirrelchat;
 pub mod work_queue;
