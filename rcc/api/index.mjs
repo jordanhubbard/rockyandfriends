@@ -55,7 +55,7 @@ const SERVICES_CATALOG = [
   { id: 'whisper-api',      name: 'Whisper API',        url: 'http://100.87.229.125:8792',            desc: 'Speech-to-text (sparky GB10)',              host: 'sparky'   },
   { id: 'agentfs',          name: 'AgentFS',            url: 'http://100.87.229.125:8791',            desc: 'Content-addressed WASM module store',       host: 'sparky'   },
   { id: 'usdagent',         name: 'usdagent',           url: 'http://100.87.229.125:8000',            desc: 'LLM-backed USD 3D asset generator',         host: 'sparky'   },
-  { id: 'milvus',           name: 'Milvus',             url: 'http://100.89.199.14:19121',           desc: 'Vector database (do-host1)',                host: 'do-host1' },
+  { id: 'milvus',           name: 'Milvus',             url: 'http://100.89.199.14:9091/healthz',    desc: 'Vector database (do-host1)',                host: 'do-host1' },
   { id: 'ollama',           name: 'Ollama',             url: 'http://100.87.229.125:11434',           desc: 'Local LLM inference',                      host: 'sparky'   },
 ];
 const SERVICES_CACHE = { data: null, ts: 0 };
