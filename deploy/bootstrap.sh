@@ -188,6 +188,23 @@ _secret() { node -e "
 [[ -z "$MATTERMOST_TOKEN"  ]] && MATTERMOST_TOKEN=$(_secret  "MATTERMOST_TOKEN"   "mattermost_token")
 [[ -z "$TELEGRAM_TOKEN"    ]] && TELEGRAM_TOKEN=$(_secret    "TELEGRAM_BOT_TOKEN" "telegram_token")
 
+# Fetch per-agent Slack tokens from RCC (stored as <agent>_slack bundle)
+SLACK_BOT_TOKEN=""
+SLACK_APP_TOKEN=""
+if [[ -n "$AGENT" ]]; then
+  SLACK_BUNDLE=$(curl -sf "${RCC_URL}/api/secrets/${AGENT}_slack" \
+    -H "Authorization: Bearer ${AGENT_TOKEN}" 2>/dev/null || echo "")
+  if [[ -n "$SLACK_BUNDLE" ]]; then
+    SLACK_BOT_TOKEN=$(echo "$SLACK_BUNDLE" | node -e "process.stdin.setEncoding('utf8');let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{const p=JSON.parse(d);console.log(p.secrets?.SLACK_BOT_TOKEN||'')}catch(e){}}" 2>/dev/null || echo "")
+    SLACK_APP_TOKEN=$(echo "$SLACK_BUNDLE" | node -e "process.stdin.setEncoding('utf8');let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{const p=JSON.parse(d);console.log(p.secrets?.SLACK_APP_TOKEN||'')}catch(e){}}" 2>/dev/null || echo "")
+  fi
+fi
+if [[ -n "$SLACK_BOT_TOKEN" ]]; then
+  success "Slack tokens obtained from RCC secrets (${AGENT}_slack)"
+else
+  warn "No Slack tokens found in RCC for agent '${AGENT}' — Slack channel will be disabled"
+fi
+
 if [[ -n "$NVIDIA_KEY" ]]; then
   success "NVIDIA API key obtained from RCC secrets"
 else
@@ -289,6 +306,21 @@ TGEOF
 )
 fi
 
+SLACK_FRAGMENT=""
+if [[ -n "$SLACK_BOT_TOKEN" ]]; then
+  SLACK_FRAGMENT=$(cat <<SLKEOF
+    "slack": {
+      "enabled": true,
+      "mode": "socket",
+      "botToken": "${SLACK_BOT_TOKEN}",
+      "appToken": "${SLACK_APP_TOKEN}",
+      "streaming": "partial",
+      "nativeStreaming": true
+    }
+SLKEOF
+)
+fi
+
 MATTERMOST_FRAGMENT=""
 if [[ -n "$MATTERMOST_TOKEN" ]]; then
   MATTERMOST_FRAGMENT=$(cat <<MMEOF
@@ -359,7 +391,7 @@ cat > "$OC_CONFIG" <<OCEOF
     }
   },
   "channels": {
-    ${TELEGRAM_FRAGMENT}${TELEGRAM_FRAGMENT:+,}${MATTERMOST_FRAGMENT}
+    ${SLACK_FRAGMENT}${SLACK_FRAGMENT:+,}${TELEGRAM_FRAGMENT}${TELEGRAM_FRAGMENT:+,}${MATTERMOST_FRAGMENT}
   }
 }
 OCEOF
@@ -514,13 +546,82 @@ AUTOSTART
   success "Gateway autostart wired into .bashrc (survives container restarts)"
 fi
 
-# ── 10. Post heartbeat ────────────────────────────────────────────────────
-info "Posting heartbeat to RCC..."
+# ── 10. Hardware fingerprint + heartbeat ─────────────────────────────────
+info "Collecting hardware fingerprint..."
+
+# GPU info via nvidia-smi
+GPU_COUNT=0
+GPU_MODEL=""
+GPU_VRAM_GB=0
+if command -v nvidia-smi &>/dev/null; then
+  GPU_COUNT=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | wc -l || echo 0)
+  GPU_MODEL=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1 | tr -d '\n' || echo "")
+  GPU_VRAM_MB=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | \
+    awk '{s+=$1} END {print int(s)}' || echo 0)
+  GPU_VRAM_GB=$(( GPU_VRAM_MB / 1024 ))
+fi
+
+# CPU info
+CPU_CORES=$(nproc 2>/dev/null || grep -c ^processor /proc/cpuinfo 2>/dev/null || echo 0)
+CPU_MODEL=$(grep 'model name' /proc/cpuinfo 2>/dev/null | head -1 | cut -d: -f2 | sed 's/^ *//' || echo "unknown")
+CPU_ARCH=$(uname -m 2>/dev/null || echo "unknown")
+
+# RAM
+RAM_GB=0
+if [[ -r /proc/meminfo ]]; then
+  RAM_KB=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+  RAM_GB=$(( RAM_KB / 1024 / 1024 ))
+fi
+
+# Disk free on home
+DISK_FREE_GB=$(df -BG "$HOME" 2>/dev/null | tail -1 | awk '{print $4}' | tr -d 'G' || echo 0)
+
+HW_JSON=$(cat <<HWEOF
+{
+  "gpu_count": ${GPU_COUNT},
+  "gpu_model": "${GPU_MODEL}",
+  "gpu_vram_gb": ${GPU_VRAM_GB},
+  "cpu_cores": ${CPU_CORES},
+  "cpu_model": "${CPU_MODEL}",
+  "cpu_arch": "${CPU_ARCH}",
+  "ram_gb": ${RAM_GB},
+  "disk_free_gb": ${DISK_FREE_GB}
+}
+HWEOF
+)
+
+info "Hardware: ${GPU_COUNT}x ${GPU_MODEL:-none} (${GPU_VRAM_GB}GB VRAM), ${CPU_CORES}x CPU, ${RAM_GB}GB RAM"
+
+info "Posting heartbeat + hardware fingerprint to RCC..."
 curl -s -X POST "${RCC_URL}/api/heartbeat/${AGENT}" \
   -H "Authorization: Bearer ${AGENT_TOKEN}" \
   -H "Content-Type: application/json" \
-  -d "{\"agent\":\"${AGENT}\",\"host\":\"$(hostname)\",\"status\":\"online\",\"version\":\"bootstrap\"}" \
-  > /dev/null || warn "Heartbeat post failed (non-fatal)"
+  -d "{
+    \"agent\":\"${AGENT}\",
+    \"host\":\"$(hostname)\",
+    \"status\":\"online\",
+    \"version\":\"bootstrap\",
+    \"hardware\":${HW_JSON}
+  }" > /dev/null || warn "Heartbeat post failed (non-fatal)"
+
+# Also PATCH agent record with real hardware data so RCC dashboard is accurate
+curl -s -X PATCH "${RCC_URL}/api/agents/${AGENT}" \
+  -H "Authorization: Bearer ${AGENT_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"capabilities\": {
+      \"gpu\": $([ ${GPU_COUNT} -gt 0 ] && echo true || echo false),
+      \"gpu_model\": \"${GPU_MODEL}\",
+      \"gpu_count\": ${GPU_COUNT},
+      \"gpu_vram_gb\": ${GPU_VRAM_GB},
+      \"cpu_cores\": ${CPU_CORES},
+      \"cpu_model\": \"${CPU_MODEL}\",
+      \"cpu_arch\": \"${CPU_ARCH}\",
+      \"ram_gb\": ${RAM_GB}
+    }
+  }" > /dev/null || warn "Capabilities PATCH failed (non-fatal — dashboard may show stale hw info)"
+
+success "Heartbeat + hardware fingerprint posted"
 
 # ── 11. Done ──────────────────────────────────────────────────────────────
 # Clear the failure trap — we succeeded
