@@ -269,7 +269,149 @@ else
   fi
 fi
 
-# ── Step 6: Claude tmux session ─────────────────────────────────────────────
+# ── Step 6: SSH reverse tunnel to do-host1 ──────────────────────────────────
+# This opens an SSH reverse tunnel so Rocky can SSH back into this container
+# even though horde-dgxc.nvidia.com is unreachable from do-host1/puck.
+# The tunnel exposes this container's SSH port (22) as a port on do-host1 localhost.
+# Rocky then has an always-available shell door: ssh -p <port> localhost (on do-host1).
+info "Setting up SSH reverse shell tunnel to do-host1..."
+
+# Load .env to get AGENT_NAME and any tunnel config
+ENV_FILE="$HOME/.rcc/.env"
+if [[ -f "$ENV_FILE" ]]; then
+  set -a; source "$ENV_FILE"; set +a 2>/dev/null || true
+fi
+
+TUNNEL_HOST="${TUNNEL_HOST:-146.190.134.110}"
+TUNNEL_IDENTITY="$HOME/.ssh/rcc-tunnel-key"
+TUNNEL_LOG="$LOG_DIR/ssh-tunnel.log"
+touch "$TUNNEL_LOG" 2>/dev/null || true
+SHELL_TUNNEL_PORT=""
+
+# Generate a per-agent SSH key if we don't already have one
+if [[ ! -f "$TUNNEL_IDENTITY" ]]; then
+  info "Generating SSH tunnel key..."
+  ssh-keygen -t ed25519 -f "$TUNNEL_IDENTITY" -N "" -C "${AGENT_NAME:-unknown}-shell-tunnel" 2>/dev/null
+  success "SSH tunnel key generated: $TUNNEL_IDENTITY"
+fi
+
+# Register with RCC — get port assignment + auto-authorize the key
+# Uses /api/tunnel/request which allocates a port and writes to authorized_keys
+PUBKEY=$(cat "${TUNNEL_IDENTITY}.pub" 2>/dev/null || echo "")
+if [[ -n "$PUBKEY" ]]; then
+  info "Registering shell tunnel key with RCC..."
+  TUNNEL_RESP=$(curl -sf -X POST "${RCC_URL:-http://146.190.134.110:8789}/api/tunnel/shell" \
+    -H "Authorization: Bearer ${RCC_AGENT_TOKEN:-}" \
+    -H "Content-Type: application/json" \
+    -d "{\"pubkey\":\"${PUBKEY}\",\"agent\":\"${AGENT_NAME:-unknown}\",\"label\":\"${AGENT_NAME:-unknown}-shell-tunnel\"}" 2>/dev/null || echo "")
+  
+  if [[ -n "$TUNNEL_RESP" ]]; then
+    SHELL_TUNNEL_PORT=$(echo "$TUNNEL_RESP" | node -e "process.stdin.setEncoding('utf8');let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{const p=JSON.parse(d);console.log(p.port||'')}catch(e){}}" 2>/dev/null || echo "")
+    KEY_WRITTEN=$(echo "$TUNNEL_RESP" | node -e "process.stdin.setEncoding('utf8');let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{const p=JSON.parse(d);console.log(p.keyWritten?'yes':'no')}catch(e){console.log('no')}}" 2>/dev/null || echo "no")
+    TUNNEL_USER_REMOTE=$(echo "$TUNNEL_RESP" | node -e "process.stdin.setEncoding('utf8');let d='';process.stdin.on('data',c=>d+=c).on('end',()=>{try{const p=JSON.parse(d);console.log(p.user||'tunnel')}catch(e){console.log('tunnel')}}" 2>/dev/null || echo "tunnel")
+    
+    if [[ -n "$SHELL_TUNNEL_PORT" ]]; then
+      success "Shell tunnel port assigned: ${SHELL_TUNNEL_PORT} (key authorized: ${KEY_WRITTEN})"
+    else
+      warn "RCC response missing port — will retry on next setup run. Response: ${TUNNEL_RESP:0:100}"
+    fi
+  else
+    warn "Could not reach RCC tunnel API — tunnel will be configured but may not connect until key is authorized"
+    TUNNEL_USER_REMOTE="tunnel"
+  fi
+else
+  warn "Could not read tunnel public key — skipping RCC registration"
+  TUNNEL_USER_REMOTE="tunnel"
+fi
+
+# If RCC didn't give us a port, use a deterministic fallback based on agent name
+if [[ -z "$SHELL_TUNNEL_PORT" ]]; then
+  case "${AGENT_NAME:-}" in
+    peabody) SHELL_TUNNEL_PORT=19080 ;;
+    snidely) SHELL_TUNNEL_PORT=19081 ;;
+    sherman) SHELL_TUNNEL_PORT=19082 ;;
+    dudley)  SHELL_TUNNEL_PORT=19083 ;;
+    boris)   SHELL_TUNNEL_PORT=19084 ;;
+    *)       SHELL_TUNNEL_PORT=19099 ;;
+  esac
+  warn "Using fallback shell tunnel port: ${SHELL_TUNNEL_PORT}"
+fi
+
+TUNNEL_SCRIPT="$HOME/.rcc/rcc-ssh-tunnel.sh"
+cat > "$TUNNEL_SCRIPT" << TUNEOF
+#!/usr/bin/env bash
+# rcc-ssh-tunnel.sh — Maintains reverse SSH shell tunnel to do-host1
+# Exposes this container's sshd as do-host1 localhost:${SHELL_TUNNEL_PORT}
+# Rocky can then SSH in: ssh -p ${SHELL_TUNNEL_PORT} ${USER:-horde}@localhost (from do-host1)
+
+IDENTITY="${TUNNEL_IDENTITY}"
+REMOTE="${TUNNEL_USER_REMOTE:-tunnel}@${TUNNEL_HOST}"
+PORT="${SHELL_TUNNEL_PORT}"
+LOG="${TUNNEL_LOG}"
+
+echo "\$(date -u) [ssh-tunnel] Starting reverse shell tunnel :${SHELL_TUNNEL_PORT} → localhost:22" >> "\$LOG"
+
+while true; do
+  ssh -o StrictHostKeyChecking=no \
+      -o ServerAliveInterval=30 \
+      -o ServerAliveCountMax=3 \
+      -o ExitOnForwardFailure=yes \
+      -o BatchMode=yes \
+      -i "\$IDENTITY" \
+      -N \
+      -R "${SHELL_TUNNEL_PORT}:localhost:22" \
+      "\$REMOTE" >> "\$LOG" 2>&1
+  EXIT_CODE=\$?
+  echo "\$(date -u) [ssh-tunnel] Tunnel exited (code \$EXIT_CODE) — reconnecting in 15s" >> "\$LOG"
+  sleep 15
+done
+TUNEOF
+chmod +x "$TUNNEL_SCRIPT"
+success "SSH tunnel script written: $TUNNEL_SCRIPT (port ${SHELL_TUNNEL_PORT})"
+
+# Register tunnel with supervisord if available, else nohup
+if [[ -f "$SUPERVISORD_CONF" ]]; then
+  if grep -q "\[program:rcc-ssh-tunnel\]" "$SUPERVISORD_CONF" 2>/dev/null; then
+    success "rcc-ssh-tunnel already in supervisord.conf — skipping"
+  else
+    sudo tee -a "$SUPERVISORD_CONF" > /dev/null << SUPEOF
+
+[program:rcc-ssh-tunnel]
+command=${TUNNEL_SCRIPT}
+autostart=true
+autorestart=true
+startsecs=10
+startretries=999
+stdout_logfile=${TUNNEL_LOG}
+stderr_logfile=${TUNNEL_LOG}
+stdout_logfile_maxbytes=1MB
+stdout_logfile_backups=1
+user=${USER}
+SUPEOF
+    success "rcc-ssh-tunnel registered with supervisord"
+    sudo supervisorctl -c "$SUPERVISORD_CONF" reread 2>/dev/null && \
+    sudo supervisorctl -c "$SUPERVISORD_CONF" update 2>/dev/null || \
+    warn "supervisorctl reload failed — restart supervisord manually"
+  fi
+else
+  # nohup fallback
+  if pgrep -f "rcc-ssh-tunnel.sh" > /dev/null 2>&1; then
+    success "rcc-ssh-tunnel.sh already running"
+  else
+    nohup bash "$TUNNEL_SCRIPT" >> "$TUNNEL_LOG" 2>&1 &
+    SSH_PID=$!
+    sleep 2
+    if kill -0 "$SSH_PID" 2>/dev/null; then
+      success "SSH tunnel started via nohup (PID: $SSH_PID)"
+      echo "$SSH_PID" > "$RCC_DIR/ssh-tunnel.pid"
+    else
+      warn "SSH tunnel may not have started — check $TUNNEL_LOG"
+      warn "Likely cause: tunnel key not yet authorized on do-host1"
+    fi
+  fi
+fi
+
+# ── Step 7: Claude tmux session ─────────────────────────────────────────────
 info "Checking claude-main tmux session..."
 
 if ! command -v tmux &>/dev/null; then
@@ -312,22 +454,25 @@ echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo -e "🐿️  ${GREEN}Container setup complete!${NC}"
 echo ""
-echo "  Workspace:     $WORKSPACE"
-echo "  Pull loop:     $PULL_LOOP"
-echo "  Exec listener: $EXEC_LISTENER"
-echo "  Pull log:      $LOG_FILE"
-echo "  Exec log:      $EXEC_LOG"
+echo "  Workspace:      $WORKSPACE"
+echo "  Pull loop:      $PULL_LOOP"
+echo "  Exec listener:  $EXEC_LISTENER"
+echo "  SSH tunnel:     $TUNNEL_SCRIPT (port ${SHELL_TUNNEL_PORT:-?} → do-host1)"
+echo "  Pull log:       $LOG_FILE"
+echo "  Exec log:       $EXEC_LOG"
+echo "  Tunnel log:     $TUNNEL_LOG"
 echo ""
 
 if [ -f "$SUPERVISORD_CONF" ]; then
   echo "  Process manager: supervisord"
-  echo "  Programs:        rcc-agent-pull, rcc-exec-listener"
+  echo "  Programs:        rcc-agent-pull, rcc-exec-listener, rcc-ssh-tunnel"
   echo "  Check:           sudo supervisorctl -c $SUPERVISORD_CONF status"
 else
   echo "  Process manager: nohup background"
   echo "  Check pull:      pgrep -fa rcc-pull-loop"
   echo "  Check exec:      pgrep -fa agent-listener"
-  echo "  PID files:       $RCC_DIR/pull-loop.pid, $RCC_DIR/exec-listener.pid"
+  echo "  Check tunnel:    pgrep -fa rcc-ssh-tunnel"
+  echo "  PID files:       $RCC_DIR/pull-loop.pid, $RCC_DIR/exec-listener.pid, $RCC_DIR/ssh-tunnel.pid"
 fi
 
 echo ""
@@ -335,7 +480,11 @@ echo "  Verify these manually:"
 echo "  1. ~/.rcc/.env exists with AGENT_NAME, RCC_URL, RCC_AGENT_TOKEN, SQUIRRELBUS_TOKEN"
 echo "  2. Pull loop running:      tail -f $LOG_FILE"
 echo "  3. Exec listener running:  tail -f $EXEC_LOG"
-echo "  4. Claude session:         tmux attach -t claude-main"
+echo "  4. SSH tunnel:             tail -f $TUNNEL_LOG (needs key authorized on do-host1)"
+echo "  5. Claude session:         tmux attach -t claude-main"
+echo ""
+echo "  From do-host1, once tunnel key is authorized:"
+echo "    ssh -p ${SHELL_TUNNEL_PORT:-?} ${USER:-horde}@localhost"
 echo ""
 echo "  If .env is missing:"
 echo "    cp $REPO_DIR/deploy/.env.template ~/.rcc/.env"
