@@ -688,6 +688,165 @@ function projectsListHtml() {
   </script></body></html>`;
 }
 
+function packagesHtml() {
+  return `<!DOCTYPE html><html lang="en"><head>${HTML_STYLE}
+  <title>nano packages</title>
+  <style>
+    body{background:#0d1117;color:#c9d1d9;font-family:'Segoe UI',system-ui,sans-serif;margin:0;padding:1.5rem}
+    .nav{margin-bottom:1.5rem;color:#8b949e;font-size:.9rem}
+    .nav a{color:#58a6ff;text-decoration:none}
+    h1{margin:0 0 1rem;font-size:1.6rem}
+    .search-wrap{display:flex;gap:.75rem;margin-bottom:1.5rem}
+    #q{flex:1;background:#161b22;border:1px solid #30363d;color:#c9d1d9;border-radius:6px;padding:.5rem .85rem;font-size:.95rem}
+    #q:focus{outline:none;border-color:#58a6ff}
+    .pkg-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:1rem}
+    .pkg-card{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:1.1rem 1.3rem;display:flex;flex-direction:column;gap:.4rem;transition:border-color .15s}
+    .pkg-card:hover{border-color:#58a6ff}
+    .pkg-name{font-size:1.05rem;font-weight:600;color:#e6edf3}
+    .pkg-name a{color:#58a6ff;text-decoration:none}
+    .pkg-name a:hover{text-decoration:underline}
+    .pkg-ver{font-size:.78rem;background:#21262d;border:1px solid #30363d;color:#8b949e;border-radius:4px;padding:.1rem .4rem}
+    .pkg-desc{color:#8b949e;font-size:.88rem;line-height:1.45}
+    .pkg-meta{font-size:.78rem;color:#6e7681;display:flex;gap:1rem;flex-wrap:wrap;margin-top:.2rem}
+    .pkg-deps{font-size:.78rem;color:#6e7681}
+    .pkg-deps span{background:#161b22;border:1px solid #30363d;border-radius:4px;padding:.1rem .4rem;margin:.1rem .2rem .1rem 0;display:inline-block}
+    .badge{font-size:.72rem;padding:.15rem .45rem;border-radius:10px;font-weight:600}
+    .badge-nano{background:#1a3a2a;color:#3fb950;border:1px solid #3fb950}
+    #status{color:#8b949e;font-size:.85rem;margin-bottom:.75rem;min-height:1.2em}
+    .empty{color:#8b949e;text-align:center;padding:3rem;font-size:.95rem}
+    .error-msg{color:#f85149;font-size:.85rem;padding:1rem;background:#21262d;border-radius:6px}
+  </style>
+</head><body>
+<div class="nav"><a href="/">← RCC</a> &nbsp;·&nbsp; <a href="/services">Services</a></div>
+<h1>📦 nano packages</h1>
+<div class="search-wrap">
+  <input id="q" type="text" placeholder="Search packages…" autocomplete="off"/>
+</div>
+<div id="status">Loading…</div>
+<div id="grid" class="pkg-grid"></div>
+<script>
+const REGISTRY_API = 'https://api.github.com/repos/jordanhubbard/nano-packages/contents/packages';
+const REGISTRY_RAW = 'https://raw.githubusercontent.com/jordanhubbard/nano-packages/main/packages';
+let allPkgs = [];
+
+function renderPkg(p) {
+  const deps = (p.dependencies && Object.keys(p.dependencies).length)
+    ? '<div class="pkg-deps">deps: '
+      + Object.entries(p.dependencies).map(([k,v])=>\`<span>\${k}@\${v}</span>\`).join('')
+      + '</div>'
+    : '';
+  const srcLink = p.github
+    ? \`<a href="\${p.github}" target="_blank" rel="noopener">source</a>\`
+    : '';
+  return \`<div class="pkg-card">
+    <div class="pkg-name"><a href="\${p.github||'#'}" target="_blank" rel="noopener">\${p.name}</a>
+      &nbsp;<span class="pkg-ver">\${p.version||'?'}</span>
+      &nbsp;<span class="badge badge-nano">nano</span></div>
+    <div class="pkg-desc">\${p.description||'No description.'}</div>
+    \${deps}
+    <div class="pkg-meta">
+      \${p.author ? '<span>👤 '+p.author+'</span>' : ''}
+      \${p.license ? '<span>📄 '+p.license+'</span>' : ''}
+      \${srcLink}
+    </div>
+  </div>\`;
+}
+
+function filter(q) {
+  const lq = q.toLowerCase();
+  const shown = lq ? allPkgs.filter(p =>
+    (p.name||'').toLowerCase().includes(lq) ||
+    (p.description||'').toLowerCase().includes(lq) ||
+    (p.author||'').toLowerCase().includes(lq)
+  ) : allPkgs;
+  document.getElementById('grid').innerHTML = shown.length
+    ? shown.map(renderPkg).join('')
+    : '<div class="empty">No packages match "'+q+'"</div>';
+  document.getElementById('status').textContent = shown.length + ' package' + (shown.length===1?'':'s') + (lq?' matching "'+q+'"':'');
+}
+
+async function loadRegistry() {
+  const status = document.getElementById('status');
+  try {
+    const r = await fetch(REGISTRY_API, {headers: {'Accept':'application/vnd.github+json'}});
+    if (!r.ok) {
+      if (r.status === 404) {
+        // Registry repo doesn't exist yet or no packages dir — show placeholder
+        status.textContent = '';
+        document.getElementById('grid').innerHTML = '<div class="empty">Registry is empty — publish your first package with <code>nano-pkg publish</code></div>';
+        return;
+      }
+      throw new Error('GitHub API ' + r.status);
+    }
+    const dirs = await r.json();
+    const pkgDirs = Array.isArray(dirs) ? dirs.filter(d => d.type === 'dir') : [];
+    if (!pkgDirs.length) {
+      status.textContent = '';
+      document.getElementById('grid').innerHTML = '<div class="empty">No packages published yet.</div>';
+      return;
+    }
+    status.textContent = 'Loading ' + pkgDirs.length + ' packages…';
+    const manifests = await Promise.allSettled(
+      pkgDirs.map(d => fetch(REGISTRY_RAW + '/' + d.name + '/nano.toml')
+        .then(r => r.ok ? r.text() : null)
+        .then(txt => txt ? parseToml(txt, d.name) : null)
+      )
+    );
+    allPkgs = manifests
+      .filter(r => r.status === 'fulfilled' && r.value)
+      .map(r => r.value)
+      .sort((a,b) => (a.name||'').localeCompare(b.name||''));
+    filter(document.getElementById('q').value);
+  } catch(e) {
+    status.textContent = '';
+    document.getElementById('grid').innerHTML = '<div class="error-msg">⚠️ Failed to load registry: ' + e.message + '</div>';
+  }
+}
+
+// Minimal TOML parser for nano.toml package manifests
+// Handles: key = "value", key = ["a","b"], [section], [[array]]
+function parseToml(txt, pkgName) {
+  const out = { name: pkgName };
+  let section = out;
+  const lines = txt.split(/\\r?\\n/);
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    // [section] header
+    const secM = line.match(/^\\[([^\\[\\]]+)\\]$/);
+    if (secM) { const k = secM[1].trim(); out[k]=out[k]||{}; section=out[k]; continue; }
+    // key = value
+    const eqIdx = line.indexOf('=');
+    if (eqIdx < 0) continue;
+    const key = line.slice(0, eqIdx).trim();
+    let val = line.slice(eqIdx+1).trim();
+    // string
+    if ((val.startsWith('"') && val.endsWith('"')) ||
+        (val.startsWith("'") && val.endsWith("'")))
+      val = val.slice(1,-1);
+    // inline array
+    else if (val.startsWith('[') && val.endsWith(']')) {
+      val = val.slice(1,-1).split(',')
+        .map(s=>s.trim().replace(/^['"]|['"]$/g,''))
+        .filter(Boolean);
+    }
+    section[key] = val;
+  }
+  // Flatten [package] section into top-level
+  if (out.package) Object.assign(out, out.package);
+  // Map github URL
+  if (!out.github && out.repository) out.github = out.repository;
+  if (!out.github && out.name)
+    out.github = 'https://github.com/jordanhubbard/nano-packages/tree/main/packages/' + out.name;
+  return out;
+}
+
+document.getElementById('q').addEventListener('input', e => filter(e.target.value));
+loadRegistry();
+</script>
+</body></html>`;
+}
+
 function servicesHtml() {
   return `<!DOCTYPE html><html lang="en"><head>${HTML_STYLE}
   <style>
@@ -702,19 +861,47 @@ function servicesHtml() {
     .host-tag{background:#21262d;border:1px solid #30363d;border-radius:4px;padding:.1rem .45rem;font-size:.72rem;color:#8b949e}
     .status-dot{display:inline-block;width:.55rem;height:.55rem;border-radius:50%;margin-right:.3rem}
     .status-online{background:#3fb950}
+    .status-away{background:#e3b341}
     .status-offline{background:#f85149}
     .status-unknown{background:#8b949e}
     .status-badge-online{color:#3fb950;font-size:.78rem;font-weight:600}
+    .status-badge-away{color:#e3b341;font-size:.78rem;font-weight:600}
     .status-badge-offline{color:#f85149;font-size:.78rem;font-weight:600}
     .status-badge-unknown{color:#8b949e;font-size:.78rem}
     .latency{color:#8b949e;font-size:.72rem;margin-left:.3rem}
+    /* Mesh panel */
+    .mesh-panel{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:1.25rem 1.5rem;margin-top:1.5rem}
+    .mesh-panel h2{font-size:1.05rem;font-weight:700;margin-bottom:1rem;color:#f0f6fc}
+    .mesh-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:.75rem;margin-bottom:1rem}
+    .mesh-node{background:#0d1117;border:1px solid #30363d;border-radius:6px;padding:.75rem 1rem}
+    .mesh-node.online{border-color:#3fb95044}
+    .mesh-node.away{border-color:#e3b34144}
+    .mesh-node.offline{border-color:#f8514944;opacity:.7}
+    .mesh-node-name{font-weight:700;font-size:.9rem;margin-bottom:.3rem}
+    .mesh-node-meta{font-size:.78rem;color:#8b949e;line-height:1.5}
+    .mesh-node-badge{display:inline-block;font-size:.7rem;border-radius:3px;padding:.1rem .4rem;margin-right:.3rem}
+    .badge-gpu{background:#6e40c922;color:#a371f7;border:1px solid #6e40c955}
+    .badge-vllm{background:#1f6feb22;color:#58a6ff;border:1px solid #1f6feb55}
+    .vibe-slots{display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.5rem}
+    .slot{display:flex;align-items:center;gap:.3rem;background:#0d1117;border:1px solid #30363d;border-radius:4px;padding:.2rem .5rem;font-size:.75rem}
+    .slot.active{border-color:#3fb95066;color:#3fb950}
+    .slot.idle{color:#8b949e}
+    .spawn-log{margin-top:.75rem;border-top:1px solid #21262d;padding-top:.75rem}
+    .spawn-log h3{font-size:.85rem;color:#8b949e;font-weight:600;margin-bottom:.5rem}
+    .spawn-entry{font-size:.78rem;color:#8b949e;padding:.2rem 0;border-bottom:1px solid #21262d22;display:flex;gap:.5rem}
+    .spawn-ts{color:#6e7681;min-width:5rem}
+    .mesh-refresh{float:right;background:none;border:1px solid #30363d;color:#8b949e;border-radius:4px;padding:.2rem .6rem;font-size:.78rem;cursor:pointer}
+    .mesh-refresh:hover{border-color:#58a6ff;color:#58a6ff}
   </style>
   <title>Services — RCC</title></head><body>
   <div class="nav"><a href="/projects">Projects</a> &nbsp;·&nbsp; <a href="/">← RCC</a></div>
   <h1>Services</h1>
   <p class="subtitle">Agent infrastructure — live status probed every 30 seconds</p>
   <div id="root"><p class="spinner">Loading…</p></div>
+  <div id="mesh-root"><p class="spinner">Loading mesh…</p></div>
   <script>
+    function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+    function timeAgo(ds){if(!ds)return'never';const s=Math.floor((Date.now()-new Date(ds))/1000);if(s<60)return s+'s ago';if(s<3600)return Math.floor(s/60)+'m ago';if(s<86400)return Math.floor(s/3600)+'h ago';return Math.floor(s/86400)+'d ago';}
     function renderCard(s){
       const online=s.online;
       const dotClass=online===null?'status-unknown':online?'status-online':'status-offline';
@@ -733,11 +920,52 @@ function servicesHtml() {
         </div>
       </div>\`;
     }
+    function renderMesh(d){
+      const nodes=d.nodes||[];
+      const vibe=d.vibe_engine;
+      const spawnLog=d.spawn_log||[];
+      const nodeCards=nodes.map(n=>{
+        const badges=(n.gpu?'<span class="mesh-node-badge badge-gpu">GPU</span>':'')+(n.vllm?'<span class="mesh-node-badge badge-vllm">vLLM:'+n.vllm_port+'</span>':'');
+        const seen='<div>last seen: '+timeAgo(n.lastSeen)+'</div>';
+        const hostTag=n.host&&n.host!==n.name?'<div>host: '+esc(n.host)+'</div>':'';
+        const gpuInfo=n.gpu_model?'<div>'+esc(n.gpu_model)+(n.gpu_count?' ×'+n.gpu_count:'')+'</div>':'';
+        return \`<div class="mesh-node \${n.status}">
+          <div class="mesh-node-name"><span class="status-dot status-\${n.status}"></span>\${esc(n.name)}</div>
+          <div class="mesh-node-meta">\${badges}\${hostTag}\${gpuInfo}\${seen}</div>
+        </div>\`;
+      }).join('');
+      let vibeHtml='';
+      if(vibe){
+        const slots=(vibe.slots||[]).map(s=>\`<div class="slot \${s.state}">\${s.slot_id}: \${s.state}\${s.service_name?' ('+esc(s.service_name)+')':''}</div>\`).join('');
+        vibeHtml=\`<div style="margin-top:.75rem;border-top:1px solid #21262d;padding-top:.75rem">
+          <div style="font-size:.85rem;font-weight:600;color:#8b949e;margin-bottom:.4rem">agentOS VibeEngine — \${esc(vibe.arch||'riscv64')} · \${vibe.swap_slots?.active||0}/\${vibe.swap_slots?.total||4} slots active</div>
+          <div class="vibe-slots">\${slots}</div>
+        </div>\`;
+      }
+      const spawnHtml=spawnLog.length?\`<div class="spawn-log"><h3>Recent Spawns</h3>\${spawnLog.slice(0,5).map(e=>\`<div class="spawn-entry"><span class="spawn-ts">\${timeAgo(e.ts)}</span><span>\${esc(e.agent||'?')} → \${esc(e.type||'?')}</span></div>\`).join('')}</div>\`:'';
+      return \`<div class="mesh-panel">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.75rem">
+          <h2 style="margin-bottom:0">🕸️ agentOS Mesh</h2>
+          <button class="mesh-refresh" onclick="loadMesh()">↻ Refresh</button>
+        </div>
+        <div class="mesh-grid">\${nodeCards||'<p style="color:#8b949e;font-size:.85rem">No nodes found.</p>'}</div>
+        \${vibeHtml}
+        \${spawnHtml}
+        <div style="font-size:.72rem;color:#6e7681;margin-top:.75rem">Updated: \${new Date(d.ts).toLocaleTimeString()}</div>
+      </div>\`;
+    }
+    function loadMesh(){
+      fetch('/api/mesh').then(r=>r.json()).then(d=>{
+        document.getElementById('mesh-root').innerHTML=renderMesh(d);
+      }).catch(e=>{document.getElementById('mesh-root').innerHTML='<p class="error">Mesh unavailable: '+e.message+'</p>';});
+    }
     fetch('/api/services/status').then(r=>r.json()).then(services=>{
       const root=document.getElementById('root');
       if(!services.length){root.innerHTML='<p class="error">No services configured.</p>';return;}
       root.innerHTML='<div class="svc-grid">'+services.map(renderCard).join('')+'</div>';
     }).catch(e=>{document.getElementById('root').innerHTML='<p class="error">Failed to load: '+e.message+'</p>';});
+    loadMesh();
+    setInterval(loadMesh, 30000);
   </script></body></html>`;
 }
 
@@ -1257,6 +1485,13 @@ async function handleRequest(req, res) {
     if (method === 'GET' && path === '/services') {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
       res.end(servicesHtml());
+      return;
+    }
+
+    // ── UI: GET /packages — nanolang package registry browser ────────────
+    if (method === 'GET' && path === '/packages') {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
+      res.end(packagesHtml());
       return;
     }
 
@@ -2050,6 +2285,203 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
     if (method === 'GET' && path === '/api/services/status') {
       const statuses = await getServicesStatus();
       return json(res, 200, statuses);
+    }
+
+    // ── GET /pkg — nano package registry browser UI (public) ─────────────
+    if (method === 'GET' && path === '/pkg') {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
+      res.end(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>nano packages</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Courier New', monospace; background: #0d1117; color: #c9d1d9; min-height: 100vh; }
+  .header { background: #161b22; border-bottom: 1px solid #30363d; padding: 16px 32px; display: flex; align-items: center; gap: 16px; }
+  .header h1 { font-size: 1.3rem; color: #58a6ff; }
+  .header .subtitle { color: #8b949e; font-size: 0.85rem; }
+  .nav { margin-left: auto; font-size: 0.85rem; }
+  .nav a { color: #58a6ff; text-decoration: none; margin-left: 16px; }
+  .nav a:hover { text-decoration: underline; }
+  .container { max-width: 1100px; margin: 0 auto; padding: 24px 32px; }
+  .search-bar { width: 100%; padding: 10px 14px; background: #161b22; border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9; font-family: inherit; font-size: 0.95rem; margin-bottom: 20px; outline: none; }
+  .search-bar:focus { border-color: #58a6ff; }
+  .stats { color: #8b949e; font-size: 0.85rem; margin-bottom: 16px; }
+  .pkg-grid { display: grid; gap: 12px; }
+  .pkg-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px 20px; transition: border-color 0.15s; }
+  .pkg-card:hover { border-color: #58a6ff; }
+  .pkg-name { font-size: 1.05rem; color: #58a6ff; font-weight: bold; }
+  .pkg-version { color: #3fb950; font-size: 0.85rem; margin-left: 8px; }
+  .pkg-desc { color: #8b949e; font-size: 0.875rem; margin: 6px 0; }
+  .pkg-meta { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px; font-size: 0.8rem; color: #8b949e; }
+  .pkg-meta a { color: #58a6ff; text-decoration: none; }
+  .pkg-meta a:hover { text-decoration: underline; }
+  .tag { background: #1f3447; color: #58a6ff; border-radius: 12px; padding: 2px 8px; font-size: 0.75rem; }
+  .tag-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .error { color: #f85149; padding: 20px; text-align: center; }
+  .loading { color: #8b949e; padding: 20px; text-align: center; }
+  .empty { color: #8b949e; padding: 40px; text-align: center; font-size: 0.9rem; }
+  .install-code { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 4px 8px; font-size: 0.8rem; color: #3fb950; cursor: pointer; }
+  .install-code:hover { border-color: #3fb950; }
+</style>
+</head>
+<body>
+<div class="header">
+  <div>
+    <h1>🐿️ nano packages</h1>
+    <div class="subtitle">nanolang package registry &mdash; <a href="https://github.com/jordanhubbard/nano-packages" style="color:#58a6ff;" target="_blank">jordanhubbard/nano-packages</a></div>
+  </div>
+  <div class="nav">
+    <a href="/">&#8592; RCC</a>
+    <a href="/services">Services</a>
+    <a href="https://github.com/jordanhubbard/nano-packages" target="_blank">GitHub</a>
+  </div>
+</div>
+<div class="container">
+  <input class="search-bar" type="text" id="search" placeholder="Search packages by name, description, or keyword..." autofocus>
+  <div class="stats" id="stats">Loading...</div>
+  <div class="pkg-grid" id="grid"><div class="loading">Fetching registry...</div></div>
+</div>
+<script>
+let allPackages = [];
+
+async function loadPackages() {
+  try {
+    const r = await fetch('/api/pkg');
+    const data = await r.json();
+    if (data.error) throw new Error(data.error);
+    allPackages = data.packages || [];
+    render(allPackages);
+    const t = data.fetchedAt ? new Date(data.fetchedAt).toLocaleTimeString() : '';
+    document.getElementById('stats').textContent =
+      allPackages.length + ' package' + (allPackages.length !== 1 ? 's' : '') +
+      (data.cached ? ' (cached)' : '') + (t ? ' \u00b7 updated ' + t : '');
+  } catch(e) {
+    document.getElementById('stats').textContent = '';
+    document.getElementById('grid').innerHTML = '<div class="error">Failed to load registry: ' + e.message + '</div>';
+  }
+}
+
+function render(pkgs) {
+  const grid = document.getElementById('grid');
+  if (!pkgs.length) {
+    grid.innerHTML = '<div class="empty">No packages found. The registry at <a href="https://github.com/jordanhubbard/nano-packages" style="color:#58a6ff;" target="_blank">jordanhubbard/nano-packages</a> appears empty &mdash; publish the first package with <code style="color:#3fb950">nanoc-pkg publish</code>.</div>';
+    return;
+  }
+  grid.innerHTML = pkgs.map(function(p) {
+    var deps = Object.keys(p.dependencies || {});
+    var installCmd = 'nanoc-pkg install ' + p.name;
+    return '<div class="pkg-card">' +
+      '<div><span class="pkg-name">' + esc(p.name) + '</span>' +
+      '<span class="pkg-version">v' + esc(p.version || '?') + '</span></div>' +
+      (p.description ? '<div class="pkg-desc">' + esc(p.description) + '</div>' : '') +
+      '<div class="pkg-meta">' +
+      (p.author ? '<span>by ' + esc(p.author) + '</span>' : '') +
+      (p.license ? '<span>' + esc(p.license) + '</span>' : '') +
+      (p.homepage ? '<a href="' + esc(p.homepage) + '" target="_blank">homepage</a>' : '') +
+      (p.repository ? '<a href="' + esc(p.repository) + '" target="_blank">source</a>' : '') +
+      '<span class="install-code" onclick="navigator.clipboard.writeText(\\'' + installCmd + '\\')" title="Copy install command">' + esc(installCmd) + '</span>' +
+      '</div>' +
+      (deps.length ? '<div class="tag-row">' + deps.map(function(d){return '<span class="tag">dep: '+esc(d)+'</span>';}).join('') + '</div>' : '') +
+      '</div>';
+  }).join('');
+}
+
+function esc(s) {
+  return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+document.getElementById('search').addEventListener('input', function(e) {
+  var q = e.target.value.toLowerCase();
+  if (!q) { render(allPackages); return; }
+  render(allPackages.filter(function(p) {
+    return (p.name||'').toLowerCase().indexOf(q) >= 0 ||
+      (p.description||'').toLowerCase().indexOf(q) >= 0 ||
+      (p.author||'').toLowerCase().indexOf(q) >= 0 ||
+      Object.keys(p.dependencies||{}).some(function(d){return d.toLowerCase().indexOf(q)>=0;});
+  }));
+});
+
+loadPackages();
+</script>
+</body>
+</html>`);
+      return;
+    }
+
+    // ── GET /api/pkg — nano package registry JSON (public) ───────────────
+    if (method === 'GET' && path === '/api/pkg') {
+      const PKG_CACHE_TTL = 5 * 60 * 1000;
+      if (!globalThis._pkgCache || Date.now() - globalThis._pkgCache.ts > PKG_CACHE_TTL) {
+        try {
+          const listing = await new Promise((resolve, reject) => {
+            _https.get({
+              hostname: 'api.github.com',
+              path: '/repos/jordanhubbard/nano-packages/contents',
+              headers: { 'User-Agent': 'rcc-api/1.0', 'Accept': 'application/vnd.github.v3+json' },
+            }, (r) => {
+              let buf = '';
+              r.on('data', d => buf += d);
+              r.on('end', () => { try { resolve(JSON.parse(buf)); } catch(e) { reject(e); } });
+            }).on('error', reject);
+          });
+          const dirs = Array.isArray(listing) ? listing.filter(e => e.type === 'dir') : [];
+          const packages = [];
+          for (const dir of dirs) {
+            try {
+              const manifest = await new Promise((resolve, reject) => {
+                const u = new URL(`https://raw.githubusercontent.com/jordanhubbard/nano-packages/main/${dir.name}/nano.toml`);
+                _https.get({ hostname: u.hostname, path: u.pathname, headers: { 'User-Agent': 'rcc-api/1.0' } }, (r) => {
+                  let buf = '';
+                  r.on('data', d => buf += d);
+                  r.on('end', () => resolve(buf));
+                }).on('error', reject);
+              });
+              const getField = (section, key) => {
+                const secMatch = manifest.match(new RegExp('\\[' + section + '\\]([^]*?)(?=\\n\\[|$)'));
+                if (!secMatch) return '';
+                const kMatch = secMatch[1].match(new RegExp('^' + key + '\\s*=\\s*["\']?([^"\'\\n]+)["\']?', 'm'));
+                return kMatch ? kMatch[1].trim() : '';
+              };
+              const getDeps = () => {
+                const depSection = manifest.match(/\[dependencies\]([^]*?)(?=\n\[|$)/);
+                if (!depSection) return {};
+                const deps = {};
+                for (const line of depSection[1].split('\n')) {
+                  const m = line.match(/^\s*(\w[\w_-]*)\s*=\s*["']?([^"'\n]+)["']?/);
+                  if (m) deps[m[1]] = m[2].trim();
+                }
+                return deps;
+              };
+              packages.push({
+                name: getField('package', 'name') || dir.name,
+                version: getField('package', 'version'),
+                description: getField('package', 'description'),
+                author: getField('package', 'author'),
+                license: getField('package', 'license'),
+                homepage: getField('package', 'homepage'),
+                repository: `https://github.com/jordanhubbard/nano-packages/tree/main/${dir.name}`,
+                dependencies: getDeps(),
+              });
+            } catch (_) { /* skip unparseable */ }
+          }
+          globalThis._pkgCache = { packages, ts: Date.now() };
+        } catch (err) {
+          if (!globalThis._pkgCache) globalThis._pkgCache = { packages: [], ts: 0 };
+          console.warn('[rcc-api] /api/pkg fetch error:', err.message);
+        }
+      }
+      const cache = globalThis._pkgCache;
+      return json(res, 200, {
+        ok: true,
+        count: cache.packages.length,
+        packages: cache.packages,
+        cached: cache.ts > 0 && (Date.now() - cache.ts) < 5 * 60 * 1000,
+        fetchedAt: cache.ts || null,
+        registry: 'https://github.com/jordanhubbard/nano-packages',
+      });
     }
 
     // ── Auth-required endpoints ───────────────────────────────────────────
@@ -4755,6 +5187,81 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
       return json(res, 200, result);
     }
 
+    // ── GET /api/mesh — agentOS distributed mesh topology + slot health ────────
+    if (method === 'GET' && path === '/api/mesh') {
+      const now = Date.now();
+      if (!global._meshCache) global._meshCache = { data: null, ts: 0 };
+      const MESH_TTL = 30 * 1000; // 30s cache
+      if (global._meshCache.data && (now - global._meshCache.ts) < MESH_TTL) {
+        return json(res, 200, global._meshCache.data);
+      }
+
+      // Get agents from registry + heartbeat data
+      const agentMap = await readAgents().catch(() => ({}));
+      const meshAgents = ['rocky', 'natasha', 'sparky', 'bullwinkle', 'boris'];
+      const knownNames = new Set([...Object.keys(agentMap), ...Object.keys(heartbeats)]);
+
+      const nodes = [];
+      for (const name of knownNames) {
+        const reg = agentMap[name] || {};
+        const hb  = heartbeats[name] || {};
+        const lastSeen = hb.ts || reg.lastSeen || null;
+        const gapMs    = lastSeen ? now - new Date(lastSeen).getTime() : null;
+        const status   = !lastSeen ? 'offline'
+                       : gapMs < 3 * 60 * 1000   ? 'online'
+                       : gapMs < 15 * 60 * 1000  ? 'away'
+                       :                           'offline';
+        if (status === 'offline' && !reg.gpu && !meshAgents.includes(name)) continue; // skip stale non-GPU agents
+
+        nodes.push({
+          name,
+          host:      reg.host   || hb.host   || name,
+          status,
+          lastSeen,
+          gpu:       reg.gpu    || hb.gpu    || false,
+          gpu_model: reg.gpu_model || hb.gpu_model || null,
+          gpu_count: reg.gpu_count || hb.gpu_count || null,
+          vllm:      reg.vllm   || hb.vllm   || false,
+          vllm_port: reg.vllm_port || hb.vllm_port || null,
+        });
+      }
+
+      // Fetch agentOS slot data for sparky
+      let vibeSlots = null;
+      try {
+        const ctrl = new AbortController();
+        setTimeout(() => ctrl.abort(), 3000);
+        const r = await fetch('http://127.0.0.1:8789/api/agentos/slots', {
+          signal: ctrl.signal,
+          headers: { Authorization: `Bearer ${process.env.RCC_AGENT_TOKEN || ''}` },
+        });
+        if (r.ok) vibeSlots = (await r.json()).vibe_engine || null;
+      } catch (_) {}
+
+      // Recent spawn events from SquirrelBus (last 10 EVT_AGENT_SPAWNED messages)
+      let spawnLog = [];
+      try {
+        const busPath = process.env.BUS_LOG_PATH || '/home/jkh/rockyandfriends/rcc/data/bus.jsonl';
+        const { readFileSync } = await import('fs');
+        const lines = readFileSync(busPath, 'utf8').trim().split('\n').filter(Boolean);
+        spawnLog = lines
+          .map(l => { try { return JSON.parse(l); } catch { return null; } })
+          .filter(m => m && (m.type === 'EVT_AGENT_SPAWNED' || (m.payload && m.payload.type === 'EVT_AGENT_SPAWNED')))
+          .slice(-10)
+          .map(m => ({ ts: m.ts, agent: m.agent || m.from, type: m.type || m.payload?.type, payload: m.payload }))
+          .reverse();
+      } catch (_) {}
+
+      const result = {
+        ts: new Date().toISOString(),
+        nodes,
+        vibe_engine: vibeSlots,
+        spawn_log: spawnLog,
+      };
+      global._meshCache = { data: result, ts: now };
+      return json(res, 200, result);
+    }
+
     // GET /api/metrics
     if (method === 'GET' && path === '/api/metrics') {
       const data = await readQueue();
@@ -5049,6 +5556,219 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
           claimedBy: i.claimedBy, claimedAt: i.claimedAt,
           keepaliveAt: i.keepaliveAt, attempts: i.attempts,
         })),
+      });
+    }
+
+    // ── GET /pkg — nano package registry browser UI ──────────────────────
+    if (method === 'GET' && path === '/pkg') {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end(`<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>nano packages</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Courier New', monospace; background: #0d1117; color: #c9d1d9; min-height: 100vh; }
+  .header { background: #161b22; border-bottom: 1px solid #30363d; padding: 16px 32px; display: flex; align-items: center; gap: 16px; }
+  .header h1 { font-size: 1.3rem; color: #58a6ff; }
+  .header .subtitle { color: #8b949e; font-size: 0.85rem; }
+  .nav { margin-left: auto; font-size: 0.85rem; }
+  .nav a { color: #58a6ff; text-decoration: none; margin-left: 16px; }
+  .nav a:hover { text-decoration: underline; }
+  .container { max-width: 1100px; margin: 0 auto; padding: 24px 32px; }
+  .search-bar { width: 100%; padding: 10px 14px; background: #161b22; border: 1px solid #30363d; border-radius: 6px; color: #c9d1d9; font-family: inherit; font-size: 0.95rem; margin-bottom: 20px; outline: none; }
+  .search-bar:focus { border-color: #58a6ff; }
+  .stats { color: #8b949e; font-size: 0.85rem; margin-bottom: 16px; }
+  .pkg-grid { display: grid; gap: 12px; }
+  .pkg-card { background: #161b22; border: 1px solid #30363d; border-radius: 8px; padding: 16px 20px; transition: border-color 0.15s; }
+  .pkg-card:hover { border-color: #58a6ff; }
+  .pkg-name { font-size: 1.05rem; color: #58a6ff; font-weight: bold; }
+  .pkg-version { color: #3fb950; font-size: 0.85rem; margin-left: 8px; }
+  .pkg-desc { color: #8b949e; font-size: 0.875rem; margin: 6px 0; }
+  .pkg-meta { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 8px; font-size: 0.8rem; color: #8b949e; }
+  .pkg-meta a { color: #58a6ff; text-decoration: none; }
+  .pkg-meta a:hover { text-decoration: underline; }
+  .tag { background: #1f3447; color: #58a6ff; border-radius: 12px; padding: 2px 8px; font-size: 0.75rem; }
+  .tag-row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+  .error { color: #f85149; padding: 20px; text-align: center; }
+  .loading { color: #8b949e; padding: 20px; text-align: center; }
+  .empty { color: #8b949e; padding: 40px; text-align: center; font-size: 0.9rem; }
+  .install-code { background: #0d1117; border: 1px solid #30363d; border-radius: 4px; padding: 4px 8px; font-size: 0.8rem; color: #3fb950; cursor: pointer; }
+  .install-code:hover { border-color: #3fb950; }
+</style>
+</head>
+<body>
+<div class="header">
+  <div>
+    <h1>🐿️ nano packages</h1>
+    <div class="subtitle">nanolang package registry — <a href="https://github.com/jordanhubbard/nano-packages" style="color:#58a6ff;">jordanhubbard/nano-packages</a></div>
+  </div>
+  <div class="nav">
+    <a href="/">← RCC</a>
+    <a href="/services">Services</a>
+    <a href="https://github.com/jordanhubbard/nano-packages" target="_blank">GitHub</a>
+  </div>
+</div>
+<div class="container">
+  <input class="search-bar" type="text" id="search" placeholder="Search packages by name, description, or keyword..." autofocus>
+  <div class="stats" id="stats">Loading...</div>
+  <div class="pkg-grid" id="grid"><div class="loading">Fetching registry...</div></div>
+</div>
+<script>
+let allPackages = [];
+
+async function loadPackages() {
+  try {
+    const r = await fetch('/api/pkg');
+    const data = await r.json();
+    if (data.error) throw new Error(data.error);
+    allPackages = data.packages || [];
+    render(allPackages);
+    document.getElementById('stats').textContent =
+      allPackages.length + ' package' + (allPackages.length !== 1 ? 's' : '') +
+      (data.cached ? ' (cached)' : '') +
+      (data.fetchedAt ? ' · updated ' + new Date(data.fetchedAt).toLocaleTimeString() : '');
+  } catch(e) {
+    document.getElementById('stats').textContent = '';
+    document.getElementById('grid').innerHTML = '<div class="error">Failed to load registry: ' + e.message + '</div>';
+  }
+}
+
+function render(pkgs) {
+  const grid = document.getElementById('grid');
+  if (!pkgs.length) {
+    grid.innerHTML = '<div class="empty">No packages found.</div>';
+    return;
+  }
+  grid.innerHTML = pkgs.map(p => {
+    const deps = Object.keys(p.dependencies || {});
+    const installCmd = 'nanoc-pkg install ' + p.name;
+    return '<div class="pkg-card">' +
+      '<div><span class="pkg-name">' + esc(p.name) + '</span>' +
+      '<span class="pkg-version">v' + esc(p.version || '?') + '</span></div>' +
+      (p.description ? '<div class="pkg-desc">' + esc(p.description) + '</div>' : '') +
+      '<div class="pkg-meta">' +
+      (p.author ? '<span>by ' + esc(p.author) + '</span>' : '') +
+      (p.license ? '<span>' + esc(p.license) + '</span>' : '') +
+      (p.homepage ? '<a href="' + esc(p.homepage) + '" target="_blank">homepage</a>' : '') +
+      (p.repository ? '<a href="' + esc(p.repository) + '" target="_blank">source</a>' : '') +
+      '<span class="install-code" onclick="navigator.clipboard.writeText(\\''+installCmd+'\\')" title="Copy install command">' + esc(installCmd) + '</span>' +
+      '</div>' +
+      (deps.length ? '<div class="tag-row">' + deps.map(d => '<span class="tag">dep: '+esc(d)+'</span>').join('') + '</div>' : '') +
+      '</div>';
+  }).join('');
+}
+
+function esc(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+document.getElementById('search').addEventListener('input', e => {
+  const q = e.target.value.toLowerCase();
+  if (!q) { render(allPackages); return; }
+  render(allPackages.filter(p =>
+    (p.name||'').toLowerCase().includes(q) ||
+    (p.description||'').toLowerCase().includes(q) ||
+    (p.author||'').toLowerCase().includes(q) ||
+    Object.keys(p.dependencies||{}).some(d => d.toLowerCase().includes(q))
+  ));
+});
+
+loadPackages();
+</script>
+</body>
+</html>`);
+      return;
+    }
+
+    // ── GET /api/pkg — nano package registry JSON ─────────────────────────
+    // Fetches nano.toml manifests from github.com/jordanhubbard/nano-packages
+    // Caches for 5 minutes to avoid hammering GitHub API
+    if (method === 'GET' && path.startsWith('/api/pkg')) {
+      const PKG_CACHE_TTL = 5 * 60 * 1000; // 5 min
+      if (!globalThis._pkgCache || Date.now() - globalThis._pkgCache.ts > PKG_CACHE_TTL) {
+        // Fetch directory listing from GitHub API
+        const ghApiBase = 'https://api.github.com/repos/jordanhubbard/nano-packages/contents';
+        try {
+          const listing = await new Promise((resolve, reject) => {
+            const reqOpts = {
+              hostname: 'api.github.com',
+              path: '/repos/jordanhubbard/nano-packages/contents',
+              headers: { 'User-Agent': 'rcc-api/1.0', 'Accept': 'application/vnd.github.v3+json' },
+            };
+            _https.get(reqOpts, (r) => {
+              let buf = '';
+              r.on('data', d => buf += d);
+              r.on('end', () => {
+                try { resolve(JSON.parse(buf)); } catch(e) { reject(e); }
+              });
+            }).on('error', reject);
+          });
+
+          // For each directory entry that looks like a package dir, fetch nano.toml
+          const dirs = Array.isArray(listing) ? listing.filter(e => e.type === 'dir') : [];
+          const packages = [];
+          for (const dir of dirs) {
+            try {
+              const manifest = await new Promise((resolve, reject) => {
+                const rawUrl = `https://raw.githubusercontent.com/jordanhubbard/nano-packages/main/${dir.name}/nano.toml`;
+                const u = new URL(rawUrl);
+                _https.get({ hostname: u.hostname, path: u.pathname, headers: { 'User-Agent': 'rcc-api/1.0' } }, (r) => {
+                  let buf = '';
+                  r.on('data', d => buf += d);
+                  r.on('end', () => resolve(buf));
+                }).on('error', reject);
+              });
+              // Parse nano.toml minimally
+              const get = (section, key) => {
+                const re = new RegExp(`(?:^|\\n)\\[${section}\\][^\\[]*(\\n[^\\[])`, 'ms');
+                const secMatch = manifest.match(new RegExp(`\\[${section}\\]([^]*)(?=\\n\\[|$)`));
+                if (!secMatch) return '';
+                const keyRe = new RegExp(`^${key}\\s*=\\s*["']?([^"'\\n]+)["']?`, 'm');
+                const kMatch = secMatch[1].match(keyRe);
+                return kMatch ? kMatch[1].trim() : '';
+              };
+              const getDeps = () => {
+                const depSection = manifest.match(/\[dependencies\]([^]*?)(?=\n\[|$)/);
+                if (!depSection) return {};
+                const deps = {};
+                for (const line of depSection[1].split('\n')) {
+                  const m = line.match(/^\s*(\w[\w_-]*)\s*=\s*["']?([^"'\n]+)["']?/);
+                  if (m) deps[m[1]] = m[2].trim();
+                }
+                return deps;
+              };
+              packages.push({
+                name: get('package', 'name') || dir.name,
+                version: get('package', 'version'),
+                description: get('package', 'description'),
+                author: get('package', 'author'),
+                license: get('package', 'license'),
+                homepage: get('package', 'homepage'),
+                repository: `https://github.com/jordanhubbard/nano-packages/tree/main/${dir.name}`,
+                dependencies: getDeps(),
+              });
+            } catch (_) { /* skip unparseable packages */ }
+          }
+          globalThis._pkgCache = { packages, ts: Date.now() };
+        } catch (err) {
+          // If GitHub fetch fails, return empty or stale cache
+          if (!globalThis._pkgCache) {
+            globalThis._pkgCache = { packages: [], ts: 0 };
+          }
+          console.warn('[rcc-api] /api/pkg fetch error:', err.message);
+        }
+      }
+      const cache = globalThis._pkgCache;
+      return json(res, 200, {
+        ok: true,
+        count: cache.packages.length,
+        packages: cache.packages,
+        cached: (Date.now() - cache.ts) < 5 * 60 * 1000 && cache.ts > 0,
+        fetchedAt: cache.ts || null,
+        registry: 'https://github.com/jordanhubbard/nano-packages',
       });
     }
 
