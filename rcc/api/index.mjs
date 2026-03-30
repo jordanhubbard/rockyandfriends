@@ -1701,7 +1701,7 @@ async function handleRequest(req, res) {
     if (method === 'POST' && path === '/api/playground/run') {
       let body = '';
       req.on('data', d => { body += d; });
-      req.on('end', () => {
+      req.on('end', async () => {
         try {
           const { source } = JSON.parse(body);
           if (!source || typeof source !== 'string') {
@@ -2078,8 +2078,12 @@ set -u
 echo ""
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# PHASE 5 — OPENCLAW
+# PHASE 5 — OPENCLAW (skipped for vllm-worker / container roles)
 # ═══════════════════════════════════════════════════════════════════════════════
+if [ "\$AGENT_ROLE" = "vllm-worker" ]; then
+echo "→ Skipping OpenClaw install (vllm-worker role — pure GPU compute node)"
+echo ""
+else
 echo "┌─────────────────────────────────────────────────────────┐"
 echo "│  Phase 5: OpenClaw Install                              │"
 echo "└─────────────────────────────────────────────────────────┘"
@@ -2120,6 +2124,7 @@ else
   openclaw gateway start
 fi
 echo ""
+fi  # end PHASE 5 (skipped for vllm-worker)
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # PHASE 6 — REGISTRATION
@@ -2332,36 +2337,67 @@ if [ "\$KEY_WRITTEN" = "false" ] || [ "\$KEY_WRITTEN" = "unknown" ]; then
   echo "     The tunnel will NOT work until this is done."
 fi
 
-# systemd user service for tunnel
-sudo loginctl enable-linger \$USER 2>/dev/null || true
-mkdir -p "\$HOME/.config/systemd/user"
-cat > "\$HOME/.config/systemd/user/rcc-vllm-tunnel.service" << TUNNELEOF
+# Detect process supervisor: systemd user > supervisord > nohup loop
+HAS_SYSTEMD=false
+HAS_SUPERVISORD=false
+systemctl --user status 2>/dev/null | grep -q "systemd" && HAS_SYSTEMD=true || true
+command -v supervisorctl &>/dev/null && HAS_SUPERVISORD=true || true
+
+TUNNEL_CMD="ssh -N -R \${TUNNEL_PORT}:localhost:8080 -i \$HOME/.ssh/rcc-tunnel-key -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes \${TUNNEL_USER_NAME}@\${RCC_HOST}"
+
+if [ "\$HAS_SYSTEMD" = "true" ]; then
+  mkdir -p "\$HOME/.config/systemd/user"
+  cat > "\$HOME/.config/systemd/user/rcc-vllm-tunnel.service" << TUNNELEOF
 [Unit]
 Description=RCC vLLM Reverse SSH Tunnel for \${AGENT_NAME}
 After=network-online.target
-Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=/usr/bin/ssh \\\\
-  -N \\\\
-  -R \${TUNNEL_PORT}:localhost:8080 \\\\
-  -i \$HOME/.ssh/rcc-tunnel-key \\\\
-  -o StrictHostKeyChecking=no \\\\
-  -o ServerAliveInterval=30 \\\\
-  -o ServerAliveCountMax=3 \\\\
-  -o ExitOnForwardFailure=yes \\\\
-  \${TUNNEL_USER_NAME}@\${RCC_HOST}
+ExecStart=/usr/bin/ssh -N -R \${TUNNEL_PORT}:localhost:8080 -i \$HOME/.ssh/rcc-tunnel-key -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -o ExitOnForwardFailure=yes \${TUNNEL_USER_NAME}@\${RCC_HOST}
 Restart=always
 RestartSec=10
 
 [Install]
 WantedBy=default.target
 TUNNELEOF
-systemctl --user daemon-reload 2>/dev/null || true
-systemctl --user enable --now rcc-vllm-tunnel.service 2>/dev/null || \\
-  echo "  ⚠️  systemd user not available — start manually:"
-echo "      ssh -N -R \${TUNNEL_PORT}:localhost:8080 -i ~/.ssh/rcc-tunnel-key \${TUNNEL_USER_NAME}@\${RCC_HOST}"
+  systemctl --user daemon-reload && systemctl --user enable --now rcc-vllm-tunnel.service && \\
+    echo "  ✅ Tunnel started (systemd user)" || echo "  ⚠️  systemd enable failed"
+
+elif [ "\$HAS_SUPERVISORD" = "true" ]; then
+  SUPCONF="\$HOME/.config/supervisord.d/rcc-vllm-tunnel.conf"
+  mkdir -p "\$(dirname \$SUPCONF)"
+  cat > "\$SUPCONF" << SUPEOF
+[program:rcc-vllm-tunnel]
+command=\${TUNNEL_CMD}
+autostart=true
+autorestart=true
+startsecs=5
+startretries=999
+stdout_logfile=\$HOME/.rcc/logs/tunnel.log
+stderr_logfile=\$HOME/.rcc/logs/tunnel.log
+SUPEOF
+  supervisorctl reread 2>/dev/null && supervisorctl update 2>/dev/null && \\
+    supervisorctl start rcc-vllm-tunnel && \\
+    echo "  ✅ Tunnel started (supervisord)" || echo "  ⚠️  supervisorctl failed — check conf"
+
+else
+  # nohup restart-loop fallback (containers without supervisord)
+  TUNNEL_PID="\$HOME/.rcc/tunnel.pid"
+  mkdir -p "\$HOME/.rcc/logs"
+  nohup bash -c "while true; do \${TUNNEL_CMD}; echo 'tunnel exited, restarting in 10s'; sleep 10; done" \\
+    > "\$HOME/.rcc/logs/tunnel.log" 2>&1 &
+  echo \$! > "\$TUNNEL_PID"
+  echo "  ✅ Tunnel started via nohup restart-loop (pid \$(cat \$TUNNEL_PID))"
+  # Wire into .bashrc for container restarts
+  grep -q "rcc-vllm-tunnel autostart" "\$HOME/.bashrc" 2>/dev/null || cat >> "\$HOME/.bashrc" << 'RCEOF'
+# rcc-vllm-tunnel autostart (added by RCC onboard)
+if [ -z "$(pgrep -f 'rcc-tunnel-key')" ]; then
+  nohup bash -c "while true; do ${TUNNEL_CMD}; sleep 10; done" > $HOME/.rcc/logs/tunnel.log 2>&1 &
+fi
+RCEOF
+fi
+echo "  Manual cmd: \${TUNNEL_CMD}"
 echo ""
 
 elif [ "\$AGENT_ROLE" = "vllm-worker" ] && [ "\$HAS_TAILSCALE" = "true" ]; then
@@ -2385,9 +2421,20 @@ VLLM_VENV="\$HOME/.vllm-venv"
 VLLM_MODEL_DIR="/tmp/models/nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-FP8"
 TP_SIZE=\$(nvidia-smi --list-gpus 2>/dev/null | wc -l || echo 1)
 
-sudo loginctl enable-linger \$USER 2>/dev/null || true
-mkdir -p "\$HOME/.config/systemd/user"
-cat > "\$HOME/.config/systemd/user/vllm-worker.service" << VLLMEOF
+# Container-aware vLLM service setup: systemd user > supervisord > nohup
+VLLM_START_CMD="\$VLLM_VENV/bin/python3 -m vllm.entrypoints.openai.api_server --model \$VLLM_MODEL_DIR --served-model-name nemotron --port 8080 --tensor-parallel-size \$TP_SIZE --max-model-len 262144 --enforce-eager --trust-remote-code"
+
+# Re-use HAS_SYSTEMD / HAS_SUPERVISORD detected in phase 8 (or re-detect)
+if [ -z "\${HAS_SYSTEMD:-}" ]; then
+  HAS_SYSTEMD=false
+  HAS_SUPERVISORD=false
+  systemctl --user status 2>/dev/null | grep -q "systemd" && HAS_SYSTEMD=true || true
+  command -v supervisorctl &>/dev/null && HAS_SUPERVISORD=true || true
+fi
+
+if [ "\$HAS_SYSTEMD" = "true" ]; then
+  mkdir -p "\$HOME/.config/systemd/user"
+  cat > "\$HOME/.config/systemd/user/vllm-worker.service" << VLLMEOF
 [Unit]
 Description=vLLM Worker — \${AGENT_NAME}
 After=network.target
@@ -2397,14 +2444,7 @@ Type=simple
 WorkingDirectory=/tmp
 Environment="HOME=\$HOME"
 Environment="PATH=\$VLLM_VENV/bin:/usr/local/bin:/usr/bin:/bin"
-ExecStart=\$VLLM_VENV/bin/python3 -m vllm.entrypoints.openai.api_server \\\\
-  --model \$VLLM_MODEL_DIR \\\\
-  --served-model-name nemotron \\\\
-  --port 8080 \\\\
-  --tensor-parallel-size \$TP_SIZE \\\\
-  --max-model-len 262144 \\\\
-  --enforce-eager \\\\
-  --trust-remote-code
+ExecStart=\${VLLM_START_CMD}
 Restart=on-failure
 RestartSec=30
 TimeoutStartSec=600
@@ -2412,11 +2452,42 @@ TimeoutStartSec=600
 [Install]
 WantedBy=default.target
 VLLMEOF
+  systemctl --user daemon-reload && systemctl --user enable --now vllm-worker.service && \\
+    echo "  ✅ vLLM started (systemd user)" || echo "  ⚠️  systemd failed"
 
-systemctl --user daemon-reload 2>/dev/null || true
-systemctl --user enable --now vllm-worker.service 2>/dev/null && \\
-  echo "  ✅ vLLM service started" || \\
-  echo "  ⚠️  systemd user not available — start manually"
+elif [ "\$HAS_SUPERVISORD" = "true" ]; then
+  SUPCONF="\$HOME/.config/supervisord.d/vllm-worker.conf"
+  mkdir -p "\$(dirname \$SUPCONF)"
+  cat > "\$SUPCONF" << SUPEOF
+[program:vllm-worker]
+command=\${VLLM_START_CMD}
+autostart=true
+autorestart=true
+startsecs=10
+startretries=3
+environment=HOME="\$HOME",PATH="\$VLLM_VENV/bin:/usr/local/bin:/usr/bin:/bin"
+stdout_logfile=\$HOME/.rcc/logs/vllm.log
+stderr_logfile=\$HOME/.rcc/logs/vllm.log
+SUPEOF
+  supervisorctl reread 2>/dev/null && supervisorctl update 2>/dev/null && \\
+    supervisorctl start vllm-worker && \\
+    echo "  ✅ vLLM started (supervisord)" || echo "  ⚠️  supervisorctl failed"
+
+else
+  # nohup fallback — containers without supervisord
+  mkdir -p "\$HOME/.rcc/logs"
+  nohup bash -c "\${VLLM_START_CMD}" > "\$HOME/.rcc/logs/vllm.log" 2>&1 &
+  VLLM_PID=\$!
+  echo \$VLLM_PID > "\$HOME/.rcc/vllm.pid"
+  echo "  ✅ vLLM started via nohup (pid \$VLLM_PID)"
+  # Wire into .bashrc for container restarts
+  grep -q "vllm-worker autostart" "\$HOME/.bashrc" 2>/dev/null || cat >> "\$HOME/.bashrc" << 'VLLMRCEOF'
+# vllm-worker autostart (added by RCC onboard)
+if [ -z "$(pgrep -f 'vllm.entrypoints')" ]; then
+  nohup bash -c "${VLLM_START_CMD}" > $HOME/.rcc/logs/vllm.log 2>&1 &
+fi
+VLLMRCEOF
+fi
 echo ""
 fi  # end PHASE 9
 `;
@@ -2759,11 +2830,49 @@ loadPackages();
     if (method === 'POST' && path === '/api/queue') {
       const body = await readBody(req);
       if (!body.title) return json(res, 400, { error: 'title required' });
+
+      // ── Description validation: require meaningful description (except ideas/skip) ──
+      // Prevents empty-description duplicates from bypassing the semantic dedup gate.
+      // 'idea' priority and _skip_dedup bypass this check (same as semantic gate).
+      const isIdeaOrSkip = body.priority === 'idea' || body._skip_dedup === true;
+      if (!isIdeaOrSkip) {
+        const desc = (body.description || '').trim();
+        if (desc.length < 20) {
+          return json(res, 400, {
+            error: 'description_required',
+            message: 'description must be at least 20 characters — provide context so the dedup gate can work correctly',
+          });
+        }
+      }
+
       const q = await readQueue();
+
+      // ── Exact title-match dedup: catch empties that slip past semantic gate ──
+      // When description is short/empty, the embedding is title-only and may not
+      // match prior items well enough. Exact title match on active items is a
+      // reliable fallback (case-insensitive, trimmed).
+      if (!isIdeaOrSkip) {
+        const normalizeTitle = (t) => (t || '').trim().toLowerCase().replace(/\s+/g, ' ');
+        const incomingTitle = normalizeTitle(body.title);
+        const activeStatuses = new Set(['pending', 'in-progress', 'in_progress', 'claimed', 'incubating']);
+        const exactDup = (q.items || []).find(i =>
+          activeStatuses.has(i.status) && normalizeTitle(i.title) === incomingTitle
+        );
+        if (exactDup) {
+          console.log(`[rcc-api] Exact-title dedup: rejected "${body.title.slice(0,60)}" (matches active item ${exactDup.id})`);
+          return json(res, 409, {
+            ok: false,
+            error: 'duplicate',
+            reason: 'exact_title_dedup',
+            duplicate_id: exactDup.id,
+            duplicate_title: exactDup.title,
+          });
+        }
+      }
 
       // ── Semantic dedup gate ──────────────────────────────────────────────
       // Skip for idea priority or if explicitly bypassed
-      const skipSemanticDedup = body.priority === 'idea' || body._skip_dedup === true;
+      const skipSemanticDedup = isIdeaOrSkip;
       if (!skipSemanticDedup) {
         try {
           const SPARKY_OLLAMA = process.env.SPARKY_OLLAMA_URL || 'http://100.87.229.125:11434';
