@@ -38,32 +38,39 @@ jobs:
           mkdir -p ~/.ssh
           echo "${{ secrets.SPARKY_SSH_KEY }}" > ~/.ssh/sparky_key
           chmod 600 ~/.ssh/sparky_key
-          cat >> ~/.ssh/config << 'EOF'
+          SPARKY_TS_IP="100.87.229.125"
+          cat >> ~/.ssh/config << EOF
           Host sparky
-            HostName sparky
+            HostName $SPARKY_TS_IP
             User jkh
             IdentityFile ~/.ssh/sparky_key
             StrictHostKeyChecking no
             ProxyCommand tailscale nc %h %p
           EOF
-          # Verify the connection works
+          # Debug: confirm tailscale joined and can see sparky
+          echo "Tailscale status:"
+          tailscale status | grep -E "sparky|100.87" || echo "(sparky not visible yet)"
+          echo "Testing tailscale nc to $SPARKY_TS_IP:22..."
+          timeout 10 tailscale nc "$SPARKY_TS_IP" 22 < /dev/null && echo "nc OK" || echo "nc failed (exit $?)"
+          # Verify SSH
           ssh sparky "echo '✓ SSH via tailscale nc working'"
 
       - name: Run build on sparky
         run: |
-          ssh sparky << 'REMOTE'
+          # Note: no quotes on REMOTE heredoc so ${{ github.sha }} expands on the runner
+          ssh sparky << REMOTE
           set -euo pipefail
-          export PATH="$HOME/.cargo/bin:$HOME/.local/bin:$PATH"
-          source "$HOME/.cargo/env"
+          export PATH="\$HOME/.cargo/bin:\$HOME/.local/bin:\$PATH"
+          source "\$HOME/.cargo/env"
 
           echo "=== sparky WASM build ==="
-          echo "Rust: $(rustc --version)"
-          echo "trunk: $(trunk --version)"
-          echo "sccache: $(sccache --version)"
+          echo "Rust: \$(rustc --version)"
+          echo "trunk: \$(trunk --version)"
+          echo "sccache: \$(sccache --version)"
 
           cd ~/.openclaw/workspace
           git fetch origin main
-          git checkout GITHUB_SHA -- rcc/dashboard/
+          git checkout ${{ github.sha }} -- rcc/dashboard/
 
           cd rcc/dashboard/dashboard-ui
           RUSTC_WRAPPER=sccache trunk build --release 2>&1
@@ -71,8 +78,6 @@ jobs:
           echo "=== Build complete ==="
           du -sh ../dist/
           REMOTE
-        env:
-          GITHUB_SHA: ${{ github.sha }}
 
       - name: Package and publish dist artifact to MinIO
         run: |
