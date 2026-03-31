@@ -15,7 +15,7 @@ import { EventEmitter } from 'events';
 // ── Configuration ──────────────────────────────────────────────────────────
 
 const TOKENHUB_URL     = process.env.TOKENHUB_URL     || 'http://localhost:8090';
-const TOKENHUB_API_KEY = process.env.TOKENHUB_API_KEY || 'tokenhub_043600a238032da1027087eae20d95bf41340176d1b4d870c4826bf72dfc7812';
+const TOKENHUB_API_KEY = process.env.TOKENHUB_API_KEY || process.env.TOKENHUB_AGENT_KEY || 'tokenhub_1b8cdce9904ca32eea3d06624079b5bfd9baf5a0eec4e7d6f3dacdf4b6aeeb15';
 const STATE_PATH       = process.env.BRAIN_STATE_PATH || './brain-state.json';
 const TICK_MS          = parseInt(process.env.BRAIN_TICK_MS || '30000', 10);
 
