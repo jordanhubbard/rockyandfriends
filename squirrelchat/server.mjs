@@ -13,6 +13,7 @@ const app = express();
 const PORT = process.env.PORT || 8790;
 const ADMIN_TOKEN = 'sc-squirrelchat-admin-2026';
 const RCC_BASE = 'http://localhost:8789';
+const RCC_AGENT_TOKEN = process.env.RCC_AGENT_TOKEN || 'wq-5dcad756f6d3e345c00b5cb3dfcbdedb';
 
 // DB setup
 const db = new Database('./squirrelchat.db');
@@ -220,7 +221,11 @@ async function rccFetch(path, options = {}) {
       port: url.port || 80,
       path: url.pathname + url.search,
       method: options.method || 'GET',
-      headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${RCC_AGENT_TOKEN}`,
+        ...(options.headers || {}),
+      },
     };
     const req = fetch.request(reqOptions, (res) => {
       let data = '';
@@ -234,6 +239,46 @@ async function rccFetch(path, options = {}) {
     if (options.body) req.write(typeof options.body === 'string' ? options.body : JSON.stringify(options.body));
     req.end();
   });
+}
+
+// Known fleet agents for @mention routing
+const FLEET_AGENTS = ['rocky', 'natasha', 'boris', 'peabody', 'sherman', 'dudley', 'snidely', 'bullwinkle'];
+
+// @agent mention handler — detects @<agentname> <task> and posts a workqueue item
+// Returns { agentName, wqId, title } if a queue item was created, else null.
+async function handleAgentMention(from, text) {
+  const mentionRe = /^@([a-z][a-z0-9_-]*)\s+(.+)/is;
+  const match = text.trim().match(mentionRe);
+  if (!match) return null;
+
+  const agentName = match[1].toLowerCase();
+  if (!FLEET_AGENTS.includes(agentName)) return null;
+
+  const taskTitle = match[2].trim();
+  const wqId = `wq-SC-${Date.now()}`;
+
+  try {
+    const r = await rccFetch('/api/queue', {
+      method: 'POST',
+      body: {
+        id: wqId,
+        title: taskTitle,
+        description: `Delegated via SquirrelChat @mention by ${from}`,
+        assignee: agentName,
+        source: 'squirrelchat',
+        priority: 'normal',
+        tags: ['squirrelchat', 'mention', `from:${from}`],
+      },
+    });
+    if (r.ok) {
+      return { agentName, wqId: r.data?.id || wqId, title: taskTitle };
+    }
+    console.warn('[squirrelchat] @mention queue create failed:', r.status, r.data);
+    return null;
+  } catch (err) {
+    console.warn('[squirrelchat] @mention queue create error:', err.message);
+    return null;
+  }
 }
 
 // Slash command handler
@@ -482,6 +527,23 @@ app.post('/api/messages', auth, async (req, res) => {
       // Update original message with slash_result
       db.prepare('UPDATE messages SET slash_result = ? WHERE id = ?').run(trimmed, r.lastInsertRowid);
 
+      const botPayload = JSON.stringify({ type: 'message', data: botReply });
+      for (const client of sseClients) {
+        client.write(`data: ${botPayload}\n\n`);
+      }
+    }
+  }
+
+  // Handle @agent mentions — delegate task to named agent via RCC workqueue
+  if (!botReply && trimmed.startsWith('@')) {
+    const mention = await handleAgentMention(from, trimmed);
+    if (mention) {
+      const bts = Date.now();
+      const replyText = `📬 Task queued for @${mention.agentName}: "${mention.title}" (${mention.wqId})`;
+      const br = db.prepare('INSERT INTO messages (ts, from_agent, text, channel) VALUES (?, ?, ?, ?)').run(
+        bts, 'squirrelbot', replyText, channel
+      );
+      botReply = formatMessage({ id: br.lastInsertRowid, ts: bts, from_agent: 'squirrelbot', text: replyText, channel, mentions: null, thread_id: null, edited_at: null, created_at: bts, slash_result: null });
       const botPayload = JSON.stringify({ type: 'message', data: botReply });
       for (const client of sseClients) {
         client.write(`data: ${botPayload}\n\n`);
