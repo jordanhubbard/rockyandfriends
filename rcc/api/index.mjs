@@ -767,6 +767,19 @@ function dashboardHtml() {
     .refresh-btn{background:transparent;border:1px solid #30363d;color:#8b949e;border-radius:4px;padding:.2rem .6rem;font-size:.76rem;cursor:pointer}
     .refresh-btn:hover{border-color:#58a6ff;color:#58a6ff}
     .empty{color:#8b949e;font-size:.875rem;padding:.5rem 0}
+    /* Timeline pane */
+    .tl-panel{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:1.1rem 1.3rem;overflow-x:auto}
+    .tl-legend{display:flex;flex-wrap:wrap;gap:.4rem .9rem;margin-bottom:1rem;font-size:.78rem}
+    .tl-legend-item{display:flex;align-items:center;gap:.35rem;color:#8b949e}
+    .tl-dot{width:9px;height:9px;border-radius:50%;flex-shrink:0}
+    .tl-slot-row{display:flex;align-items:center;gap:.6rem;margin-bottom:.5rem}
+    .tl-slot-label{min-width:3.8rem;font-size:.8rem;font-weight:600;color:#8b949e;flex-shrink:0}
+    .tl-axis{position:relative;height:26px;flex:1;background:#0d1117;border:1px solid #21262d;border-radius:4px}
+    .tl-marker{position:absolute;top:50%;transform:translate(-50%,-50%);width:9px;height:9px;border-radius:50%;cursor:pointer;transition:transform .1s}
+    .tl-marker:hover{transform:translate(-50%,-50%) scale(1.7)!important}
+    .tl-marker.tl-fault{border-radius:2px;transform:translate(-50%,-50%) rotate(45deg)}
+    .tl-time-axis{display:flex;justify-content:space-between;font-size:.68rem;color:#484f58;margin-top:.25rem;padding:0 0 .15rem}
+    .tl-tooltip{position:fixed;background:#161b22;border:1px solid #30363d;border-radius:6px;padding:.45rem .7rem;font-size:.78rem;color:#e6edf3;pointer-events:none;z-index:200;max-width:230px;display:none;line-height:1.5}
   </style>
   <title>Rocky Command Center</title>
 </head><body>
@@ -779,6 +792,7 @@ function dashboardHtml() {
       <button class="tab" data-pane="projects">Projects</button>
       <button class="tab" data-pane="bus">SquirrelBus</button>
       <button class="tab" data-pane="logs">Logs</button>
+      <button class="tab" data-pane="timeline">⏱ Timeline</button>
     </div>
     <div class="topbar-links">
       <a href="http://146.190.134.110:8790/" target="_blank">💬 Chat</a>
@@ -838,6 +852,23 @@ function dashboardHtml() {
       <p class="subtitle">Recent events across RCC</p>
       <button class="refresh-btn" onclick="loadLogs()" style="margin-bottom:.75rem">↻ Refresh</button>
       <div class="log-stream" id="log-root"><p class="spinner">Loading…</p></div>
+    </div>
+    <!-- TIMELINE -->
+    <div class="pane" id="pane-timeline">
+      <h1>Agent Lifecycle Timeline</h1>
+      <p class="subtitle">agentOS per-slot events · last 30 min · auto-refreshes every 10s</p>
+      <div class="tl-legend">
+        <div class="tl-legend-item"><div class="tl-dot" style="background:#3fb950"></div>spawn</div>
+        <div class="tl-legend-item"><div class="tl-dot" style="background:#2ea043"></div>exit</div>
+        <div class="tl-legend-item"><div class="tl-dot" style="background:#58a6ff"></div>cap_grant</div>
+        <div class="tl-legend-item"><div class="tl-dot" style="background:#f85149"></div>cap_revoke</div>
+        <div class="tl-legend-item"><div class="tl-dot" style="background:#e3b341"></div>quota_exceeded</div>
+        <div class="tl-legend-item"><div class="tl-dot" style="background:#f85149;border-radius:2px"></div>fault</div>
+        <div class="tl-legend-item"><div class="tl-dot" style="background:#d29922"></div>watchdog_reset</div>
+        <div class="tl-legend-item"><div class="tl-dot" style="background:#a371f7"></div>memory_alert</div>
+      </div>
+      <div id="tl-root"><p class="spinner">Loading…</p></div>
+      <div class="tl-tooltip" id="tl-tooltip"></div>
     </div>
   </div>
   <script>
@@ -1040,6 +1071,45 @@ function dashboardHtml() {
       });
     }
     paneLoaders['logs'] = loadLogs;
+
+    // ── TIMELINE ──────────────────────────────────────────────────────────
+    const TL_COLORS = {spawn:'#3fb950',exit:'#2ea043',cap_grant:'#58a6ff',cap_revoke:'#f85149',quota_exceeded:'#e3b341',fault:'#f85149',watchdog_reset:'#d29922',memory_alert:'#a371f7'};
+    let _tlTimer = null;
+    const _tlTooltip = document.getElementById('tl-tooltip');
+    document.addEventListener('mousemove', e => { _tlTooltip.style.left=(e.clientX+14)+'px'; _tlTooltip.style.top=(e.clientY-8)+'px'; });
+    function renderTimeline(events) {
+      const now = Date.now(), wMs = 30*60*1000, tMin = now - wMs;
+      const slots = {};
+      for (let i=0;i<8;i++) slots[i]=[];
+      (events||[]).forEach(ev => { if(ev.slot_id>=0&&ev.slot_id<=7) slots[ev.slot_id].push(ev); });
+      const labels = [];
+      for (let i=0;i<=5;i++) labels.push(new Date(tMin+wMs*i/5).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'}));
+      let html='<div class="tl-panel">';
+      for (let s=0;s<8;s++) {
+        const markers = slots[s].map(ev => {
+          const pct = Math.max(0,Math.min(99,(ev.ts-tMin)/wMs*100)).toFixed(2);
+          const col = TL_COLORS[ev.type]||'#8b949e';
+          const isFault = ev.type==='fault';
+          const tip = \`<b>\${esc(ev.type)}</b><br>Slot \${s} · \${new Date(ev.ts).toLocaleTimeString()}\${ev.details?'<br>'+esc(ev.details):''}\`;
+          return \`<div class="tl-marker\${isFault?' tl-fault':''}" style="left:\${pct}%;background:\${col}\${isFault?';transform:translate(-50%,-50%) rotate(45deg)':''}" data-tip="\${tip.replace(/"/g,'&quot;')}"></div>\`;
+        }).join('');
+        html += \`<div class="tl-slot-row"><div class="tl-slot-label">Slot \${s}</div><div class="tl-axis">\${markers}</div></div>\`;
+      }
+      html += \`<div class="tl-time-axis">\${labels.map(l=>\`<span>\${esc(l)}</span>\`).join('')}</div></div>\`;
+      document.getElementById('tl-root').innerHTML = html;
+      document.querySelectorAll('.tl-marker').forEach(m => {
+        m.addEventListener('mouseenter', () => { _tlTooltip.innerHTML=m.dataset.tip; _tlTooltip.style.display='block'; });
+        m.addEventListener('mouseleave', () => { _tlTooltip.style.display='none'; });
+      });
+    }
+    function loadTimeline() {
+      fetch('/api/agentos/events').then(r=>r.json()).then(d=>renderTimeline(d.events||[])).catch(e=>{document.getElementById('tl-root').innerHTML='<p class="err">Failed: '+esc(e.message)+'</p>';});
+    }
+    paneLoaders['timeline'] = () => {
+      loadTimeline();
+      if (_tlTimer) clearInterval(_tlTimer);
+      _tlTimer = setInterval(loadTimeline, 10000);
+    };
 
     // ── Init: switch to default tab AFTER all loaders are registered ────
     const initTab = (location.hash||'').replace('#','') || 'services';
@@ -1436,6 +1506,85 @@ runBtn.addEventListener('click', async () => {
 </body></html>`;
 }
 
+function timelineHtml() {
+  return `<!DOCTYPE html><html lang="en"><head>${HTML_STYLE}
+  <style>
+    .tl-panel{background:#161b22;border:1px solid #30363d;border-radius:8px;padding:1.25rem 1.5rem;overflow-x:auto}
+    .tl-legend{display:flex;flex-wrap:wrap;gap:.4rem 1rem;margin-bottom:1.1rem;font-size:.8rem}
+    .tl-legend-item{display:flex;align-items:center;gap:.35rem;color:#8b949e}
+    .tl-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+    .tl-slot-row{display:flex;align-items:center;gap:.75rem;margin-bottom:.6rem}
+    .tl-slot-label{min-width:4.25rem;font-size:.82rem;font-weight:600;color:#8b949e;flex-shrink:0}
+    .tl-axis{position:relative;height:28px;flex:1;background:#0d1117;border:1px solid #21262d;border-radius:4px;min-width:300px}
+    .tl-marker{position:absolute;top:50%;transform:translate(-50%,-50%);width:10px;height:10px;border-radius:50%;cursor:pointer;transition:transform .1s}
+    .tl-marker:hover{transform:translate(-50%,-50%) scale(1.7)!important}
+    .tl-fault{border-radius:2px;transform:translate(-50%,-50%) rotate(45deg)}
+    .tl-time-axis{display:flex;justify-content:space-between;font-size:.7rem;color:#484f58;margin-top:.25rem;padding-bottom:.15rem}
+    .tl-tooltip{position:fixed;background:#161b22;border:1px solid #30363d;border-radius:6px;padding:.5rem .75rem;font-size:.78rem;color:#e6edf3;pointer-events:none;z-index:200;max-width:240px;display:none;line-height:1.6}
+    .tl-refresh{float:right;background:none;border:1px solid #30363d;color:#8b949e;border-radius:4px;padding:.2rem .6rem;font-size:.78rem;cursor:pointer}
+    .tl-refresh:hover{border-color:#58a6ff;color:#58a6ff}
+    .tl-auto{font-size:.72rem;color:#484f58;float:right;margin-top:.1rem;margin-right:.5rem}
+  </style>
+  <title>Timeline — RCC</title></head><body>
+  <div class="nav"><a href="/">← RCC</a> &nbsp;·&nbsp; <a href="/services">Services</a></div>
+  <h1>agentOS Agent Lifecycle Timeline</h1>
+  <p class="subtitle">Per-slot event markers · last 30 min · auto-refreshes every 10s</p>
+  <div class="tl-legend">
+    <div class="tl-legend-item"><div class="tl-dot" style="background:#3fb950"></div>spawn</div>
+    <div class="tl-legend-item"><div class="tl-dot" style="background:#2ea043"></div>exit</div>
+    <div class="tl-legend-item"><div class="tl-dot" style="background:#58a6ff"></div>cap_grant</div>
+    <div class="tl-legend-item"><div class="tl-dot" style="background:#f85149"></div>cap_revoke</div>
+    <div class="tl-legend-item"><div class="tl-dot" style="background:#e3b341"></div>quota_exceeded</div>
+    <div class="tl-legend-item"><div class="tl-dot" style="background:#f85149;border-radius:2px;transform:rotate(45deg)"></div>fault</div>
+    <div class="tl-legend-item"><div class="tl-dot" style="background:#d29922"></div>watchdog_reset</div>
+    <div class="tl-legend-item"><div class="tl-dot" style="background:#a371f7"></div>memory_alert</div>
+  </div>
+  <span class="tl-auto" id="tl-auto"></span>
+  <button class="tl-refresh" onclick="load()">↻ Refresh</button>
+  <div id="tl-root" style="margin-top:.5rem"><p class="spinner">Loading…</p></div>
+  <div class="tl-tooltip" id="tl-tooltip"></div>
+  <script>
+    const TL_COLORS = {spawn:'#3fb950',exit:'#2ea043',cap_grant:'#58a6ff',cap_revoke:'#f85149',quota_exceeded:'#e3b341',fault:'#f85149',watchdog_reset:'#d29922',memory_alert:'#a371f7'};
+    function esc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+    const tooltip = document.getElementById('tl-tooltip');
+    document.addEventListener('mousemove', e => { tooltip.style.left=(e.clientX+14)+'px'; tooltip.style.top=(e.clientY-8)+'px'; });
+    function renderTimeline(events) {
+      const now = Date.now(), wMs = 30*60*1000, tMin = now - wMs;
+      const slots = {};
+      for (let i=0;i<8;i++) slots[i]=[];
+      (events||[]).forEach(ev => { if(ev.slot_id>=0&&ev.slot_id<=7) slots[ev.slot_id].push(ev); });
+      const labels = [];
+      for (let i=0;i<=5;i++) labels.push(new Date(tMin+wMs*i/5).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'}));
+      let html = '<div class="tl-panel">';
+      for (let s=0;s<8;s++) {
+        const markers = slots[s].map(ev => {
+          const pct = Math.max(0,Math.min(99,(ev.ts-tMin)/wMs*100)).toFixed(2);
+          const col = TL_COLORS[ev.type]||'#8b949e';
+          const isFault = ev.type==='fault';
+          const tip = \`<b>\${esc(ev.type)}</b><br>Slot \${s} · \${new Date(ev.ts).toLocaleTimeString()}\${ev.details?'<br>'+esc(ev.details):''}\`;
+          const extraStyle = isFault ? \`;transform:translate(-50%,-50%) rotate(45deg)\` : '';
+          return \`<div class="tl-marker\${isFault?' tl-fault':''}" style="left:\${pct}%;background:\${col}\${extraStyle}" data-tip="\${tip.replace(/"/g,'&quot;')}"></div>\`;
+        }).join('');
+        html += \`<div class="tl-slot-row"><div class="tl-slot-label">Slot \${s}</div><div class="tl-axis">\${markers}</div></div>\`;
+      }
+      html += \`<div class="tl-time-axis">\${labels.map(l=>\`<span>\${esc(l)}</span>\`).join('')}</div></div>\`;
+      document.getElementById('tl-root').innerHTML = html;
+      document.querySelectorAll('.tl-marker').forEach(m => {
+        m.addEventListener('mouseenter', () => { tooltip.innerHTML=m.dataset.tip; tooltip.style.display='block'; });
+        m.addEventListener('mouseleave', () => { tooltip.style.display='none'; });
+      });
+    }
+    function load() {
+      fetch('/api/agentos/events')
+        .then(r=>r.json())
+        .then(d=>{ renderTimeline(d.events||[]); document.getElementById('tl-auto').textContent='updated '+new Date().toLocaleTimeString(); })
+        .catch(e=>{document.getElementById('tl-root').innerHTML='<p class="error">Failed: '+esc(e.message)+'</p>';});
+    }
+    load();
+    setInterval(load, 10000);
+  </script></body></html>`;
+}
+
 function servicesHtml() {
   return `<!DOCTYPE html><html lang="en"><head>${HTML_STYLE}
   <style>
@@ -1483,7 +1632,7 @@ function servicesHtml() {
     .mesh-refresh:hover{border-color:#58a6ff;color:#58a6ff}
   </style>
   <title>Services — RCC</title></head><body>
-  <div class="nav"><a href="/projects">Projects</a> &nbsp;·&nbsp; <a href="/">← RCC</a></div>
+  <div class="nav"><a href="/projects">Projects</a> &nbsp;·&nbsp; <a href="/timeline">⏱ Timeline</a> &nbsp;·&nbsp; <a href="/">← RCC</a></div>
   <h1>Services</h1>
   <p class="subtitle">Agent infrastructure — live status probed every 30 seconds</p>
   <div id="root"><p class="spinner">Loading…</p></div>
@@ -2080,6 +2229,13 @@ async function handleRequest(req, res) {
     if (method === 'GET' && path === '/services') {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
       res.end(servicesHtml());
+      return;
+    }
+
+    // ── UI: GET /timeline — agentOS lifecycle timeline ────────────────────
+    if (method === 'GET' && path === '/timeline') {
+      res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Access-Control-Allow-Origin': '*' });
+      res.end(timelineHtml());
       return;
     }
 
@@ -7168,6 +7324,35 @@ loadPackages();
         fetchedAt: cache.ts || null,
         registry: 'https://github.com/jordanhubbard/nano-packages',
       });
+    }
+
+    // ── GET /api/agentos/events — synthetic agentOS lifecycle events ──────
+    if (method === 'GET' && path.startsWith('/api/agentos/events')) {
+      const now = Date.now();
+      const windowMs = 30 * 60 * 1000;
+      const EVENT_TYPES = ['spawn','cap_grant','cap_revoke','quota_exceeded','fault','watchdog_reset','memory_alert','exit'];
+      const EVENT_DETAILS = {
+        spawn:          s => `slot ${s} agent spawned`,
+        exit:           s => `slot ${s} exited cleanly (rc=0)`,
+        cap_grant:      s => `granted cap=IPC_SEND to pid=${4000+s*100+((now>>4)&0x3f)}`,
+        cap_revoke:     s => `revoked cap=IPC_SEND from pid=${4000+s*100+((now>>6)&0x3f)}`,
+        quota_exceeded: s => `slot ${s} CPU quota exceeded (${80+((now>>8)&0x13)}%)`,
+        fault:          s => `slot ${s} SIGSEGV at 0x${(0xdeadbe00+s*0x100+((now>>3)&0xff)).toString(16)}`,
+        watchdog_reset: s => `slot ${s} heartbeat timeout — watchdog triggered reset`,
+        memory_alert:   s => `slot ${s} memory spike: ${256+((now>>5)&0xff)}MB`,
+      };
+      // Deterministic-ish seed changes each minute so events shift gradually on refresh
+      const seed = Math.floor(now / 60000);
+      function sr(n, s2) { return ((n * 1337 + s2 * 7919) % 997) / 997; }
+      const events = [];
+      for (let i = 0; i < 100; i++) {
+        const slotId = Math.floor(sr(i, seed) * 8);
+        const type = EVENT_TYPES[Math.floor(sr(i + 1000, seed) * EVENT_TYPES.length)];
+        const ts = Math.floor(now - windowMs + sr(i + 2000, seed) * windowMs);
+        events.push({ ts, slot_id: slotId, type, details: EVENT_DETAILS[type](slotId) });
+      }
+      events.sort((a, b) => a.ts - b.ts);
+      return json(res, 200, { events, slots: [0,1,2,3,4,5,6,7], generated_at: now });
     }
 
     return json(res, 404, { error: 'Not found' });
