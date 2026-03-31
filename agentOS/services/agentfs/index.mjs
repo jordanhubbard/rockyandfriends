@@ -5,8 +5,17 @@
  *   POST   /agentfs/modules          upload WASM blob → returns {hash, size, url}
  *   GET    /agentfs/modules           list all stored modules
  *   GET    /agentfs/modules/:hash     fetch WASM bytes (streams from MinIO)
+ *   GET    /fs/blob/:hash             alias: fetch raw WASM blob by content hash
  *   DELETE /agentfs/modules/:hash     remove a module
  *   GET    /agentfs/health            service health
+ *   GET    /agentfs/peers             list known AgentFS peer URLs (AGENTFS_PEER_URLS)
+ *   GET    /fs/peers                  alias: list known AgentFS peer URLs
+ *
+ * Replication:
+ *   On upload: publishes agentos.fs.put {hash, size, origin_url} to SquirrelBus
+ *   On delete: publishes agentos.fs.delete {hash} to SquirrelBus
+ *   AGENTFS_REPLICATE=1: starts replication subscriber (replication.mjs)
+ *     — polls bus for agentos.fs.put events, fetches missing blobs from origin
  *
  * Backend: MinIO (S3-compatible), bucket agentfs-modules
  * Auth:    Bearer token (AGENTFS_TOKEN env var)
@@ -524,7 +533,7 @@ async function router(req, res) {
   const path = url.pathname;
 
   // Peers (no auth — service discovery)
-  if (path === '/agentfs/peers' && req.method === 'GET') {
+  if ((path === '/agentfs/peers' || path === '/fs/peers') && req.method === 'GET') {
     return json(res, 200, { peers: PEER_URLS });
   }
 
@@ -559,10 +568,15 @@ async function router(req, res) {
     if (benchMatch && req.method === 'GET') {
       return await handleBench(req, res, benchMatch[1]);
     }
-    // GET /agentfs/modules/:hash[?aot=1]
+    // GET /agentfs/modules/:hash[?aot=1]  (also aliased as /fs/blob/:hash)
     const fetchMatch = path.match(/^\/agentfs\/modules\/([0-9a-f]{64})$/);
     if (fetchMatch && req.method === 'GET') {
       return await handleFetch(req, res, fetchMatch[1], url.searchParams);
+    }
+    // GET /fs/blob/:hash — simple content-addressed blob fetch alias
+    const blobMatch = path.match(/^\/fs\/blob\/([0-9a-f]{64})$/);
+    if (blobMatch && req.method === 'GET') {
+      return await handleFetch(req, res, blobMatch[1], url.searchParams);
     }
     // DELETE /agentfs/modules/:hash
     const deleteMatch = path.match(/^\/agentfs\/modules\/([0-9a-f]{64})$/);
