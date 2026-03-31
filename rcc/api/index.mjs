@@ -6404,6 +6404,46 @@ loadPackages();
       });
     }
 
+    // ── GET /api/agentos/console/:slot — console_mux ring output ──────────────
+    // TODO: wire to real QEMU pipe / console_mux ring reader when available
+    const consoleGetMatch = path.match(/^\/api\/agentos\/console\/(\d+)$/);
+    if (method === 'GET' && consoleGetMatch) {
+      const slot = parseInt(consoleGetMatch[1], 10);
+      if (slot < 0 || slot > 15) return json(res, 400, { error: 'slot must be 0-15' });
+      if (!global._consoleMuxRings) global._consoleMuxRings = {};
+      const ring = global._consoleMuxRings[slot] || [];
+      return json(res, 200, {
+        slot,
+        lines: ring.length > 0 ? ring : [`[console_mux] slot ${slot} ready — TODO: wire QEMU pipe`],
+      });
+    }
+
+    // ── POST /api/agentos/console/attach/:slot — send attach command ──────────
+    // TODO: forward to console_mux PD via SquirrelBus when QEMU bridge is live
+    const consoleAttachMatch = path.match(/^\/api\/agentos\/console\/attach\/(\d+)$/);
+    if (method === 'POST' && consoleAttachMatch) {
+      const slot = parseInt(consoleAttachMatch[1], 10);
+      if (slot < 0 || slot > 15) return json(res, 400, { error: 'slot must be 0-15' });
+      // TODO: PPC OP_CONSOLE_ATTACH (0x80) to console_mux via QEMU debug bridge
+      return json(res, 200, { ok: true, slot, note: 'attach queued — TODO: wire to console_mux PD' });
+    }
+
+    // ── POST /api/agentos/console/push — console_mux ring ingest (internal) ───
+    // Used by the QEMU pipe reader to push lines into the in-memory ring cache
+    if (method === 'POST' && path === '/api/agentos/console/push') {
+      const body = await readBody(req);
+      const { slot, line } = body;
+      if (typeof slot !== 'number' || typeof line !== 'string')
+        return json(res, 400, { error: 'slot (number) and line (string) required' });
+      if (!global._consoleMuxRings) global._consoleMuxRings = {};
+      if (!global._consoleMuxRings[slot]) global._consoleMuxRings[slot] = [];
+      global._consoleMuxRings[slot].push(line);
+      // Keep last 200 lines per slot
+      if (global._consoleMuxRings[slot].length > 200)
+        global._consoleMuxRings[slot] = global._consoleMuxRings[slot].slice(-200);
+      return json(res, 200, { ok: true });
+    }
+
     // ── GET /api/mesh — agentOS distributed mesh topology + slot health ────────
     if (method === 'GET' && path === '/api/mesh') {
       const now = Date.now();
