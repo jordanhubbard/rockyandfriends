@@ -23,7 +23,7 @@ const AGENT_NAME = process.env.AGENT_NAME || 'natasha';
 const MINIO_HOST = '100.89.199.14';
 const MINIO_PORT = 9000;
 const MINIO_ACCESS_KEY = 'rockymoose4810f4cc7d28916f';
-const MINIO_SECRET_KEY = '1b7a14087771df4bf85d6001fdd047a61348641bdf78aefd';
+const MINIO_SECRET_KEY = '<MINIO_SECRET_KEY>';
 const MINIO_BUCKET = 'agents';
 const PEER_STATUS_KEY = 'agents/shared/peer-status.json';
 
