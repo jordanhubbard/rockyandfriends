@@ -6913,6 +6913,141 @@ loadPackages();
       return json(res, 200, { ok: true });
     }
 
+    // ── GET /api/agentos/cap-events — cap_audit_log live event feed ─────────────
+    //
+    // Returns the most recent capability audit events from the cap_audit_log
+    // ring buffer.  The RCC dashboard Audit tab polls this on a 5s interval.
+    //
+    // In production, this endpoint would read the cap_audit_ring shared MR via
+    // the AgentFS blob API or a dedicated ring reader daemon.  For the prototype
+    // we maintain an in-memory event store that agents push into via
+    // POST /api/agentos/cap-events/push (internal bridge).
+    //
+    // Query params:
+    //   limit=100        max events to return (default 100, max 1000)
+    //   slot=<id>        filter by slot ID
+    //   event_type=GRANT|REVOKE|DENY|ATTENUATION   filter by type
+    //   since_seq=<n>    return events with seq > n (for incremental polling)
+    //
+    // Response:
+    //   { ok, events: [{seq, ts, slot_id, cap_kind, rights, event_type, agent_id}],
+    //     total, watermark_seq, ts }
+
+    if (!global._capAuditEvents) global._capAuditEvents = [];
+    if (!global._capAuditSeq) global._capAuditSeq = 0;
+
+    // Cap kind names (mirrors cap_audit_log.c bitmask)
+    const CAP_KINDS = {
+      0x01: 'FS', 0x02: 'NET', 0x04: 'GPU', 0x08: 'IPC',
+      0x10: 'TIMER', 0x20: 'STDIO', 0x40: 'SPAWN', 0x80: 'SWAP',
+    };
+    function capKindName(mask) {
+      return Object.entries(CAP_KINDS).filter(([k]) => (mask & Number(k))).map(([,v]) => v).join('|') || `0x${mask.toString(16)}`;
+    }
+
+    if (method === 'GET' && path === '/api/agentos/cap-events') {
+      const limitS    = url.searchParams.get('limit');
+      const slotS     = url.searchParams.get('slot');
+      const typeF     = url.searchParams.get('event_type');
+      const sinceSeqS = url.searchParams.get('since_seq');
+      const limit     = limitS    ? Math.min(parseInt(limitS, 10), 1000) : 100;
+      const filterSlot= slotS     ? parseInt(slotS, 10) : null;
+      const sinceSeq  = sinceSeqS ? parseInt(sinceSeqS, 10) : 0;
+
+      let events = global._capAuditEvents;
+      if (sinceSeq > 0)   events = events.filter(e => e.seq > sinceSeq);
+      if (filterSlot !== null) events = events.filter(e => e.slot_id === filterSlot);
+      if (typeF)          events = events.filter(e => e.event_type === typeF.toUpperCase());
+
+      const slice = events.slice(-limit);
+      return json(res, 200, {
+        ok: true,
+        events: slice.map(e => ({
+          ...e,
+          cap_kind_name: capKindName(e.rights ?? e.caps_mask ?? 0),
+        })),
+        total:         global._capAuditEvents.length,
+        watermark_seq: global._capAuditSeq,
+        ts:            new Date().toISOString(),
+      });
+    }
+
+    // POST /api/agentos/cap-events/push — internal: bridge pushes real ring data
+    // Body: { events: [{seq, tick, event_type, agent_id, caps_mask, slot_id}] }
+    if (method === 'POST' && path === '/api/agentos/cap-events/push') {
+      if (!isAuthed(req)) return json(res, 401, { error: 'Unauthorized' });
+      const body = await readBody(req);
+      const incoming = Array.isArray(body.events) ? body.events : (body.event ? [body.event] : []);
+      let added = 0;
+      for (const ev of incoming) {
+        const seq = ev.seq ?? ++global._capAuditSeq;
+        const entry = {
+          seq,
+          ts:         ev.ts || new Date().toISOString(),
+          tick:       ev.tick ?? 0,
+          event_type: (ev.event_type || 'GRANT').toUpperCase(),
+          agent_id:   ev.agent_id ?? ev.agentId ?? 0,
+          slot_id:    ev.slot_id ?? ev.slotId ?? 0,
+          caps_mask:  ev.caps_mask ?? ev.capsMask ?? ev.rights ?? 0,
+          rights:     ev.caps_mask ?? ev.capsMask ?? ev.rights ?? 0,
+        };
+        global._capAuditEvents.push(entry);
+        if (seq > global._capAuditSeq) global._capAuditSeq = seq;
+        added++;
+      }
+      // Keep last 10000 events
+      if (global._capAuditEvents.length > 10000)
+        global._capAuditEvents = global._capAuditEvents.slice(-10000);
+      // Broadcast to any SSE clients watching the audit stream
+      if (global._capAuditSseClients && added > 0) {
+        const payload = JSON.stringify({ type: 'cap_events', events: incoming });
+        for (const client of global._capAuditSseClients) {
+          try { client.write(`data: ${payload}\n\n`); }
+          catch { global._capAuditSseClients.delete(client); }
+        }
+      }
+      return json(res, 200, { ok: true, added });
+    }
+
+    // GET /api/agentos/cap-events/stream — SSE stream of live cap audit events
+    if (method === 'GET' && path === '/api/agentos/cap-events/stream') {
+      if (!global._capAuditSseClients) global._capAuditSseClients = new Set();
+      res.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+        'Access-Control-Allow-Origin': '*',
+      });
+      res.flushHeaders?.();
+      // Send last 50 events on connect
+      const recent = (global._capAuditEvents || []).slice(-50);
+      if (recent.length) {
+        res.write(`data: ${JSON.stringify({ type: 'cap_events_backfill', events: recent })}\n\n`);
+      }
+      res.write(`data: ${JSON.stringify({ type: 'connected', seq: global._capAuditSeq })}\n\n`);
+      global._capAuditSseClients.add(res);
+      const ka = setInterval(() => res.write(': ping\n\n'), 20000);
+      req.on('close', () => {
+        global._capAuditSseClients.delete(res);
+        clearInterval(ka);
+      });
+      return;
+    }
+
+    // GET /api/agentos/cap-events/export — download full audit log as JSON
+    if (method === 'GET' && path === '/api/agentos/cap-events/export') {
+      const events = (global._capAuditEvents || []).map(e => ({
+        ...e,
+        cap_kind_name: capKindName(e.rights ?? e.caps_mask ?? 0),
+      }));
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Content-Disposition': `attachment; filename="cap_audit_${Date.now()}.json"`,
+      });
+      res.end(JSON.stringify({ exported_at: new Date().toISOString(), events }, null, 2));
+      return;
+    }
+
     // ── GET /api/mesh — agentOS distributed mesh topology + slot health ────────
     if (method === 'GET' && path === '/api/mesh') {
       const now = Date.now();
