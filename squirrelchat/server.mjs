@@ -6,6 +6,7 @@ import multer from 'multer';
 import { createServer } from 'http';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
+import { readFileSync } from 'fs';
 
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -1183,9 +1184,10 @@ app.post('/sc/api/worklog/post', (req, res) => {
 });
 
 // SPA catch-all — serve index.html for non-API routes
-app.get('/{*path}', (req, res, next) => {
-  if (req.path.startsWith('/api/')) return next();
-  res.sendFile(join(__dirname, 'public', 'index.html'));
+const INDEX_HTML = readFileSync(join(__dirname, 'public', 'index.html'), 'utf8');
+app.get(/^\/(?!api\/).*$/, (req, res) => {
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.end(INDEX_HTML);
 });
 
 const server = createServer(app);
