@@ -3,6 +3,7 @@ use leptos_router::*;
 
 use crate::context::DashboardContext;
 use crate::components::{
+    auth_gate::{AuthGate, LogoutButton},
     activity_feed::ActivityFeed,
     agent_cards::AgentCards,
     agent_detail::AgentDetail,
@@ -91,6 +92,7 @@ fn AppInner() -> impl IntoView {
     let select_tab = store_value(select_tab);
 
     view! {
+        <AuthGate>
         <div class="dashboard">
             <header class="dash-header">
                 <div class="dash-logo">
@@ -98,6 +100,7 @@ fn AppInner() -> impl IntoView {
                     <span class="logo-text">"Rocky Command Center"</span>
                 </div>
                 <div class="dash-subtitle">"v3 — Rust/WASM + GH Issues"</div>
+                <LogoutButton />
                 <div class="dash-tabs">
                     <button
                         class="tab-btn"
@@ -198,5 +201,6 @@ fn AppInner() -> impl IntoView {
                 }}
             </main>
         </div>
+        </AuthGate>
     }
 }
