@@ -9,6 +9,8 @@ pub mod services;
 pub mod lessons;
 pub mod exec;
 pub mod geek;
+pub mod ui;
+pub mod agentos;
 
 use axum::{
     http::StatusCode,
