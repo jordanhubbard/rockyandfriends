@@ -65,6 +65,7 @@ async fn main() {
     // Load persisted state
     state::load_all(&app_state).await;
     routes::lessons::load_lessons().await;
+    routes::issues::load_issues().await;
 
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -86,6 +87,7 @@ async fn main() {
         .merge(routes::ui::router())
         .merge(routes::agentos::router())
         .merge(routes::memory::router())
+        .merge(routes::issues::router())
         .layer(cors)
         .with_state(app_state.clone());
 
