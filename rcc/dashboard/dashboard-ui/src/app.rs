@@ -94,6 +94,7 @@ fn AppInner() -> impl IntoView {
     let select_tab = store_value(select_tab);
 
     view! {
+        <AuthGate>
         <div class="dashboard">
             <header class="dash-header">
                 <div class="dash-logo">
@@ -202,5 +203,6 @@ fn AppInner() -> impl IntoView {
                 }}
             </main>
         </div>
+        </AuthGate>
     }
 }

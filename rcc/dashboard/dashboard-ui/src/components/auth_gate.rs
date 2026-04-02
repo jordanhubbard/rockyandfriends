@@ -1,181 +1,192 @@
-/// auth_gate.rs — Front-door authentication gate for the CCC Dashboard.
+/// Auth gate — front-door authentication wrapper for the RCC Dashboard.
 ///
-/// Wraps the entire app: unauthenticated users see a login form,
-/// authenticated users see the dashboard. Token validated against
-/// the CCC API (`/api/health` with Bearer auth).
+/// Wraps the entire app. If no valid token is stored in localStorage,
+/// shows a login form (username + token). Validates against the RCC API.
+/// On success, stores credentials and renders children.
 ///
-/// Credentials stored in localStorage for persistence across reloads.
-/// Password-manager friendly (standard username/password fields).
-
+/// Per wq-JKH-002: unauthenticated users see a login screen, not the app.
 use leptos::*;
-use web_sys::wasm_bindgen::JsCast;
+use wasm_bindgen_futures::spawn_local;
 
-// ── localStorage helpers ───────────────────────────────────────────────
+const LS_KEY_USERNAME: &str = "rcc_username";
+const LS_KEY_TOKEN: &str = "rcc_token";
 
-fn storage() -> Option<web_sys::Storage> {
-    web_sys::window()?.local_storage().ok()?
+/// Read a value from localStorage
+fn ls_get(key: &str) -> Option<String> {
+    web_sys::window()
+        .and_then(|w| w.local_storage().ok().flatten())
+        .and_then(|s| s.get_item(key).ok().flatten())
+        .filter(|v| !v.is_empty())
 }
 
-fn get_stored(key: &str) -> Option<String> {
-    storage()?.get_item(key).ok()?
-}
-
-fn set_stored(key: &str, val: &str) {
-    if let Some(s) = storage() {
-        let _ = s.set_item(key, val);
+/// Write a value to localStorage
+fn ls_set(key: &str, val: &str) {
+    if let Some(storage) = web_sys::window()
+        .and_then(|w| w.local_storage().ok().flatten())
+    {
+        let _ = storage.set_item(key, val);
     }
 }
 
-fn remove_stored(key: &str) {
-    if let Some(s) = storage() {
-        let _ = s.remove_item(key);
+/// Remove a value from localStorage
+fn ls_remove(key: &str) {
+    if let Some(storage) = web_sys::window()
+        .and_then(|w| w.local_storage().ok().flatten())
+    {
+        let _ = storage.remove_item(key);
     }
 }
 
-const KEY_USER: &str = "rcc_username";
-const KEY_TOKEN: &str = "rcc_token";
-
-// ── Token validation ───────────────────────────────────────────────────
-
-/// Validate a token by hitting `/api/health` with Bearer auth.
+/// Validate token against RCC API by hitting GET /api/heartbeats with Bearer auth.
 /// Returns true if the server responds 200.
 async fn validate_token(token: &str) -> bool {
-    let opts = web_sys::RequestInit::new();
-    opts.set_method("GET");
-
-    let headers = web_sys::Headers::new().unwrap();
-    let _ = headers.set("Authorization", &format!("Bearer {}", token));
-    opts.set_headers(&headers);
-
-    let window = web_sys::window().unwrap();
-    let url = "/api/health";
-
-    match wasm_bindgen_futures::JsFuture::from(window.fetch_with_str_and_init(url, &opts)).await {
-        Ok(resp) => {
-            let resp: web_sys::Response = resp.unchecked_into();
-            resp.status() == 200
-        }
+    let Ok(req) = gloo_net::http::Request::get("/api/heartbeats")
+        .header("Authorization", &format!("Bearer {}", token))
+        .build()
+    else {
+        return false;
+    };
+    match gloo_net::http::RequestBuilder::from(req).send().await {
+        Ok(resp) => resp.ok(),
         Err(_) => false,
     }
 }
 
-// ── Shared logout signal ───────────────────────────────────────────────
+/// Shared auth context — available to all components via use_context::<AuthState>()
+#[derive(Clone)]
+pub struct AuthState {
+    pub authenticated: ReadSignal<bool>,
+    pub set_authenticated: WriteSignal<bool>,
+    pub username: ReadSignal<String>,
+    pub set_username: WriteSignal<String>,
+}
 
-/// WriteSignal that triggers logout when set to true.
-/// Provided via context so LogoutButton can access it.
-#[derive(Clone, Copy)]
-pub struct LogoutTrigger(pub WriteSignal<bool>);
+impl AuthState {
+    /// Get the stored token for use in API requests
+    pub fn token() -> Option<String> {
+        ls_get(LS_KEY_TOKEN)
+    }
 
-// ── AuthGate wrapper ───────────────────────────────────────────────────
+    /// Log out: clear storage and reset signals
+    pub fn logout(&self) {
+        ls_remove(LS_KEY_USERNAME);
+        ls_remove(LS_KEY_TOKEN);
+        self.set_authenticated.set(false);
+        self.set_username.set(String::new());
+    }
+}
 
-/// Top-level gate. Renders children only when authenticated.
+/// AuthGate wraps the entire app. Children only render when authenticated.
 #[component]
-pub fn AuthGate(children: ChildrenFn) -> impl IntoView {
-    let (checking, set_checking) = create_signal(true);
+pub fn AuthGate(children: Children) -> impl IntoView {
     let (authenticated, set_authenticated) = create_signal(false);
-    let (error_msg, set_error_msg) = create_signal(String::new());
-    let (logout_trigger, set_logout_trigger) = create_signal(false);
+    let (username, set_username) = create_signal(String::new());
+    let (checking, set_checking) = create_signal(true);
 
-    // Provide logout trigger for LogoutButton
-    provide_context(LogoutTrigger(set_logout_trigger));
+    let auth_state = AuthState {
+        authenticated,
+        set_authenticated,
+        username,
+        set_username,
+    };
+    provide_context(auth_state.clone());
 
-    // Watch for logout trigger
-    create_effect(move |_| {
-        if logout_trigger.get() {
-            remove_stored(KEY_USER);
-            remove_stored(KEY_TOKEN);
-            set_authenticated.set(false);
-            set_logout_trigger.set(false);
-        }
-    });
-
-    // Check for stored credentials on mount
-    create_effect(move |_| {
+    // On mount: check localStorage for existing token and validate it
+    {
+        let set_auth = set_authenticated;
+        let set_user = set_username;
+        let set_chk = set_checking;
         spawn_local(async move {
-            if let Some(token) = get_stored(KEY_TOKEN) {
-                if !token.is_empty() && validate_token(&token).await {
-                    set_authenticated.set(true);
+            if let (Some(token), Some(user)) = (ls_get(LS_KEY_TOKEN), ls_get(LS_KEY_USERNAME)) {
+                if validate_token(&token).await {
+                    set_user.set(user);
+                    set_auth.set(true);
+                } else {
+                    // Stale or invalid token — clear it
+                    ls_remove(LS_KEY_TOKEN);
+                    ls_remove(LS_KEY_USERNAME);
                 }
             }
-            set_checking.set(false);
+            set_chk.set(false);
         });
-    });
+    }
 
-    let on_login = move |username: String, token: String| {
-        set_error_msg.set(String::new());
-        spawn_local(async move {
-            if validate_token(&token).await {
-                set_stored(KEY_USER, &username);
-                set_stored(KEY_TOKEN, &token);
-                set_authenticated.set(true);
-            } else {
-                set_error_msg.set("Invalid token — check your credentials".to_string());
-            }
-        });
-    };
+    let stored_children = store_value(children);
 
     view! {
         {move || {
             if checking.get() {
                 view! {
                     <div class="auth-loading">
-                        <div class="auth-spinner"></div>
+                        <div class="auth-spinner">"🐿️"</div>
                         <p>"Checking credentials..."</p>
                     </div>
                 }.into_view()
             } else if authenticated.get() {
-                children().into_view()
+                stored_children.with_value(|children| children()).into_view()
             } else {
-                view! {
-                    <LoginForm
-                        on_login=on_login.clone()
-                        error_msg=error_msg
-                    />
-                }.into_view()
+                view! { <LoginForm /> }.into_view()
             }
         }}
     }
 }
 
-// ── LoginForm ──────────────────────────────────────────────────────────
-
+/// Login form — shown when user is not authenticated.
 #[component]
-fn LoginForm(
-    on_login: impl Fn(String, String) + 'static + Clone,
-    error_msg: ReadSignal<String>,
-) -> impl IntoView {
-    let (username, set_username) = create_signal(String::new());
-    let (token, set_token) = create_signal(String::new());
-    let (submitting, set_submitting) = create_signal(false);
+fn LoginForm() -> impl IntoView {
+    let (login_username, set_login_username) = create_signal(String::new());
+    let (login_token, set_login_token) = create_signal(String::new());
+    let (error, set_error) = create_signal(Option::<String>::None);
+    let (loading, set_loading) = create_signal(false);
 
-    let on_login = on_login.clone();
-    let handle_submit = move |ev: web_sys::SubmitEvent| {
+    let auth_state = use_context::<AuthState>().expect("AuthState must be provided by AuthGate");
+
+    let on_submit = move |ev: web_sys::Event| {
         ev.prevent_default();
-        set_submitting.set(true);
-        let u = username.get_untracked();
-        let t = token.get_untracked();
-        on_login(u, t);
-        set_submitting.set(false);
+        let user = login_username.get().trim().to_string();
+        let token = login_token.get().trim().to_string();
+
+        if user.is_empty() || token.is_empty() {
+            set_error.set(Some("Username and token are required".into()));
+            return;
+        }
+
+        set_loading.set(true);
+        set_error.set(None);
+
+        let auth = auth_state.clone();
+        spawn_local(async move {
+            if validate_token(&token).await {
+                ls_set(LS_KEY_USERNAME, &user);
+                ls_set(LS_KEY_TOKEN, &token);
+                auth.set_username.set(user);
+                auth.set_authenticated.set(true);
+            } else {
+                set_error.set(Some("Invalid token — check your credentials and try again".into()));
+            }
+            set_loading.set(false);
+        });
     };
 
     view! {
         <div class="auth-backdrop">
             <div class="auth-card">
-                <div class="auth-logo">
-                    <span class="auth-logo-icon">"🐿️"</span>
-                    <h1>"Claw Command Center"</h1>
+                <div class="auth-header">
+                    <span class="auth-logo">"🐿️"</span>
+                    <h1>"Rocky Command Center"</h1>
+                    <p class="auth-subtitle">"Sign in to continue"</p>
                 </div>
-                <form class="auth-form" on:submit=handle_submit autocomplete="on">
+                <form class="auth-form" on:submit=on_submit>
                     <div class="auth-field">
-                        <label for="rcc-user">"Username"</label>
+                        <label for="rcc-username">"Username"</label>
                         <input
-                            id="rcc-user"
+                            id="rcc-username"
                             type="text"
-                            name="username"
                             autocomplete="username"
-                            placeholder="agent name or admin"
-                            prop:value=move || username.get()
-                            on:input=move |ev| set_username.set(event_target_value(&ev))
+                            placeholder="Your username"
+                            prop:value=login_username
+                            on:input=move |ev| set_login_username.set(event_target_value(&ev))
+                            prop:disabled=loading
                         />
                     </div>
                     <div class="auth-field">
@@ -183,51 +194,47 @@ fn LoginForm(
                         <input
                             id="rcc-token"
                             type="password"
-                            name="password"
                             autocomplete="current-password"
-                            placeholder="Bearer token"
-                            prop:value=move || token.get()
-                            on:input=move |ev| set_token.set(event_target_value(&ev))
+                            placeholder="Your RCC token"
+                            prop:value=login_token
+                            on:input=move |ev| set_login_token.set(event_target_value(&ev))
+                            prop:disabled=loading
                         />
                     </div>
-                    {move || {
-                        let msg = error_msg.get();
-                        if msg.is_empty() {
-                            view! { <span></span> }.into_view()
-                        } else {
-                            view! { <p class="auth-error">{msg}</p> }.into_view()
-                        }
-                    }}
-                    <button
-                        type="submit"
-                        class="auth-submit"
-                        prop:disabled=move || submitting.get()
-                    >
-                        {move || if submitting.get() { "Validating..." } else { "Sign In" }}
+                    {move || error.get().map(|e| view! {
+                        <div class="auth-error">{e}</div>
+                    })}
+                    <button type="submit" class="auth-submit" prop:disabled=loading>
+                        {move || if loading.get() { "Signing in…" } else { "Sign In" }}
                     </button>
                 </form>
-                <p class="auth-hint">"Use your CCC agent token or admin token."</p>
+                <p class="auth-hint">
+                    "Your token is your RCC auth token. Save it in a password manager for easy access."
+                </p>
             </div>
         </div>
     }
 }
 
-// ── LogoutButton (for use in the dashboard header) ─────────────────────
-
+/// Logout button component — place in the dashboard header.
 #[component]
 pub fn LogoutButton() -> impl IntoView {
-    let trigger = use_context::<LogoutTrigger>();
+    let auth_state = use_context::<AuthState>();
 
     view! {
-        <button
-            class="logout-btn"
-            on:click=move |_| {
-                if let Some(LogoutTrigger(set)) = trigger {
-                    set.set(true);
-                }
-            }
-        >
-            "🚪 Logout"
-        </button>
+        {move || auth_state.clone().map(|auth| {
+            let user = auth.username.get();
+            if user.is_empty() { return view! { <></> }.into_view(); }
+            let auth_for_click = auth.clone();
+            view! {
+                <div class="auth-user-info">
+                    <span class="auth-user-name">{user}</span>
+                    <button
+                        class="auth-logout-btn"
+                        on:click=move |_| auth_for_click.logout()
+                    >"Logout"</button>
+                </div>
+            }.into_view()
+        })}
     }
 }
