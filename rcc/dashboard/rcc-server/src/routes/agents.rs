@@ -105,10 +105,21 @@ async fn agent_heartbeat(
     let mut agents = state.agents.write().await;
     let agents_map = agents.as_object_mut().unwrap();
 
+    let telemetry_keys = [
+        "gpu", "gpu_temp_c", "gpu_power_w", "gpu_util_pct",
+        "vram_used_mb", "vram_total_mb",
+        "ollama_status", "ollama_models",
+    ];
+
     if let Some(agent_obj) = agents_map.get_mut(&agent_name) {
         if let Some(obj) = agent_obj.as_object_mut() {
             obj.insert("lastSeen".into(), json!(now));
             obj.insert("onlineStatus".into(), json!("online"));
+            for key in &telemetry_keys {
+                if let Some(val) = body.get(*key) {
+                    obj.insert((*key).to_string(), val.clone());
+                }
+            }
         }
     } else {
         let host = body.get("host").and_then(|h| h.as_str()).unwrap_or("unknown").to_string();
@@ -300,16 +311,30 @@ async fn patch_agent(
 async fn post_heartbeat(
     State(state): State<Arc<AppState>>,
     Path(agent_name): Path<String>,
-    Json(_body): Json<Value>,
+    Json(body): Json<Value>,
 ) -> impl IntoResponse {
     let agent = agent_name.to_lowercase();
     let now = chrono::Utc::now().to_rfc3339();
+
+    // Telemetry fields we pass through from the heartbeat body into the agent record.
+    // This lets agents like Natasha surface GPU stats, ollama status, etc. in the dashboard.
+    let telemetry_keys = [
+        "gpu", "gpu_temp_c", "gpu_power_w", "gpu_util_pct",
+        "vram_used_mb", "vram_total_mb",
+        "ollama_status", "ollama_models",
+    ];
 
     let mut agents = state.agents.write().await;
     if let Some(agent_obj) = agents.as_object_mut().and_then(|m| m.get_mut(&agent)) {
         if let Some(obj) = agent_obj.as_object_mut() {
             obj.insert("lastSeen".into(), json!(now));
             obj.insert("onlineStatus".into(), json!("online"));
+            // Merge telemetry fields if present in the heartbeat payload
+            for key in &telemetry_keys {
+                if let Some(val) = body.get(*key) {
+                    obj.insert((*key).to_string(), val.clone());
+                }
+            }
         }
     }
     drop(agents);
