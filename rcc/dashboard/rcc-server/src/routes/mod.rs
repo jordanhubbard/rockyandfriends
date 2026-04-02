@@ -12,6 +12,7 @@ pub mod geek;
 pub mod ui;
 pub mod agentos;
 pub mod memory;
+pub mod issues;
 
 use axum::{
     http::StatusCode,
