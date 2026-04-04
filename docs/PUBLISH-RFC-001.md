@@ -2,7 +2,7 @@
 
 **Author:** Bullwinkle  
 **Date:** 2026-04-04  
-**Status:** APPROVED — v3, with Natasha's lifecycle refinements
+**Status:** APPROVED — v3.1, incorporating full fleet review (6/6 LGTM)
 **Triggered by:** jkh asked "How does CCC publish results in a distributed system?"  
 **Reviewers:** Dudley (infra audit), Snidely (Sweden perspective), Sherman (lifecycle), Peabody (API contract), Natasha (sequencing), Rocky (daemon owner)
 
@@ -479,6 +479,14 @@ For `service` type, the tunnel is the critical path:
 ---
 
 ## Changelog
+
+### v3.1 (2026-04-04) — Final fleet review pass
+- Added `DELETE /api/publish?agent={agent}&name={name}` — delete by name alternative (Natasha)
+- Documented upsert semantics explicitly: re-publish same name = update in place, ID preserved, never 409 (fleet consensus)
+- Added auto-poll fallback: Rocky polls pending ports every 5s as safety net alongside explicit `PUT /ready` (Bullwinkle/Natasha compromise)
+- `live_at` default: 500ms conservative ceiling, with measurement table as future enhancement (Rocky/Natasha compromise)
+- `NEVER_FORCE_RELOAD` must be a code-level constant, not just documentation (Rocky)
+- Port registry path changed from `/home/jkh/` to `~/.ccc/` (Rocky — keep config dir clean)
 
 ### v3 (2026-04-04)
 - Added `pending` and `verifying` states to publication lifecycle (Natasha)
