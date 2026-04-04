@@ -24,7 +24,15 @@ const RCC_URL = process.env.RCC_URL || 'http://localhost:8789';
 const RCC_TOKEN = process.env.RCC_AGENT_TOKEN || '';
 const HF_TOKEN = process.env.HF_TOKEN || '';
 const LOG_DIR = process.env.HOME + '/.openclaw/workspace/logs';
-const MODEL_CACHE_DIR = '/tmp/model-deploy-cache';
+// Use ClawFS (JuiceFS shared volume) as model cache if mounted — models stored there are
+// accessible to all fleet agents with ClawFS mounted, eliminating per-node re-downloads.
+// Falls back to /tmp if ClawFS is not available (e.g. during initial setup).
+const CLAWFS_DIR = process.env.HOME + '/clawfs';
+const CLAWFS_SENTINEL = CLAWFS_DIR + '/.config';  // JuiceFS sentinel file present when mounted
+const CLAWFS_MOUNTED = existsSync(CLAWFS_SENTINEL);
+const MODEL_CACHE_DIR = CLAWFS_MOUNTED
+  ? (CLAWFS_DIR + '/models')
+  : '/tmp/model-deploy-cache';
 
 // Sweden container tunnel ports (on do-host1 localhost)
 const AGENT_TUNNELS = {
@@ -329,6 +337,7 @@ async function deploy(modelId, targetAgents, dryRun = false) {
   log(`  Model:  ${modelId}`);
   log(`  Agents: ${targetAgents.join(', ')}`);
   log(`  Mode:   ${dryRun ? 'DRY-RUN (validate only)' : 'LIVE DEPLOY'}`);
+  log(`  Cache:  ${MODEL_CACHE_DIR} (ClawFS: ${CLAWFS_MOUNTED ? 'YES — fleet-shared' : 'NO — local /tmp'})`);
   log(`${'═'.repeat(60)}\n`);
 
   // Phase 1: Validate model
