@@ -34,6 +34,9 @@ import { createHash } from 'crypto';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const HOME           = homedir();
+const QDRANT_API_KEY = process.env.QDRANT_API_KEY || '';
+const EMBED_API_KEY  = process.env.EMBED_API_KEY  || '';
+const QDRANT_URL     = process.env.QDRANT_URL     || 'http://146.190.134.110:6333';
 const AGENT_NAME     = process.env.AGENT_NAME         || 'natasha';
 const DEBOUNCE_MS    = parseInt(process.env.DEBOUNCE_MS || '10000', 10);
 const OLLAMA_URL     = process.env.OLLAMA_BASE_URL     || 'http://localhost:11434';
@@ -127,6 +130,24 @@ async function ingestFile(filePath) {
       }
     }
     log(`✓ ${basename(filePath)}: ${ok} upserted, ${fail} failed`);
+
+    // Also ingest to fleet Qdrant if keys are available
+    if (QDRANT_API_KEY && EMBED_API_KEY) {
+      const qdrantScript = join(__dirname, 'ingest-memory-qdrant.mjs');
+      const child = spawn(process.execPath, [qdrantScript], {
+        env: {
+          ...process.env,
+          QDRANT_API_KEY,
+          EMBED_API_KEY,
+          QDRANT_URL,
+          AGENT_NAME,
+        },
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+      child.stdout.on('data', d => log(`[qdrant] ${d.toString().trim()}`));
+      child.stderr.on('data', d => log(`[qdrant-err] ${d.toString().trim()}`));
+      child.on('close', code => log(`[qdrant] ingest-memory-qdrant.mjs exited ${code}`));
+    }
   } catch (e) {
     log(`✗ ${basename(filePath)}: ${e.message}`);
   }
