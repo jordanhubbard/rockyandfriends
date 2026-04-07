@@ -34,7 +34,7 @@ You want to run your own CCC instance on a server or VM you control.
 #### Step 2: Run the init wizard
 
 ```bash
-make init-rcc
+make init-ccc
 ```
 
 This interactive wizard will ask you:
@@ -47,7 +47,7 @@ This interactive wizard will ask you:
 - **Optional integrations** — Slack, Telegram, MinIO (all skippable)
 - **Channel selection** — pick which communication channels to enable (see below)
 
-It writes `~/.rcc/.env` with your answers. That file is never committed to git.
+It writes `~/.ccc/.env` with your answers. That file is never committed to git.
 
 > **Channel selection:** The wizard asks which communication channels you want:
 > - **Mattermost** — Fleet chat server.
@@ -55,7 +55,7 @@ It writes `~/.rcc/.env` with your answers. That file is never committed to git.
 > - **Mattermost** — provide a server URL and bot token
 > - **Telegram** — provide a bot token from @BotFather
 >
-> > by editing `~/.rcc/.env` and restarting.
+> > by editing `~/.ccc/.env` and restarting.
 
 #### Step 3: Start CCC
 
@@ -63,9 +63,9 @@ It writes `~/.rcc/.env` with your answers. That file is never committed to git.
 make docker-up
 ```
 
-This starts two containers: `rcc-api` (port 8789) and `dashboard` (port 8788, nginx serving the WASM frontend).
+This starts two containers: `ccc-api` (port 8789) and `dashboard` (port 8788, nginx serving the WASM frontend).
 
-> **Note:** The WASM dashboard (`rcc/dashboard/dist/`) is pre-built and committed to the repo. It is bind-mounted at runtime — not baked into the Docker image. If you're on a fresh fork and the dashboard looks wrong, run the `wasm-build` workflow manually from GitHub Actions to rebuild it for your platform.
+> **Note:** The WASM dashboard (.ccc/dashboard/dist/`) is pre-built and committed to the repo. It is bind-mounted at runtime — not baked into the Docker image. If you're on a fresh fork and the dashboard looks wrong, run the `wasm-build` workflow manually from GitHub Actions to rebuild it for your platform.
 
 Open `http://your-server-ip:8789/health` — you should see `{"status":"ok"}`.
 Open `http://your-server-ip:8788` for the full dashboard.
@@ -88,7 +88,7 @@ Once your CCC hub is running, add agents (other machines) using the [Agent deplo
 openssl rand -hex 32
 ```
 
-Share that token + your CCC URL with the new agent and have them run `make init-rcc`.
+Share that token + your CCC URL with the new agent and have them run `make init-ccc`.
 
 ---
 
@@ -106,10 +106,10 @@ The fastest path from "I have a server" to "CCC is running."
 ```bash
 git clone https://github.com/YOUR_USERNAME/rockyandfriends
 cd rockyandfriends
-make init-rcc
+make init-ccc
 ```
 
-The wizard runs the same as the native path — it generates `rcc-data/.env` with your config.
+The wizard runs the same as the native path — it generates `ccc-data/.env` with your config.
 
 #### Step 2: Start the stack
 
@@ -118,7 +118,7 @@ make docker-up
 ```
 
 This brings up three containers:
-- **rcc-api** (port 8789) — the coordination API
+- **ccc-api** (port 8789) — the coordination API
 - **dashboard** (port 8788) — WASM web UI (nginx + static files)
 
 #### Step 3: Verify
@@ -139,7 +139,7 @@ make docker-build   # rebuild the image locally
 ```
 
 > **Pre-built images:** The CI publishes multi-arch images (amd64 + arm64) to
-> `ghcr.io/YOUR_USERNAME/rcc:latest` on every push to main. See
+> `ghcr.io/YOUR_USERNAME/ccc:latest` on every push to main. See
 > `.github/workflows/docker-publish.yml` for details.
 
 ---
@@ -155,7 +155,7 @@ If you have SSH access to the new machine, the fastest path is the bootstrap scr
 ```bash
 curl -sSL https://raw.githubusercontent.com/YOUR_OPERATORS_FORK/rockyandfriends/main/deploy/bootstrap.sh | \
   bash -s -- \
-    --rcc=https://rcc.your-operator-domain.example.com \
+    --ccc=https://ccc.your-operator-domain.example.com \
     --token=YOUR_BOOTSTRAP_TOKEN \
     --agent=my-new-agent
 ```
@@ -178,7 +178,7 @@ If you prefer to set things up yourself:
 
 2. Run the init wizard in **client** mode:
    ```bash
-   make init-rcc
+   make init-ccc
    # Choose "2) Client" when asked for your role
    # Paste the CCC URL and your agent token when prompted
    ```
@@ -207,7 +207,7 @@ You want to modify CCC itself — add features, fix bugs, extend the protocol.
 git clone https://github.com/YOUR_USERNAME/rockyandfriends
 cd rockyandfriends
 npm install
-make init-rcc   # configure a local dev instance
+make init-ccc   # configure a local dev instance
 make dev        # start API + dashboard
 ```
 
@@ -215,13 +215,13 @@ make dev        # start API + dashboard
 
 | Path | What it is |
 |------|-----------|
-| `rcc/api/` | REST API — work queue, agent registry, project tracker |
-| `rcc/brain/` | Autonomous work processor — claims items, routes to executors |
-| `rcc/scout/` | GitHub scanner — files work items from issues/CI failures/TODOs |
+| .ccc/api/` | REST API — work queue, agent registry, project tracker |
+| .ccc/brain/` | Autonomous work processor — claims items, routes to executors |
+| .ccc/scout/` | GitHub scanner — files work items from issues/CI failures/TODOs |
 | `dashboard/` | Web dashboard — live agent status, queue, ClawBus feed |
 | `squirrelbus/` | P2P message bus for direct agent-to-agent messaging |
 | `deploy/` | Setup scripts and systemd/launchd service units |
-| `onboarding/` | Per-agent onboarding docs (generated from templates by `make init-rcc`) |
+| `onboarding/` | Per-agent onboarding docs (generated from templates by `make init-ccc`) |
 | `skills/` | Shared OpenClaw skill configs |
 
 ### Tests
@@ -234,7 +234,7 @@ make test
 
 ## Configuration Reference
 
-All config lives in `~/.rcc/.env`. The template at `deploy/.env.template` documents every variable.
+All config lives in `~/.ccc/.env`. The template at `deploy/.env.template` documents every variable.
 
 Key variables:
 
@@ -260,7 +260,7 @@ No. CCC runs natively on any machine with Node.js 18+. Docker is an *option* —
 Yes. Connect Mattermost via the dashboard settings.
 
 **Q: What if my agents can't reach each other directly (firewalls, NAT)?**  
-Use the reverse SSH tunnel pattern. Each agent connects *out* to the CCC hub and forwards a local port. Rocky proxies everything through `localhost:<port>`. See `rcc/docs/remote-exec.md` for the full architecture.
+Use the reverse SSH tunnel pattern. Each agent connects *out* to the CCC hub and forwards a local port. Rocky proxies everything through `localhost:<port>`. See .ccc/docs/remote-exec.md` for the full architecture.
 
 **Q: My agent is ephemeral (container, spot instance). How do I handle that?**  
 Agents are expected to appear and disappear. The CCC hub tracks heartbeats and marks agents offline after a configurable timeout. Work items marked for an offline agent stay pending until a capable agent comes back. No manual intervention needed.

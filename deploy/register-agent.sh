@@ -4,8 +4,8 @@
 
 set -e
 
-RCC_DIR="$HOME/.rcc"
-ENV_FILE="$RCC_DIR/.env"
+CCC_DIR="$HOME/.ccc"
+ENV_FILE="$CCC_DIR/.env"
 
 if [ -f "$ENV_FILE" ]; then
   set -a; source "$ENV_FILE"; set +a
@@ -19,12 +19,12 @@ fi
 echo "Registering agent '$AGENT_NAME' with $CCC_URL..."
 
 # Prompt for admin token if not set
-if [ -z "$RCC_ADMIN_TOKEN" ]; then
-  read -rsp "CCC admin token: " RCC_ADMIN_TOKEN; echo
+if [ -z "$CCC_ADMIN_TOKEN" ]; then
+  read -rsp "CCC admin token: " CCC_ADMIN_TOKEN; echo
 fi
 
 RESPONSE=$(curl -s -X POST "$CCC_URL/api/agents/register" \
-  -H "Authorization: Bearer $RCC_ADMIN_TOKEN" \
+  -H "Authorization: Bearer $CCC_ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d "{
     \"name\":\"$AGENT_NAME\",

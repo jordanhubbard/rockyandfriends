@@ -20,7 +20,7 @@
  *
  * Environment:
  *   CCC_URL      default: http://100.89.199.14:8789
- *   RCC_TOKEN    default: <YOUR_RCC_TOKEN>
+ *   CCC_TOKEN    default: <YOUR_CCC_TOKEN>
  */
 
 import { parseArgs } from 'node:util';
@@ -31,7 +31,7 @@ import { dirname, join } from 'node:path';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const CCC_URL   = process.env.CCC_URL   || 'http://100.89.199.14:8789';
-const RCC_TOKEN = process.env.RCC_TOKEN || '<YOUR_RCC_TOKEN>';
+const CCC_TOKEN = process.env.CCC_TOKEN || '<YOUR_CCC_TOKEN>';
 const DEFAULT_THRESHOLD = parseFloat(process.env.DEDUP_THRESHOLD || '0.85');
 
 // ── Dedup check (inline, avoids subprocess) ───────────────────────────────────
@@ -57,11 +57,11 @@ async function checkDup(title, description, threshold) {
   const client = new MilvusClient({ address: MILVUS_ADDRESS });
 
   const collections = await client.showCollections();
-  if (!(collections.data || []).some(c => c.name === 'rcc_queue')) return null;
+  if (!(collections.data || []).some(c => c.name === 'ccc_queue')) return null;
 
-  await client.loadCollectionSync({ collection_name: 'rcc_queue' });
+  await client.loadCollectionSync({ collection_name: 'ccc_queue' });
   const results = await client.search({
-    collection_name: 'rcc_queue',
+    collection_name: 'ccc_queue',
     vectors: [vector],
     vector_type: 'FloatVector',
     limit: 3,
@@ -82,7 +82,7 @@ async function postItem(item) {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': `Bearer ${RCC_TOKEN}`,
+      'Authorization': `Bearer ${CCC_TOKEN}`,
     },
     body: JSON.stringify(item),
   });

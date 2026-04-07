@@ -28,7 +28,7 @@ python3 qdrant_search.py --stats
 
 ## Why Python (not Node.js)?
 
-The Node.js equivalents in `rcc/vector/index.mjs` exist for the RCC dashboard.
+The Node.js equivalents in .ccc/vector/index.mjs` exist for the CCC dashboard.
 These Python scripts are designed for Hermes agent integration — they read from
 `~/.hermes/state.db` directly, work with Hermes cron jobs, and have zero external
 dependencies (important for agent environments where pip isn't always available).

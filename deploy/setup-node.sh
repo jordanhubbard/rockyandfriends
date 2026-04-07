@@ -3,18 +3,18 @@
 # Run once on a new machine. Safe to re-run (idempotent).
 #
 # Usage:
-#   REPO_URL=git@github.com:yourorg/your-rcc-repo.git bash deploy/setup-node.sh
+#   REPO_URL=git@github.com:yourorg/your-ccc-repo.git bash deploy/setup-node.sh
 #   OR (from inside an existing clone): bash deploy/setup-node.sh
 #
-# Tip: run deploy/rcc-init.sh after this to configure your .env interactively.
+# Tip: run deploy/ccc-init.sh after this to configure your .env interactively.
 
 set -e
 
 REPO_URL="${REPO_URL:-${REPO_URL:-git@github.com:<your-org>/rockyandfriends.git}}"
-RCC_DIR="$HOME/.rcc"
-WORKSPACE="$RCC_DIR/workspace"
-ENV_FILE="$RCC_DIR/.env"
-LOG_DIR="$RCC_DIR/logs"
+CCC_DIR="$HOME/.ccc"
+WORKSPACE="$CCC_DIR/workspace"
+ENV_FILE="$CCC_DIR/.env"
+LOG_DIR="$CCC_DIR/logs"
 PULL_SCRIPT="$WORKSPACE/deploy/agent-pull.sh"
 
 # Colors
@@ -53,8 +53,8 @@ done
 success "Required tools present (git, node, curl)"
 
 # ── Create directories ─────────────────────────────────────────────────────
-mkdir -p "$RCC_DIR" "$LOG_DIR"
-success "Created $RCC_DIR"
+mkdir -p "$CCC_DIR" "$LOG_DIR"
+success "Created $CCC_DIR"
 
 # ── Clone or update repo ───────────────────────────────────────────────────
 if [ -d "$WORKSPACE/.git" ]; then
@@ -97,8 +97,8 @@ install_cron_linux() {
 }
 
 install_cron_macos() {
-  PLIST_SRC="$WORKSPACE/deploy/launchd/com.rcc.agent.plist"
-  PLIST_DST="$HOME/Library/LaunchAgents/com.rcc.agent.plist"
+  PLIST_SRC="$WORKSPACE/deploy/launchd/com.ccc.agent.plist"
+  PLIST_DST="$HOME/Library/LaunchAgents/com.ccc.agent.plist"
   if [ -f "$PLIST_DST" ]; then
     warn "LaunchAgent already installed at $PLIST_DST — reloading"
     launchctl unload "$PLIST_DST" 2>/dev/null || true
@@ -326,18 +326,18 @@ fi
 
 # ── Set up systemd service (Linux only) ───────────────────────────────────
 if [[ "$PLATFORM" == "linux" ]] && command -v systemctl &>/dev/null; then
-  SERVICE_SRC="$WORKSPACE/deploy/systemd/rcc-agent.service"
-  SERVICE_DST="/etc/systemd/system/rcc-agent.service"
+  SERVICE_SRC="$WORKSPACE/deploy/systemd/ccc-agent.service"
+  SERVICE_DST="/etc/systemd/system/ccc-agent.service"
   if [ -f "$SERVICE_DST" ]; then
-    warn "rcc-agent.service already installed — skipping"
+    warn "ccc-agent.service already installed — skipping"
   else
     if [ -w "/etc/systemd/system" ] || command -v sudo &>/dev/null; then
       sudo cp "$SERVICE_SRC" "$SERVICE_DST" 2>/dev/null && \
       sudo systemctl daemon-reload && \
-      sudo systemctl enable rcc-agent && \
-      sudo systemctl start rcc-agent && \
-      success "rcc-agent systemd service installed and started" || \
-      warn "Could not install systemd service (needs sudo). Run manually: sudo systemctl enable --now rcc-agent"
+      sudo systemctl enable ccc-agent && \
+      sudo systemctl start ccc-agent && \
+      success "ccc-agent systemd service installed and started" || \
+      warn "Could not install systemd service (needs sudo). Run manually: sudo systemctl enable --now ccc-agent"
     else
       warn "No sudo access — install systemd service manually"
     fi

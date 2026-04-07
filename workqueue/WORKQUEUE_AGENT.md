@@ -185,7 +185,7 @@ No single gatekeeper. But the server enforces these gates:
 ```bash
 # Promote via API
 curl -X POST http://localhost:8789/api/item/<id>/promote \
-  -H "Authorization: Bearer $RCC_TOKEN" \
+  -H "Authorization: Bearer $CCC_TOKEN" \
   -d '{"priority":"medium","rationale":"Observed in issue #42 and confirmed by CI failures...","author":"rocky"}'
 
 # Force-promote (bypass gates — use sparingly)

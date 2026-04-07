@@ -31,7 +31,7 @@ const require   = createRequire(import.meta.url);
 
 const PORT      = parseInt(process.env.HB_PORT   || '8792', 10);
 const CCC_URL   = process.env.CCC_URL            || 'http://146.190.134.110:8789';
-const RCC_TOKEN = process.env.RCC_TOKEN          || 'wq-5dcad756f6d3e345c00b5cb3dfcbdedb';
+const CCC_TOKEN = process.env.CCC_TOKEN          || 'wq-5dcad756f6d3e345c00b5cb3dfcbdedb';
 const DB_DIR    = process.env.HB_DB_DIR          || path.join(__dirname, '../data');
 const DB_PATH   = path.join(DB_DIR, 'heartbeat-offline.sqlite');
 
@@ -99,7 +99,7 @@ function dbCount() {
 
 // ── CCC reachability probe ──────────────────────────────────────────────────
 
-let rccReachable = null, offlineSince = null;
+let cccReachable = null, offlineSince = null;
 
 async function checkRcc() {
   try {
@@ -107,17 +107,17 @@ async function checkRcc() {
     const tid = setTimeout(() => ac.abort(), 4000);
     const r   = await fetch(`${CCC_URL}/health`, { signal: ac.signal });
     clearTimeout(tid);
-    if (!rccReachable && offlineSince) {
+    if (!cccReachable && offlineSince) {
       console.log(`[offline-hb] CCC back online after ${offlineSince}`);
       offlineSince = null;
     }
-    rccReachable = r.ok;
+    cccReachable = r.ok;
   } catch {
-    if (rccReachable !== false) {
+    if (cccReachable !== false) {
       offlineSince = new Date().toISOString();
       console.log(`[offline-hb] CCC unreachable — offline mode since ${offlineSince}`);
     }
-    rccReachable = false;
+    cccReachable = false;
   }
 }
 checkRcc();
@@ -187,7 +187,7 @@ http.createServer(async (req, res) => {
   if (method === 'GET' && p === '/local/heartbeat') {
     const now = Date.now();
     return resp(res, 200, {
-      ok: true, offline_mode: !rccReachable, offline_since: offlineSince, rcc_url: CCC_URL,
+      ok: true, offline_mode: !cccReachable, offline_since: offlineSince, ccc_url: CCC_URL,
       agents: dbLatestPerAgent().map(a => ({ ...a, online: (now - new Date(a.last_ts).getTime()) < 120_000 })),
     });
   }
@@ -195,7 +195,7 @@ http.createServer(async (req, res) => {
   if (method === 'GET' && p === '/local/heartbeat/stream') {
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive', 'Access-Control-Allow-Origin': '*' });
     res.flushHeaders?.();
-    res.write(`data: ${JSON.stringify({ type: 'connected', rcc_reachable: rccReachable })}\n\n`);
+    res.write(`data: ${JSON.stringify({ type: 'connected', ccc_reachable: cccReachable })}\n\n`);
     sseClients.add(res);
     const ka = setInterval(() => res.write(': ping\n\n'), 20_000);
     req.on('close', () => { sseClients.delete(res); clearInterval(ka); });
@@ -204,13 +204,13 @@ http.createServer(async (req, res) => {
 
   if (method === 'POST' && p === '/local/heartbeat/replay') {
     const body = await readBody(req);
-    const result = await replayToRcc(body.rcc_url||CCC_URL, body.token||RCC_TOKEN);
+    const result = await replayToRcc(body.ccc_url||CCC_URL, body.token||CCC_TOKEN);
     return resp(res, 200, { ok: true, ...result });
   }
 
   if (method === 'GET' && p === '/local/status') {
     let sz = 0; try { sz = statSync(DB_PATH).size; } catch {}
-    return resp(res, 200, { ok: true, db_path: DB_PATH, db_size_bytes: sz, record_count: dbCount(), rcc_reachable: rccReachable, offline_since: offlineSince, port: PORT, uptime_s: Math.floor((Date.now()-startTime)/1000) });
+    return resp(res, 200, { ok: true, db_path: DB_PATH, db_size_bytes: sz, record_count: dbCount(), ccc_reachable: cccReachable, offline_since: offlineSince, port: PORT, uptime_s: Math.floor((Date.now()-startTime)/1000) });
   }
 
   res.writeHead(404); res.end('Not found');

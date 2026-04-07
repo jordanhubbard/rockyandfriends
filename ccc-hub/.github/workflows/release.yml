@@ -1,0 +1,132 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish release artifacts
+    runs-on: ubuntu-22.04
+
+    steps:
+      # ── Checkout ────────────────────────────────────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ── Node.js setup ───────────────────────────────────────────────────────
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: ccc-hub/package-lock.json
+
+      # ── Install dependencies ─────────────────────────────────────────────────
+      - name: Install ccc-hub dependencies
+        working-directory: ccc-hub
+        run: npm ci --omit=dev
+
+      # ── Extract version from tag ─────────────────────────────────────────────
+      - name: Extract version
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      # ── Build ccc-hub tarball ────────────────────────────────────────────────
+      - name: Build ccc-hub tarball
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          ARCHIVE="ccc-hub-v${VERSION}.tar.gz"
+
+          # Create a clean staging dir (no secrets, no .git)
+          mkdir -p staging/ccc-hub
+          rsync -a \
+            --exclude='.git' \
+            --exclude='.env' \
+            --exclude='node_modules/.cache' \
+            --exclude='data/' \
+            --exclude='*.log' \
+            ccc-hub/ staging/ccc-hub/
+
+          # Write version into package.json
+          node -e "
+            const fs = require('fs');
+            const p = 'staging/ccc-hub/package.json';
+            const pkg = JSON.parse(fs.readFileSync(p));
+            pkg.version = '${VERSION}';
+            fs.writeFileSync(p, JSON.stringify(pkg, null, 2) + '\n');
+          "
+
+          tar -czf "${ARCHIVE}" -C staging ccc-hub
+          sha256sum "${ARCHIVE}" > "${ARCHIVE}.sha256"
+          echo "archive=${ARCHIVE}" >> "$GITHUB_OUTPUT"
+          echo "Built ${ARCHIVE}"
+        id: hub-build
+
+      # ── Build ccc-agent tarball ──────────────────────────────────────────────
+      - name: Build ccc-agent tarball
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          ARCHIVE="ccc-agent-v${VERSION}.tar.gz"
+
+          # The agent installer is self-contained; bundle it with a README
+          mkdir -p staging/ccc-agent
+          cp ccc-hub/install-agent.sh staging/ccc-agent/
+          cat > staging/ccc-agent/README.md << 'EOF'
+          # CCC Agent Installer
+
+          Run this on any machine you want to register as an agent:
+
+              bash install-agent.sh
+
+          It will prompt for the hub URL and a bootstrap token.
+          EOF
+
+          tar -czf "${ARCHIVE}" -C staging ccc-agent
+          sha256sum "${ARCHIVE}" > "${ARCHIVE}.sha256"
+          echo "archive=${ARCHIVE}" >> "$GITHUB_OUTPUT"
+        id: agent-build
+
+      # ── Extract changelog section ────────────────────────────────────────────
+      - name: Extract release notes
+        id: notes
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          if [ -f CHANGELOG.md ]; then
+            # Extract section between this version header and the next
+            awk "/^## \[?v?${VERSION}\]?/{found=1; next} found && /^## /{exit} found{print}" CHANGELOG.md > release-notes.md
+          else
+            echo "Release v${VERSION}" > release-notes.md
+            echo "" >> release-notes.md
+            echo "See commit history for changes." >> release-notes.md
+          fi
+          cat release-notes.md
+
+      # ── Create GitHub Release ────────────────────────────────────────────────
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "v${{ steps.version.outputs.version }}"
+          body_path: release-notes.md
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-rc') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-alpha') }}
+          files: |
+            ccc-hub-v${{ steps.version.outputs.version }}.tar.gz
+            ccc-hub-v${{ steps.version.outputs.version }}.tar.gz.sha256
+            ccc-agent-v${{ steps.version.outputs.version }}.tar.gz
+            ccc-agent-v${{ steps.version.outputs.version }}.tar.gz.sha256
+
+      # ── Update install scripts to point at versioned artifact ───────────────
+      - name: Verify install scripts reference pinnable URLs
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          echo "Release v${VERSION} published."
+          echo "Install scripts should be updated to reference:"
+          echo "  https://github.com/jordanhubbard/rockyandfriends/releases/download/v${VERSION}/ccc-hub-v${VERSION}.tar.gz"
+          echo "  https://github.com/jordanhubbard/rockyandfriends/releases/download/v${VERSION}/ccc-agent-v${VERSION}.tar.gz"

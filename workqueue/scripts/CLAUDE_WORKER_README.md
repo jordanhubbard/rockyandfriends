@@ -134,18 +134,18 @@ returning `null` on a Mac despite a running Claude session, this is likely the c
 verify with `tmux list-panes -a -F '#{session_name}|||#{pane_current_command}'` directly.
 
 **Keeping the session alive across reboots:** On Linux you'd use systemd or cron. On macOS,
-use a LaunchAgent. A ready-to-use plist is at `deploy/launchd/com.rcc.claude-main.plist`:
+use a LaunchAgent. A ready-to-use plist is at `deploy/launchd/com.ccc.claude-main.plist`:
 
 ```bash
-cp deploy/launchd/com.rcc.claude-main.plist ~/Library/LaunchAgents/
+cp deploy/launchd/com.ccc.claude-main.plist ~/Library/LaunchAgents/
 # Edit it if tmux/claude are not at /usr/local/bin (check: which tmux && which claude)
-launchctl load ~/Library/LaunchAgents/com.rcc.claude-main.plist
+launchctl load ~/Library/LaunchAgents/com.ccc.claude-main.plist
 ```
 
 This keeps `tmux: claude-main` alive and auto-restarts it if it exits. Check status:
 
 ```bash
-launchctl list | grep rcc.claude
+launchctl list | grep ccc.claude
 tail -f /tmp/claude-main.log
 ```
 

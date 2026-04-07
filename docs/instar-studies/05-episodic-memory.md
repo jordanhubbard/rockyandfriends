@@ -43,8 +43,8 @@ EpisodicMemory makes our daily activity machine-queryable and directly feeds Wor
 
 ### Concrete value for our agents
 1. **Heartbeat summaries** — instead of dumping raw daily logs, synthesize into digests. Natasha's daily digest cron could call `episodicMemory.getBySignificance(7)` to surface only the high-significance events.
-2. **Cross-session continuity** — when picking up a workqueue item, query `getByTheme('rcc')` or `getByTheme('horde')` to surface relevant context from prior sessions.
-3. **Milvus indexing** — the `entities[]` and `themes[]` fields are perfect Milvus metadata. Digest summaries can be embedded and stored in `rcc_memory` collection for semantic search.
+2. **Cross-session continuity** — when picking up a workqueue item, query `getByTheme('ccc')` or `getByTheme('horde')` to surface relevant context from prior sessions.
+3. **Milvus indexing** — the `entities[]` and `themes[]` fields are perfect Milvus metadata. Digest summaries can be embedded and stored in `ccc_memory` collection for semantic search.
 4. **jkh weekly summary** — `listSyntheses(7)` gives last week's session syntheses. Clean source for the weekly git-health heartbeat idea.
 
 ### What needs building around it
@@ -62,7 +62,7 @@ Both are doable with our existing tools (LLM + heartbeat cron).
 
 ### Adaptation notes
 - TypeScript → JavaScript: remove type annotations, keep all logic
-- Storage path: `~/.rcc/workspace/rcc/data/episodes/` or per-agent `~/.openclaw/workspace/episodes/`
+- Storage path: `~/.ccc/workspace.ccc/data/episodes/` or per-agent `~/.openclaw/workspace/episodes/`
 - LLM digestion: use our existing Claude API access for the summarization step
 - `crypto.randomUUID()` is available in Node.js 16+ — no change needed
 
@@ -70,11 +70,11 @@ Both are doable with our existing tools (LLM + heartbeat cron).
 
 ## Adoption Plan
 
-**Phase 1 (~2h):** Port `EpisodicMemory` class to `rcc/lib/episodic-memory.mjs`. Write basic tests. No digestion logic yet — just the storage/query layer.
+**Phase 1 (~2h):** Port `EpisodicMemory` class to .ccc/lib/episodic-memory.mjs`. Write basic tests. No digestion logic yet — just the storage/query layer.
 
 **Phase 2 (~3h):** Add digestion: end-of-heartbeat, create an `ActivityDigest` from the last session's actions. LLM call to synthesize summary + extract themes + score significance.
 
-**Phase 3 (~2h):** Wire into WorkingMemoryAssembler (item -04). Wire `entities[]` into Milvus `rcc_memory` for semantic search.
+**Phase 3 (~2h):** Wire into WorkingMemoryAssembler (item -04). Wire `entities[]` into Milvus `ccc_memory` for semantic search.
 
 **Phase 4 (later):** Wire into daily digest cron. Surface significance ≥7 events in jkh's daily summary.
 

@@ -3,13 +3,13 @@
 #
 # Usage: bash deploy/push-agentfs-sync.sh
 #
-# Builds rcc/agentfs-sync for linux/x86_64, uploads to s3://agents/shared/bin/agentfs-sync.
-# Requires: cargo, mc (MinIO client), ~/.rcc/.env with MINIO_* credentials.
+# Builds.ccc/agentfs-sync for linux/x86_64, uploads to s3://agents/shared/bin/agentfs-sync.
+# Requires: cargo, mc (MinIO client), ~/.ccc/.env with MINIO_* credentials.
 
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SRC_DIR="$REPO_ROOT/rcc/agentfs-sync"
+SRC_DIR="$REPO_ROOT.ccc/agentfs-sync"
 BINARY_NAME="agentfs-sync"
 TARGET="x86_64-unknown-linux-musl"
 MC_ALIAS="${MINIO_ALIAS:-do-host1}"
@@ -22,16 +22,16 @@ warn()    { echo -e "${YELLOW}⚠${NC} $1"; }
 error()   { echo -e "${RED}✗${NC} $1"; exit 1; }
 
 # Load .env for MC alias creds
-if [[ -f "$HOME/.rcc/.env" ]]; then
+if [[ -f "$HOME/.ccc/.env" ]]; then
   set -a
   # shellcheck source=/dev/null
-  source "$HOME/.rcc/.env"
+  source "$HOME/.ccc/.env"
   set +a
 fi
 
 # ── Verify source exists ──────────────────────────────────────────────────
 if [[ ! -f "$SRC_DIR/Cargo.toml" ]]; then
-  error "No Cargo.toml found at $SRC_DIR — agentfs-sync source not yet created.\nCreate rcc/agentfs-sync/ with a Cargo project before running this script."
+  error "No Cargo.toml found at $SRC_DIR — agentfs-sync source not yet created.\nCreate.ccc/agentfs-sync/ with a Cargo project before running this script."
 fi
 
 # ── Ensure target toolchain ───────────────────────────────────────────────
@@ -64,7 +64,7 @@ echo "agentfs-sync is now at s3://agents/shared/bin/agentfs-sync"
 echo ""
 echo "To deploy to all agents, run bootstrap on each agent:"
 echo "  curl -sSL https://raw.githubusercontent.com/jordanhubbard/rockyandfriends/main/deploy/bootstrap.sh | \\"
-echo "    bash -s -- --rcc=http://146.190.134.110:8789 --token=<bootstrap-token> --agent=<name>"
+echo "    bash -s -- --ccc=http://146.190.134.110:8789 --token=<bootstrap-token> --agent=<name>"
 echo ""
 echo "Or if already bootstrapped, re-run just the agentfs-sync install step:"
 echo "  sudo curl -sf http://146.190.134.110:9000/agents/shared/bin/agentfs-sync -o /usr/local/bin/agentfs-sync"

@@ -241,7 +241,7 @@ Agents can be commanded remotely using the CCC exec API — no inbound SSH requi
 ### How it works
 
 1. Rocky (or any agent) posts to `POST /api/exec` on CCC
-2. CCC broadcasts a signed `rcc.exec` SquirrelBus message to the target agent(s)
+2. CCC broadcasts a signed `ccc.exec` SquirrelBus message to the target agent(s)
 3. Each target agent running `agent-listener.mjs` verifies the HMAC-SHA256 signature
 4. Executes in sandboxed `vm.runInNewContext()` (JS mode) or `/bin/sh -c` with allowlist (shell mode)
 5. Posts result back to `POST /api/exec/:id/result`
@@ -250,19 +250,19 @@ Agents can be commanded remotely using the CCC exec API — no inbound SSH requi
 
 ```bash
 # Send exec (JS mode - default):
-curl -X POST https://rcc.yourmom.photos/api/exec \
+curl -X POST https://ccc.yourmom.photos/api/exec \
   -H "Authorization: Bearer $CCC_AUTH_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"targets":["peabody"],"code":"process.version"}'
 
 # Send exec (shell mode - for approved commands):
-curl -X POST https://rcc.yourmom.photos/api/exec \
+curl -X POST https://ccc.yourmom.photos/api/exec \
   -H "Authorization: Bearer $CCC_AUTH_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"targets":["all"],"mode":"shell","code":"nvidia-smi --query-gpu=name,memory.used --format=csv,noheader"}'
 
 # Get results:
-curl https://rcc.yourmom.photos/api/exec/<exec-id> \
+curl https://ccc.yourmom.photos/api/exec/<exec-id> \
   -H "Authorization: Bearer $CCC_AUTH_TOKEN"
 ```
 
@@ -271,16 +271,16 @@ curl https://rcc.yourmom.photos/api/exec/<exec-id> \
 ```bash
 SQUIRRELBUS_TOKEN=wq-5dcad756f6d3e345c00b5cb3dfcbdedb \
 SQUIRRELBUS_URL=https://dashboard.yourmom.photos \
-CCC_URL=https://rcc.yourmom.photos \
+CCC_URL=https://ccc.yourmom.photos \
 CCC_AUTH_TOKEN=<agent-token> \
 AGENT_NAME=mynode \
 ALLOW_SHELL_EXEC=true \
-node /opt/rcc/rcc/exec/agent-listener.mjs
+node /opt.ccc/ccc/exec/agent-listener.mjs
 ```
 
-Or use the systemd service: `rcc/deploy/systemd/agent-listener.service`
+Or use the systemd service: .ccc/deploy/systemd/agent-listener.service`
 
-Full docs: `~/Src/CCC/rcc/docs/remote-exec.md`
+Full docs: `~/Src/CCC.ccc/docs/remote-exec.md`
 
 ## Make It Yours
 

@@ -6,7 +6,7 @@
 import { execSync } from 'child_process';
 
 const CCC_URL = process.env.CCC_URL || 'https://api.yourmom.photos';
-const RCC_TOKEN = process.env.CCC_AGENT_TOKEN || process.env.BUS_TOKEN || '';
+const CCC_TOKEN = process.env.CCC_AGENT_TOKEN || process.env.BUS_TOKEN || '';
 const SLACK_TOKEN = process.env.SLACK_OMGJKH_TOKEN || process.env.SLACK_BOT_TOKEN || '';
 const SLACK_CHANNEL = process.env.SLACK_AGENT_CHANNEL || '#rockyandfriends';
 const SLACK_API = 'https://slack.com/api';
@@ -22,18 +22,18 @@ function git(cmd) {
   }
 }
 
-async function rccGet(path) {
+async function cccGet(path) {
   const r = await fetch(`${CCC_URL}${path}`, {
-    headers: { 'Authorization': `Bearer ${RCC_TOKEN}` }
+    headers: { 'Authorization': `Bearer ${CCC_TOKEN}` }
   });
   return r.json();
 }
 
-async function rccPost(path, body) {
+async function cccPost(path, body) {
   if (DRY_RUN) { console.log('[DRY-RUN] POST', path, JSON.stringify(body).slice(0, 200)); return { ok: true }; }
   const r = await fetch(`${CCC_URL}${path}`, {
     method: 'POST',
-    headers: { 'Authorization': `Bearer ${RCC_TOKEN}`, 'Content-Type': 'application/json' },
+    headers: { 'Authorization': `Bearer ${CCC_TOKEN}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(body)
   });
   return r.json();
@@ -65,7 +65,7 @@ async function main() {
   }
 
   // Get existing queue items to check for branch-orphan dedup keys
-  const q = await rccGet('/api/queue');
+  const q = await cccGet('/api/queue');
   const allItems = [...(q.items || []), ...(q.completed || [])];
 
   const report = [];
@@ -112,7 +112,7 @@ async function main() {
       // 7+ days unmerged with no activity — Slack escalate
       report.push(`🚨 *Orphaned >7d:* \`${branch}\` (+${aheadCount} commits, ${Math.round(ageHours/24)}d old) — \`${lastMsg}\``);
       if (!existingAlert) {
-        await rccPost('/api/queue', {
+        await cccPost('/api/queue', {
           title: `Orphaned branch: ${branch} (>7d unmerged)`,
           description: `Branch ${branch} has ${aheadCount} unmerged commits and is ${Math.round(ageHours/24)} days old. Last: ${lastMsg}. Action required: merge to main or delete.`,
           assignee: 'jkh',
@@ -127,7 +127,7 @@ async function main() {
       // 72h+ — file a queue item (once, deduped)
       report.push(`⚠️ Orphaned >72h: \`${branch}\` (+${aheadCount} commits, ${Math.round(ageHours)}h old) — \`${lastMsg}\``);
       if (!existingAlert) {
-        await rccPost('/api/queue', {
+        await cccPost('/api/queue', {
           title: `Orphaned branch: ${branch} — merge or delete?`,
           description: `Branch ${branch} has ${aheadCount} unmerged commits and hasn't been touched in ${Math.round(ageHours)}h. Last commit: ${lastMsg}. Merge to main or delete.`,
           assignee: 'all',

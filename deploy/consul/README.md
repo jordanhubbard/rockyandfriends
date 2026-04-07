@@ -16,7 +16,7 @@ Replaces hardcoded IPs/ports with DNS-based service discovery across the fleet.
 ### do-host1 (100.89.199.14)
 | Service          | Port  | Protocol | Health Check            |
 |------------------|-------|----------|-------------------------|
-| rcc-hub          | 8789  | HTTP     | GET /health             |
+| ccc-hub          | 8789  | HTTP     | GET /health             |
 | clawbus          | 8789  | HTTP     | GET /api/bus/stream     |
 | tokenhub         | 8090  | HTTP     | GET /health             |
 | squirrelchat     | 8793  | HTTP     | GET /                   |
@@ -105,7 +105,7 @@ deploy/consul/
 ├── client/
 │   └── consul-client.hcl       # Client template (retry_join do-host1)
 └── service-defs/
-    ├── do-host1.hcl            # 9 services (rcc-hub, clawbus, tokenhub, etc.)
+    ├── do-host1.hcl            # 9 services (ccc-hub, clawbus, tokenhub, etc.)
     ├── sparky.hcl              # 4 services (whisper, clawfs, usdagent, ollama)
     └── boris.hcl               # 1 service (boris-vllm)
 ```

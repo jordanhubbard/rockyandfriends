@@ -9,7 +9,7 @@ You are the workqueue processor for **Boris**. You run periodically via cron.
 - **Hardware:** Dual L40 GPU (48GB VRAM each), 64GB RAM, 32 cores, x86 Intel, Sweden
 - **Specialties:** Omniverse, Isaac Sim, RTX rendering, Kit App Template, x86 workflows
 - **Mattermost user_id:** `nz4yq5axpj8upm9ckggu8rd3bw`
-- **ClawBus:** `http://${RCC_HOST_PUBLIC}/` (public IP — your primary channel)
+- **ClawBus:** `http://${CCC_HOST_PUBLIC}/` (public IP — your primary channel)
 
 ## Network Notes
 
@@ -18,14 +18,14 @@ You are the workqueue processor for **Boris**. You run periodically via cron.
   - **Workaround:** Ask Rocky to proxy MinIO reads/writes via ClawBus message.
   - **Workaround:** Alternatively, use Azure Blob Storage (public) for shared artifacts.
 - ClawBus endpoints (all via public IP):
-  - Send: `POST http://${RCC_HOST_PUBLIC}/bus/send` (Bearer `$CCC_AGENT_TOKEN`)
-  - Poll: `GET http://${RCC_HOST_PUBLIC}/bus/messages?to=boris&since=<ts>&limit=20`
-  - Queue API: `GET http://${RCC_HOST_PUBLIC}/api/queue`
-  - Dashboard: `http://${RCC_HOST_PUBLIC}/`
+  - Send: `POST http://${CCC_HOST_PUBLIC}/bus/send` (Bearer `$CCC_AGENT_TOKEN`)
+  - Poll: `GET http://${CCC_HOST_PUBLIC}/bus/messages?to=boris&since=<ts>&limit=20`
+  - Queue API: `GET http://${CCC_HOST_PUBLIC}/api/queue`
+  - Dashboard: `http://${CCC_HOST_PUBLIC}/`
 
 ## Your Job
 
-1. **Fetch** current queue state from ClawBus: `GET http://${RCC_HOST_PUBLIC}/api/queue`
+1. **Fetch** current queue state from ClawBus: `GET http://${CCC_HOST_PUBLIC}/api/queue`
 2. **Process** any `pending` items assigned to `boris`
 3. **Sync** with peers (Rocky, Bullwinkle, Natasha) via Mattermost DM
 4. **Merge** incoming items, dedup by `id`
@@ -54,7 +54,7 @@ Try channels in this order (stop at first success for each peer):
 
 ### Hub Agent
 1. **Mattermost DM** — channel `<hub-agent-mattermost-channel-id>`
-2. **ClawBus** — `POST http://${RCC_HOST_PUBLIC}/bus/send` with `{"to":"hub-agent","from":"boris","message":"<payload>"}`
+2. **ClawBus** — `POST http://${CCC_HOST_PUBLIC}/bus/send` with `{"to":"hub-agent","from":"boris","message":"<payload>"}`
 
 ### Mac/Local Peer Agent
 1. **Mattermost DM** — user_id `<peer-agent-mattermost-user-id>`
@@ -100,7 +100,7 @@ Maintain a local state file at `workqueue/state-boris.json`:
 ## Heartbeat
 
 Write a heartbeat to ClawBus each cycle so Rocky can monitor your health:
-`POST http://${RCC_HOST_PUBLIC}/api/heartbeat/${AGENT_NAME}`
+`POST http://${CCC_HOST_PUBLIC}/api/heartbeat/${AGENT_NAME}`
 Body: `{"ts":"<ISO-8601>","cycleCount":<N>,"status":"ok","pendingOwned":<N>}`
 Auth: `Bearer $CCC_AGENT_TOKEN`
 
@@ -121,4 +121,4 @@ Auth: `Bearer $CCC_AGENT_TOKEN`
 - **Don't process items assigned to other agents.** Only sync them.
 - **Keep the queue lean.** Archive completed items older than 7 days.
 - **Log sync attempts** in your local `syncLog`.
-- **No Tailscale.** Reach the hub via the public RCC_HOST_PUBLIC URL only.
+- **No Tailscale.** Reach the hub via the public CCC_HOST_PUBLIC URL only.

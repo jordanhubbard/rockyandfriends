@@ -12,7 +12,7 @@
  * Environment:
  *   OLLAMA_BASE_URL  default: http://localhost:11434
  *   CCC_URL          default: http://100.89.199.14:8789
- *   RCC_TOKEN        default: wq-5dcad756f6d3e345c00b5cb3dfcbdedb
+ *   CCC_TOKEN        default: wq-5dcad756f6d3e345c00b5cb3dfcbdedb
  *   HEALTH_INTERVAL  default: 900000 (15 min in ms)
  *   HEALTH_TIMEOUT   default: 30000 (30s in ms)
  *   HEALTH_MODEL     default: qwen2.5-coder:32b
@@ -24,7 +24,7 @@ import { parseArgs } from 'node:util';
 
 const OLLAMA_BASE_URL  = process.env.OLLAMA_BASE_URL  || 'http://localhost:11434';
 const CCC_URL          = process.env.CCC_URL          || 'http://100.89.199.14:8789';
-const RCC_TOKEN        = process.env.RCC_TOKEN        || 'wq-5dcad756f6d3e345c00b5cb3dfcbdedb';
+const CCC_TOKEN        = process.env.CCC_TOKEN        || 'wq-5dcad756f6d3e345c00b5cb3dfcbdedb';
 const HEALTH_INTERVAL  = parseInt(process.env.HEALTH_INTERVAL  || '900000', 10);
 const HEALTH_TIMEOUT   = parseInt(process.env.HEALTH_TIMEOUT   || '30000', 10);
 const HEALTH_MODEL     = process.env.HEALTH_MODEL     || 'qwen2.5-coder:32b';
@@ -181,7 +181,7 @@ async function reportToRCC(status, detail) {
     await fetch(`${CCC_URL}/api/heartbeat/natasha`, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${RCC_TOKEN}`,
+        'Authorization': `Bearer ${CCC_TOKEN}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({

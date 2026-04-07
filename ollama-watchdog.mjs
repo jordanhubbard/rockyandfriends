@@ -14,7 +14,7 @@ import { promisify } from 'util';
 const execFileAsync = promisify(execFile);
 const OLLAMA_URL = process.env.OLLAMA_URL || 'http://localhost:11434';
 const CCC_URL    = process.env.CCC_URL    || 'http://146.190.134.110:8789';
-const RCC_TOKEN  = process.env.CCC_AUTH_TOKEN || 'wq-5dcad756f6d3e345c00b5cb3dfcbdedb';
+const CCC_TOKEN  = process.env.CCC_AUTH_TOKEN || 'wq-5dcad756f6d3e345c00b5cb3dfcbdedb';
 const AGENT_NAME = process.env.AGENT_NAME || 'natasha';
 const INTERVAL_MS = 15 * 60 * 1000; // 15 min
 const TIMEOUT_MS  = 30_000;
@@ -71,7 +71,7 @@ async function pushStatus() {
   try {
     await fetch(`${CCC_URL}/api/heartbeat/${AGENT_NAME}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${RCC_TOKEN}` },
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${CCC_TOKEN}` },
       body: JSON.stringify(payload),
     });
   } catch (_) {}

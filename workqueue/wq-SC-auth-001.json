@@ -28,7 +28,7 @@
     "Multi-device support: multiple active tokens per user (tokens table), new login does not revoke existing tokens"
   ],
   "resolved_questions": {
-    "smtp": "SendGrid free tier (100/day) via lettre SMTP relay. Port 587 confirmed open on do-host1. No native outbound SMTP configured. Env vars: SENDGRID_SMTP_USER='apikey', SENDGRID_SMTP_PASS=<api_key>, SMTP_FROM. BLOCKER: key not yet in RCC secrets.",
+    "smtp": "SendGrid free tier (100/day) via lettre SMTP relay. Port 587 confirmed open on do-host1. No native outbound SMTP configured. Env vars: SENDGRID_SMTP_USER='apikey', SENDGRID_SMTP_PASS=<api_key>, SMTP_FROM. BLOCKER: key not yet in CCC secrets.",
     "multi_device_tokens": "tokens table (id, user_id, token_hash, created_at, last_used_at). New login does NOT revoke existing tokens. Reset/forgot flow invalidates ALL tokens for that user. Scale is small so both per-device and single-token work — tokens table chosen for future-proofing at near-zero added complexity.",
     "username_mutable": "Immutable after registration. @mention history and DM routing (dm-{a}-{b} canonical IDs) depend on stable usernames. Display name can be mutable later if needed.",
     "admin_bootstrap": "ADMIN_TOKEN env var stays as permanent escape hatch. On first boot, hash it and store/compare the hash — consistent security model with user tokens, no plaintext comparison inline.",

@@ -45,7 +45,7 @@ AdaptiveTrust gives us exactly this: a living, persistent model of "what has thi
 - TypeScript → JavaScript (trivial, pure logic, no TS-specific features beyond type annotations)
 - Remove `ExternalOperationGate` import dependency (can inline the `OperationMutability` type)
 - Remove `TrustRecovery` dependency (can start without it, wire later)
-- Storage path: use `~/.rcc/workspace/rcc/data/trust-profile.json` or per-agent path
+- Storage path: use `~/.ccc/workspace.ccc/data/trust-profile.json` or per-agent path
 
 ### What's directly portable as-is
 - The entire `AdaptiveTrust` class logic (once type annotations stripped)
@@ -58,7 +58,7 @@ AdaptiveTrust gives us exactly this: a living, persistent model of "what has thi
 
 ## Adoption Plan
 
-**Phase 1 (quick win, ~2h):** Port `AdaptiveTrust` class to `rcc/lib/adaptive-trust.mjs`. Wire into heartbeat for surface-only (log current trust state, surface pending elevations). No gating yet.
+**Phase 1 (quick win, ~2h):** Port `AdaptiveTrust` class to .ccc/lib/adaptive-trust.mjs`. Wire into heartbeat for surface-only (log current trust state, surface pending elevations). No gating yet.
 
 **Phase 2 (~3h):** Wire trust gating into workqueue item execution. High-privilege operations (git push to main, external messages) check trust level before proceeding.
 

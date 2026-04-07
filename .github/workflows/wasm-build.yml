@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
     paths:
-      - 'rcc/dashboard/**'
+      - .ccc/dashboard/**'
       - '.github/workflows/wasm-build.yml'
   workflow_dispatch:        # allow manual trigger
 
@@ -49,9 +49,9 @@ jobs:
 
             cd ~/.openclaw/workspace
             git fetch origin main
-            git checkout ${{ github.sha }} -- rcc/dashboard/
+            git checkout ${{ github.sha }} --.ccc/dashboard/
 
-            cd rcc/dashboard/dashboard-ui
+            cd.ccc/dashboard/dashboard-ui
 
             # Build (sccache warm = ~9s, cold ~26s)
             RUSTC_WRAPPER=sccache trunk build --release 2>&1
@@ -74,7 +74,7 @@ jobs:
             set -euo pipefail
             export PATH="$HOME/.local/bin:$PATH"
 
-            DIST="$HOME/.openclaw/workspace/rcc/dashboard/dist"
+            DIST="$HOME/.openclaw/workspace.ccc/dashboard/dist"
             TARBALL="/tmp/wasm-dist-${{ github.sha }}.tar.gz"
 
             tar -czf "$TARBALL" -C "$DIST" .
@@ -146,5 +146,5 @@ jobs:
             set -euo pipefail
             export PATH="$HOME/.cargo/bin:$PATH"
             source "$HOME/.cargo/env"
-            cd ~/.openclaw/workspace/rcc/dashboard
+            cd ~/.openclaw/workspace.ccc/dashboard
             cargo test --package dashboard-server 2>&1 | tail -5

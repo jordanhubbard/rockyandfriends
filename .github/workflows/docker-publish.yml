@@ -1,4 +1,4 @@
-name: Docker — Build & Publish RCC Image
+name: Docker — Build & Publish CCC Image
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}/rcc
+  IMAGE_NAME: ${{ github.repository_owner }}/ccc
 
 jobs:
   build-and-push:

@@ -385,7 +385,7 @@ From any agent's perspective, publishing should be trivial:
 
 ```bash
 # Artifact (file)
-curl -X POST https://rcc.yourmom.photos/api/publish \
+curl -X POST https://ccc.yourmom.photos/api/publish \
   -H "Authorization: Bearer $AGENT_TOKEN" \
   -F "type=artifact" \
   -F "file=@report.html" \
@@ -395,7 +395,7 @@ curl -X POST https://rcc.yourmom.photos/api/publish \
 
 # Service (two-step: register → tunnel → activate)
 # Step 1: Register — get a port allocation
-curl -X POST https://rcc.yourmom.photos/api/publish \
+curl -X POST https://ccc.yourmom.photos/api/publish \
   -H "Authorization: Bearer $AGENT_TOKEN" \
   -d '{"type": "service", "name": "webchat", "visibility": "fleet"}'
 # Returns: {"status": "pending", "port": 19105, "id": "pub-xxx"}
@@ -404,7 +404,7 @@ curl -X POST https://rcc.yourmom.photos/api/publish \
 ssh -R 19105:localhost:3000 jkh@do-host1 -N &
 
 # Step 3: Activate — tell Rocky the tunnel is up
-curl -X PUT https://rcc.yourmom.photos/api/publish/pub-xxx/ready \
+curl -X PUT https://ccc.yourmom.photos/api/publish/pub-xxx/ready \
   -H "Authorization: Bearer $AGENT_TOKEN"
 # Returns: {"status": "active", "url": "https://dashboard.yourmom.photos/agents/bullwinkle/webchat/", "live_at": 1712234567890}
 ```

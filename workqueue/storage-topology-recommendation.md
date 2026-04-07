@@ -82,7 +82,7 @@
 ---
 
 ### Option 4: Tailscale Exit Node on Agent A (CCC host) (Agent C (external node) tunnels through)
-**How:** Configure Agent A (CCC host) as a Tailscale subnet router / exit node. An agent connects through the CCC host's Tailscale node to reach MinIO at <rcc-host>.
+**How:** Configure Agent A (CCC host) as a Tailscale subnet router / exit node. An agent connects through the CCC host's Tailscale node to reach MinIO at <ccc-host>.
 
 **Pros:**
 - Agent C (external node) gets full MinIO access without changing storage architecture

@@ -7,7 +7,7 @@
 
 // Uses CCC API as canonical queue source (not local queue.json)
 const CCC_URL   = process.env.CCC_URL   || 'http://localhost:8789';
-const RCC_TOKEN = process.env.CCC_AGENT_TOKEN || process.env.CCC_AUTH_TOKENS?.split(',')[0] || '';
+const CCC_TOKEN = process.env.CCC_AGENT_TOKEN || process.env.CCC_AUTH_TOKENS?.split(',')[0] || '';
 
 // Mattermost config
 const MM_URL = 'https://chat.yourmom.photos';
@@ -58,12 +58,12 @@ function formatAge(ms) {
 
 async function main() {
   // Fetch queue from CCC API (canonical source)
-  if (!RCC_TOKEN) {
+  if (!CCC_TOKEN) {
     console.error('[stale-nudge] CCC_AGENT_TOKEN not set — cannot fetch queue.');
     process.exit(1);
   }
   const queueRes = await fetch(`${CCC_URL}/api/queue`, {
-    headers: { Authorization: `Bearer ${RCC_TOKEN}` },
+    headers: { Authorization: `Bearer ${CCC_TOKEN}` },
   });
   if (!queueRes.ok) throw new Error(`CCC queue fetch failed: ${queueRes.status}`);
   const queue = await queueRes.json();

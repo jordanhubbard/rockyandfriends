@@ -10,13 +10,13 @@ then block for the specified duration before resuming.
 - **Time-bounded**: hard cap of 30 minutes (`MAX_QUENCH_MINUTES`); no agent can be silenced indefinitely
 - **First-wins**: if a quench is already active, subsequent signals are ignored until it expires
 - **Self-healing**: quench expires automatically — no manual resume required
-- **Auditable**: every quench event is appended to `~/.rcc/logs/quench.jsonl`
+- **Auditable**: every quench event is appended to `~/.ccc/logs/quench.jsonl`
 
 ## ClawBus Message Schema
 
 ```json
 {
-  "type": "rcc.quench",
+  "type": "ccc.quench",
   "from": "<sender-agent>",
   "to":   "all | <agent-name>",
   "mime": "application/json",
@@ -32,17 +32,17 @@ then block for the specified duration before resuming.
 
 ```sh
 # Pause all agents for 10 minutes (deploying a new model)
-CCC_AUTH_TOKEN=... node rcc/scripts/send-quench.mjs all 10 "deploying gemma-4-31B"
+CCC_AUTH_TOKEN=... node.ccc/scripts/send-quench.mjs all 10 "deploying gemma-4-31B"
 
 # Pause a specific agent for 5 minutes
-CCC_AUTH_TOKEN=... node rcc/scripts/send-quench.mjs peabody 5 "GPU busy"
+CCC_AUTH_TOKEN=... node.ccc/scripts/send-quench.mjs peabody 5 "GPU busy"
 ```
 
 ## Agent Integration
 
 ### checkQuench()
 
-Call `checkQuench()` from `rcc/exec/quench.mjs` **between work units** in any
+Call `checkQuench()` from .ccc/exec/quench.mjs` **between work units** in any
 agent loop. It returns immediately when no quench is active, or awaits expiry
 when one is.
 
@@ -62,12 +62,12 @@ async function agentWorkLoop() {
 
 ### handleQuenchMessage()
 
-`agent-listener.mjs` already wires `handleQuenchMessage()` to `rcc.quench`
+`agent-listener.mjs` already wires `handleQuenchMessage()` to `ccc.quench`
 ClawBus messages. No additional wiring is needed in the listener.
 
 ## Log Format
 
-Each event appended to `~/.rcc/logs/quench.jsonl`:
+Each event appended to `~/.ccc/logs/quench.jsonl`:
 
 ```jsonl
 {"ts":"2026-04-04T18:30:00Z","agent":"peabody","event":"quenched","from":"rocky","target":"all","duration_minutes":10,"until":"2026-04-04T18:40:00Z","reason":"deploying gemma"}

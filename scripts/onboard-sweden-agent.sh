@@ -1,10 +1,10 @@
 #!/bin/bash
 # onboard-sweden-agent.sh — Non-interactive onboarding for Sweden GPU agents
 # 
-# Usage: ./onboard-sweden-agent.sh <agent_name> <ssh_port> <tunnel_port> <rcc_token> <bot_token> <app_token>
+# Usage: ./onboard-sweden-agent.sh <agent_name> <ssh_port> <tunnel_port> <ccc_token> <bot_token> <app_token>
 #
 # Example:
-#   ./onboard-sweden-agent.sh peabody 22307 18081 rcc-agent-Peabody-d04c1c87 xoxb-... xapp-...
+#   ./onboard-sweden-agent.sh peabody 22307 18081 ccc-agent-Peabody-d04c1c87 xoxb-... xapp-...
 #
 # Reads Boris's config as template and customizes for the named agent.
 # Writes openclaw.json, workspace files, and supervisor vllm-tunnel.conf.
@@ -15,7 +15,7 @@ set -euo pipefail
 AGENT_NAME="$1"
 SSH_PORT="$2"
 TUNNEL_PORT="$3"
-RCC_TOKEN="$4"
+CCC_TOKEN="$4"
 BOT_TOKEN="$5"
 APP_TOKEN="$6"
 
@@ -46,7 +46,7 @@ $SSH "cat > ~/.openclaw/openclaw.json" << JSONEOF
   "env": {
     "vars": {
       "CCC_URL": "https://api.yourmom.photos",
-      "CCC_AGENT_TOKEN": "${RCC_TOKEN}"
+      "CCC_AGENT_TOKEN": "${CCC_TOKEN}"
     }
   },
   "ui": {
@@ -168,11 +168,11 @@ $SSH "cat > ~/.openclaw/workspace/HEARTBEAT.md" << HBEOF
 
 ## Each heartbeat:
 1. POST heartbeat to CCC:
-   \`curl -s -X POST https://api.yourmom.photos/api/heartbeat/${AGENT_NAME} -H "Content-Type: application/json" -H "Authorization: Bearer ${RCC_TOKEN}" -d "{\"status\":\"online\",\"host\":\"${AGENT_NAME}\",\"ts\":\"\$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"\`
+   \`curl -s -X POST https://api.yourmom.photos/api/heartbeat/${AGENT_NAME} -H "Content-Type: application/json" -H "Authorization: Bearer ${CCC_TOKEN}" -d "{\"status\":\"online\",\"host\":\"${AGENT_NAME}\",\"ts\":\"\$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}"\`
 2. POST heartbeat to SquirrelChat:
    \`curl -s -X POST https://chat.yourmom.photos/api/agents/${AGENT_NAME}/heartbeat -H "Content-Type: application/json" -d "{\"status\":\"online\",\"host\":\"${AGENT_NAME}\"}" \`
 3. Check CCC health: \`curl -s https://api.yourmom.photos/health\`
-4. Check queue: \`curl -s https://api.yourmom.photos/api/queue -H "Authorization: Bearer ${RCC_TOKEN}"\`
+4. Check queue: \`curl -s https://api.yourmom.photos/api/queue -H "Authorization: Bearer ${CCC_TOKEN}"\`
 5. Claim and work any pending items assigned to ${AGENT_NAME} or all
 HBEOF
 
@@ -193,7 +193,7 @@ $SSH "cat > ~/.openclaw/workspace/TOOLS.md" << TOOLSEOF
 
 ## CCC
 - URL: https://api.yourmom.photos
-- Agent token: ${RCC_TOKEN}
+- Agent token: ${CCC_TOKEN}
 TOOLSEOF
 
 # USER.md

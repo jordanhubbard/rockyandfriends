@@ -1,14 +1,14 @@
 #!/bin/bash
 # agent-pull.sh — Pull latest code and restart services if changed
 # Runs every 10 minutes via cron or launchd
-# Logs to ~/.rcc/logs/pull.log
+# Logs to ~/.ccc/logs/pull.log
 
 set -e
 
-RCC_DIR="$HOME/.rcc"
-WORKSPACE="$RCC_DIR/workspace"
-ENV_FILE="$RCC_DIR/.env"
-LOG_FILE="$RCC_DIR/logs/pull.log"
+CCC_DIR="$HOME/.ccc"
+WORKSPACE="$CCC_DIR/workspace"
+ENV_FILE="$CCC_DIR/.env"
+LOG_FILE="$CCC_DIR/logs/pull.log"
 MAX_LOG_LINES=500
 
 # Load .env if it exists
@@ -33,7 +33,7 @@ if [ -f "$LOG_FILE" ]; then
   fi
 fi
 
-mkdir -p "$RCC_DIR/logs"
+mkdir -p "$CCC_DIR/logs"
 log "Pull starting"
 
 # ── Check repo exists ──────────────────────────────────────────────────────
@@ -45,10 +45,10 @@ fi
 cd "$WORKSPACE"
 
 # ── Runtime symlinks (queue.json — CCC API is authoritative source) ────────
-RCC_QUEUE="$HOME/.rcc/data/queue.json"
+CCC_QUEUE="$HOME/.ccc/data/queue.json"
 WQ_QUEUE="$WORKSPACE/workqueue/queue.json"
-if [ -f "$RCC_QUEUE" ] && [ ! -L "$WQ_QUEUE" ]; then
-  ln -sf "$RCC_QUEUE" "$WQ_QUEUE" 2>/dev/null || true
+if [ -f "$CCC_QUEUE" ] && [ ! -L "$WQ_QUEUE" ]; then
+  ln -sf "$CCC_QUEUE" "$WQ_QUEUE" 2>/dev/null || true
 fi
 
 # ── Git pull ───────────────────────────────────────────────────────────────
@@ -84,12 +84,12 @@ else
     if command -v systemctl &>/dev/null && systemctl is-active --quiet wq-dashboard.service 2>/dev/null; then
       sudo systemctl restart wq-dashboard.service && log "wq-dashboard.service restarted" || log "WARNING: restart failed"
     elif command -v launchctl &>/dev/null; then
-      launchctl kickstart -k gui/$(id -u)/com.rcc.dashboard 2>/dev/null && log "dashboard LaunchAgent restarted" || true
+      launchctl kickstart -k gui/$(id -u)/com.ccc.dashboard 2>/dev/null && log "dashboard LaunchAgent restarted" || true
     fi
   fi
 
-  # Restart rcc-api if it changed
-  if echo "$CHANGED" | grep -q "^rcc/api/"; then
+  # Restart ccc-api if it changed
+  if echo "$CHANGED" | grep -q ".ccc/api/"; then
     log "CCC API changed — restarting ccc-api.service"
     if command -v systemctl &>/dev/null && systemctl is-active --quiet ccc-api.service 2>/dev/null; then
       sudo systemctl restart ccc-api.service && log "ccc-api.service restarted" || log "WARNING: restart failed"
@@ -125,11 +125,11 @@ if [ -n "$CCC_URL" ] && [ -n "$CCC_AGENT_TOKEN" ]; then
 fi
 
 # ── Sync secrets from CCC ─────────────────────────────────────────────────
-# Refreshes ~/.rcc/.env with latest secret values from the CCC secrets store.
+# Refreshes ~/.ccc/.env with latest secret values from the CCC secrets store.
 # Never clobbers CCC_AGENT_TOKEN (identity key) or AGENT_NAME/AGENT_HOST.
 # Runs on every pull to pick up rotated credentials automatically.
 if [ -n "$CCC_URL" ] && [ -n "$CCC_AGENT_TOKEN" ] && command -v node >/dev/null 2>&1; then
-  _env_file="$HOME/.rcc/.env"
+  _env_file="$HOME/.ccc/.env"
   _sync_count=0
   # macOS vs Linux sed -i compatibility
   if [ "$(uname)" = "Darwin" ]; then

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# secrets-sync.sh — Sync secrets from CCC into ~/.rcc/.env
+# secrets-sync.sh — Sync secrets from CCC into ~/.ccc/.env
 #
 # Run this on agent heartbeat to pick up rotated secrets without re-bootstrapping.
 # Only updates keys that differ from what's already in .env (minimizes writes).
@@ -8,11 +8,11 @@
 #   --force    overwrite all keys even if unchanged
 #   --dry-run  print what would change, don't write
 #
-# Requires: CCC_URL and CCC_AGENT_TOKEN in ~/.rcc/.env
+# Requires: CCC_URL and CCC_AGENT_TOKEN in ~/.ccc/.env
 
 set -euo pipefail
 
-ENV_FILE="${HOME}/.rcc/.env"
+ENV_FILE="${HOME}/.ccc/.env"
 DRY_RUN=false
 FORCE=false
 

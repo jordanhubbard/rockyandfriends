@@ -51,7 +51,7 @@ free_text_patterns = [
     r'provide your ',
     r'input your ',
     r'what(\x27s| is) your (email|password|name|token|key|code|address)',
-    r'your (bitwarden|master|vault|minio|milvus|rcc|slack|nvidia) ',
+    r'your (bitwarden|master|vault|minio|milvus|ccc|slack|nvidia) ',
 ]
 
 decision_patterns = [

@@ -29,12 +29,12 @@ A cheap Azure CPU VM. The hub of all coordination.
 - Exposes a health endpoint: `GET /health` → `{ok, lastLlmResponseAge, queueDepth, agents}`
 
 **Services running on CCC:**
-- `rcc-api` — REST API (HTTPS only), auth via user tokens
-- `rcc-dashboard` — Web UI (Claw Command Center dashboard)
-- `rcc-brain` — The LLM request queue + retry engine
-- `rcc-bus` — ClawBus message routing (agent ↔ agent via hub)
-- `rcc-storage` — Storage tier abstraction (public Azure Blob / private Azure / local MinIO proxy)
-- `rcc-watchdog` — Monitors agent heartbeats, escalates stale agents to jkh
+- `ccc-api` — REST API (HTTPS only), auth via user tokens
+- `ccc-dashboard` — Web UI (Claw Command Center dashboard)
+- `ccc-brain` — The LLM request queue + retry engine
+- `ccc-bus` — ClawBus message routing (agent ↔ agent via hub)
+- `ccc-storage` — Storage tier abstraction (public Azure Blob / private Azure / local MinIO proxy)
+- `ccc-watchdog` — Monitors agent heartbeats, escalates stale agents to jkh
 
 ---
 
@@ -45,7 +45,7 @@ Anything with a Claude/Codex CLI session in tmux, or any machine running OpenCla
 **Key properties:**
 - Outbound-only connectivity is sufficient — agents reach out to CCC, CCC doesn't reach in
 - Intelligence: Claude CLI (interactive, SSO-auth'd by human) or NVIDIA keys (batch/async)
-- Registration: agent runs `rocky register <rcc-url> <token>` → gets its own agent token
+- Registration: agent runs `rocky register <ccc-url> <token>` → gets its own agent token
 - Heartbeat: POST to CCC every N minutes with status, queue depth, GPU util, etc.
 - Work lease: when claiming a work item, lease expires after TTL — another agent can reclaim
 
@@ -65,7 +65,7 @@ Anything with a Claude/Codex CLI session in tmux, or any machine running OpenCla
 | Private Cloud | Azure Blob Storage | HTTPS + SAS token | In-progress work, agent-to-agent file transfer via cloud |
 | Local/Fast | MinIO (on CCC or agent cluster) | Internal network + key | High-speed inter-agent storage, queue state, logs |
 
-CCC's `rcc-storage` service abstracts all three tiers behind a single API. Agents don't need to know which tier they're talking to.
+CCC's `ccc-storage` service abstracts all three tiers behind a single API. Agents don't need to know which tier they're talking to.
 
 ---
 
@@ -84,7 +84,7 @@ The "boss" (owner) can invite collaborators. Each collaborator can see the dashb
 
 ```
 Human installs OpenClaw on GPU machine
-Human runs: rocky register https://rcc.example.com
+Human runs: rocky register https://ccc.example.com
 Rocky CLI prompts for CCC token
 CCC creates agent record, returns agent token
 Agent stores token, starts heartbeat cron
@@ -97,7 +97,7 @@ Human opens tmux session
 Human runs: openclaw start (or zeroclaw, etc.)
 Human does /login → gets URL → pastes into browser → pastes credential back
 Agent is now online and full-intelligence
-Human runs: rocky register https://rcc.example.com
+Human runs: rocky register https://ccc.example.com
 ```
 
 CCC doesn't automate the SSO login. It accepts the agent once it's running.
@@ -106,7 +106,7 @@ CCC doesn't automate the SSO login. It accepts the agent once it's running.
 
 ## The Nervous System
 
-CCC's `rcc-brain` is not just a message queue — it's an autonomous loop:
+CCC's `ccc-brain` is not just a message queue — it's an autonomous loop:
 
 ```
 while true:
@@ -126,7 +126,7 @@ while true:
 
 The tick interval is tunable. Default: 30s. Under load: 5s.
 
-State is persisted to disk after every tick. If rcc-brain crashes and restarts, it picks up exactly where it left off.
+State is persisted to disk after every tick. If ccc-brain crashes and restarts, it picks up exactly where it left off.
 
 ---
 
@@ -144,7 +144,7 @@ State is persisted to disk after every tick. If rcc-brain crashes and restarts, 
 
 ```
 rocky/
-├── rcc/                    # Claw Command Center services
+├──.ccc/                    # Claw Command Center services
 │   ├── api/                # REST API server
 │   ├── brain/              # LLM queue + retry engine
 │   ├── bus/                # ClawBus routing
@@ -156,7 +156,7 @@ rocky/
 ├── workqueue/              # Queue schema, spec, agent instructions
 ├── squirrelbus/            # Bus protocol spec + plugin
 ├── lib/                    # Shared utilities
-├── dashboard/              # Current dashboard (being refactored into rcc/dashboard)
+├── dashboard/              # Current dashboard (being refactored into.ccc/dashboard)
 ├── docs/                   # Architecture docs, setup guides
 │   └── ARCHITECTURE.md     # This file
 └── deploy/                 # Azure deployment scripts, systemd units, etc.
@@ -168,16 +168,16 @@ rocky/
 
 Core infrastructure is operational. The "immediate next steps" from March have shipped:
 
-- ✅ **`rcc/brain/`** — LLM queue + retry engine live; fallback chain: Claude Sonnet → Llama 70B → Nemotron
-- ✅ **`rcc/wasm-dashboard/`** — Full Leptos WASM dashboard with 10 tabs (Kanban, ClawBus, Audit, Profiler, etc.)
-- ✅ **`rcc/api/routes/`** — Monolithic `index.mjs` split into domain route modules
+- ✅ **.ccc/brain/`** — LLM queue + retry engine live; fallback chain: Claude Sonnet → Llama 70B → Nemotron
+- ✅ **.ccc/wasm-dashboard/`** — Full Leptos WASM dashboard with 10 tabs (Kanban, ClawBus, Audit, Profiler, etc.)
+- ✅ **.ccc/api/routes/`** — Monolithic `index.mjs` split into domain route modules
 - ✅ **nanolang** — Full compiled language with 5 backends, LSP, formatter, playground
 - ✅ **agentOS** — seL4/Microkit RTOS for WASM agent slots (cap broker, OOM killer, snapshot sched, profiler)
 - ✅ **tokenhub** — LLM gateway (Go, OpenAI-compat, rate limiting, circuit breakers)
 
 ## Active Work Areas
 
-1. **`rcc/brain/` edge cases** — All-models-degraded recovery, partial state replay under failure
+1. **.ccc/brain/` edge cases** — All-models-degraded recovery, partial state replay under failure
 2. **agentOS WASM runtime** — Live migration of WASM slots between sparky and Boris
 3. **nanolang stdlib** — Complete stdlib coverage; bench suite vs reference programs
 4. **Mattermost** — Fleet chat (external)

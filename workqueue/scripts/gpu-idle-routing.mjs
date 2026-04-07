@@ -15,7 +15,7 @@ import { execSync } from 'child_process';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
-import { DecisionJournal } from '../../rcc/decision-journal/index.mjs';
+import { DecisionJournal } from '../...ccc/decision-journal/index.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const WORKSPACE = join(__dirname, '../..');

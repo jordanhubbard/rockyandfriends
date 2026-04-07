@@ -34,8 +34,8 @@ services:
       MAX_RESTARTS: "5"
       RESTART_WINDOW: "3600"
       # Set these from your .env or secrets:
-      RCC_URL: "${RCC_URL:-}"
-      RCC_AGENT_TOKEN: "${RCC_AGENT_TOKEN:-}"
+      CCC_URL: "${CCC_URL:-}"
+      CCC_AGENT_TOKEN: "${CCC_AGENT_TOKEN:-}"
       MATTERMOST_URL: "${MATTERMOST_URL:-}"
       MATTERMOST_TOKEN: "${MATTERMOST_TOKEN:-}"
       MATTERMOST_CHANNEL: "${MATTERMOST_CHANNEL:-}"

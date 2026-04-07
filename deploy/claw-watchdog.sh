@@ -27,7 +27,7 @@
 #   HEARTBEAT_STALE   seconds since last CCC heartbeat before hang declared (default: 600)
 #   MAX_RESTARTS      max restarts in RESTART_WINDOW seconds before giving up (default: 5)
 #   RESTART_WINDOW    window in seconds for MAX_RESTARTS (default: 3600)
-#   LOG_FILE          log path (default: ~/.rcc/logs/watchdog.log)
+#   LOG_FILE          log path (default: ~/.ccc/logs/watchdog.log)
 
 set -euo pipefail
 
@@ -48,8 +48,8 @@ HANG_THRESHOLD="${HANG_THRESHOLD:-120}"
 HEARTBEAT_STALE="${HEARTBEAT_STALE:-600}"
 MAX_RESTARTS="${MAX_RESTARTS:-5}"
 RESTART_WINDOW="${RESTART_WINDOW:-3600}"
-LOG_FILE="${LOG_FILE:-${HOME}/.rcc/logs/watchdog.log}"
-ENV_FILE="${ENV_FILE:-${HOME}/.rcc/.env}"
+LOG_FILE="${LOG_FILE:-${HOME}/.ccc/logs/watchdog.log}"
+ENV_FILE="${ENV_FILE:-${HOME}/.ccc/.env}"
 
 # ── Load .env ───────────────────────────────────────────────────────────────
 if [ -f "$ENV_FILE" ]; then
@@ -88,7 +88,7 @@ check_health() {
 }
 
 # ── CCC heartbeat staleness check ────────────────────────────────────────────
-check_rcc_heartbeat() {
+check_ccc_heartbeat() {
   [ -z "$CCC_URL" ] && return 0  # skip if no CCC configured
   local data
   data=$(curl -s "$CCC_URL/api/heartbeats" --max-time 10 2>/dev/null) || return 0
@@ -182,7 +182,7 @@ while true; do
   fi
 
   # Secondary: check CCC heartbeat staleness (catches hung-but-port-open cases)
-  if ! check_rcc_heartbeat 2>/dev/null; then
+  if ! check_ccc_heartbeat 2>/dev/null; then
     log "WARN" "CCC heartbeat stale (>${HEARTBEAT_STALE}s) — process may be hung"
     do_restart "CCC heartbeat stale (>${HEARTBEAT_STALE}s)" || true
   fi

@@ -37,10 +37,10 @@ You can replicate it. Here's how.
 
 | Path | What it is |
 |------|-----------|
-| `rcc/api/` | Claw Command Center REST API (work queue, agent registry, project tracker) |
-| `rcc/brain/` | Autonomous work processor — claims items, dispatches to executors |
-| `rcc/scout/` | GitHub repo scanner — files work items from open issues, CI failures, TODOs |
-| `rcc/lessons/` | Distributed lessons ledger — agents share what they've learned |
+| .ccc/api/` | Claw Command Center REST API (work queue, agent registry, project tracker) |
+| .ccc/brain/` | Autonomous work processor — claims items, dispatches to executors |
+| .ccc/scout/` | GitHub repo scanner — files work items from open issues, CI failures, TODOs |
+| .ccc/lessons/` | Distributed lessons ledger — agents share what they've learned |
 | `dashboard/` | Web dashboard — live agent status, queue management, ClawBus feed |
 | `clawbus/` | P2P message bus — direct agent-to-agent communication |
 | `clawbus-plugin/` | OpenClaw plugin for receiving ClawBus messages |
@@ -148,14 +148,14 @@ The CCC API is the spine. Everything else talks to it.
 
 ```bash
 # Install dependencies
-cd rcc && npm install
+cd ccc && npm install
 
 # Configure
-cp deploy/.env.template ~/.rcc/.env
-nano ~/.rcc/.env   # fill in CCC_AUTH_TOKENS, ports, your agent name
+cp deploy/.env.template ~/.ccc/.env
+nano ~/.ccc/.env   # fill in CCC_AUTH_TOKENS, ports, your agent name
 
 # Start
-node rcc/api/index.mjs
+node.ccc/api/index.mjs
 ```
 
 You now have a work queue, agent registry, and project tracker running locally. No other agents needed yet.
@@ -182,14 +182,14 @@ This posts your agent's capabilities (hardware, executors, skills) to the CCC re
 The brain claims items from the queue and routes them to the right executor:
 
 ```bash
-node rcc/brain/index.mjs
+node.ccc/brain/index.mjs
 ```
 
 For cron-driven operation (recommended):
 
 ```bash
-cp deploy/systemd/rcc-agent.service /etc/systemd/system/
-systemctl enable --now rcc-agent
+cp deploy/systemd/ccc-agent.service /etc/systemd/system/
+systemctl enable --now ccc-agent
 ```
 
 ### Step 5: Add more agents
@@ -274,7 +274,7 @@ Agents communicate via:
 
 ## Configuration Reference
 
-All configuration lives in `~/.rcc/.env`. The template at `deploy/.env.template` documents every variable. Nothing is hardcoded.
+All configuration lives in `~/.ccc/.env`. The template at `deploy/.env.template` documents every variable. Nothing is hardcoded.
 
 Key variables:
 - `AGENT_NAME` — your agent's short name (used in queue, heartbeats, logs)
@@ -290,13 +290,13 @@ Key variables:
 
 ```bash
 # CCC API
-node --test rcc/api/test.mjs
+node --test.ccc/api/test.mjs
 
 # Dashboard
 node --test dashboard/test/api.test.mjs
 
 # Brain
-node --test rcc/brain/test.mjs
+node --test.ccc/brain/test.mjs
 ```
 
 ---
@@ -329,18 +329,18 @@ CCC has a built-in remote execution system for running code on any connected age
 **How it works:**
 
 ```
-POST /api/exec  →  ClawBus (rcc.exec)  →  agent-listener.mjs  →  POST /api/exec/:id/result
+POST /api/exec  →  ClawBus (ccc.exec)  →  agent-listener.mjs  →  POST /api/exec/:id/result
 ```
 
 1. An admin POSTs `{ code, target }` to `/api/exec`
 2. CCC signs the payload with HMAC-SHA256 and broadcasts it over ClawBus
-3. Each agent runs `rcc/exec/agent-listener.mjs`, which subscribes to the bus and handles `rcc.exec` messages
+3. Each agent runs .ccc/exec/agent-listener.mjs`, which subscribes to the bus and handles `ccc.exec` messages
 4. The listener verifies the signature, executes the code in a sandboxed `vm.runInNewContext()`, and POSTs results back to `/api/exec/:id/result`
 
 **Send an exec:**
 ```bash
 curl -X POST http://localhost:8789/api/exec \
-  -H "Authorization: Bearer $RCC_ADMIN_TOKEN" \
+  -H "Authorization: Bearer $CCC_ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"code": "console.log(require(\"os\").hostname())", "target": "peabody"}'
 ```
@@ -357,13 +357,13 @@ curl http://localhost:8789/api/exec/$EXEC_ID \
 ```bash
 CLAWBUS_TOKEN=shared-secret \
 CLAWBUS_URL=https://dashboard.yourmom.photos \
-CCC_URL=https://rcc.yourmom.photos \
+CCC_URL=https://ccc.yourmom.photos \
 CCC_AUTH_TOKEN=$AGENT_TOKEN \
 AGENT_NAME=myagent \
-  node rcc/exec/agent-listener.mjs
+  node.ccc/exec/agent-listener.mjs
 ```
 
-Logs: `~/.rcc/logs/remote-exec.jsonl`
+Logs: `~/.ccc/logs/remote-exec.jsonl`
 
 ---
 
@@ -398,7 +398,7 @@ Before starting <new-service>:
 | Secret | Owner | How others get it |
 |--------|-------|-------------------|
 | `NVIDIA_API_KEY` | TokenHub vault | TokenHub proxies — agents never need it directly |
-| `TOKENHUB_API_KEY` | Per-agent | Provisioned at onboarding, stored in `~/.rcc/.env` |
+| `TOKENHUB_API_KEY` | Per-agent | Provisioned at onboarding, stored in `~/.ccc/.env` |
 | `CCC_AGENT_TOKEN` | Per-agent | Provided by CCC admin at onboarding |
 | `SLACK_TOKEN` | Rocky (hub) | Other agents POST to `/api/slack/send` — no per-agent token needed |
 | `MATTERMOST_TOKEN` | Per-agent | Provisioned at onboarding via secrets-sync |
@@ -427,7 +427,7 @@ The ledger lives in MinIO (`agents/shared/lessons/`) and is indexed by the CCC A
 |---------|-------------|
 | `ccc-api.service` | CCC REST API |
 | `wq-dashboard.service` | Web dashboard |
-| `rcc-agent.service` | Brain + work pump (cron-driven via timer) |
+| `ccc-agent.service` | Brain + work pump (cron-driven via timer) |
 
 All units are in `deploy/systemd/`. macOS launchd plist in `deploy/launchd/`.
 
@@ -439,7 +439,7 @@ If you've added a new agent to your fleet, the system will accommodate them. Age
 
 When making changes:
 1. Work on a branch
-2. Test (`node --test rcc/api/test.mjs && node --test dashboard/test/api.test.mjs`)
+2. Test (`node --test.ccc/api/test.mjs && node --test dashboard/test/api.test.mjs`)
 3. Restart affected services
 4. Write down what you learned
 

@@ -4,10 +4,10 @@
 #
 # Usage:
 #   curl -sSL https://raw.githubusercontent.com/jordanhubbard/rockyandfriends/main/deploy/bootstrap.sh | \
-#     bash -s -- --rcc=http://146.190.134.110:8789 --token=<bootstrap-token> --agent=boris
+#     bash -s -- --ccc=http://146.190.134.110:8789 --token=<bootstrap-token> --agent=boris
 #
 # NOTE: Port 8789 is the OpenClaw gateway (CCC API). Port 8788 is the workqueue dashboard.
-# Use 8789 for --rcc. If you have a pre-known agent token, pass --agent-token=<token> to skip
+# Use 8789 for --ccc. If you have a pre-known agent token, pass --agent-token=<token> to skip
 # the bootstrap API call (useful if the API is down or the token is already known).
 #
 # All secrets (NVIDIA key, Mattermost token, etc.) are fetched automatically
@@ -25,7 +25,7 @@ MATTERMOST_TOKEN=""
 
 for arg in "$@"; do
   case "$arg" in
-    --rcc=*)               CCC="${arg#--rcc=}"               ;;
+    --ccc=*)               CCC="${arg#--ccc=}"               ;;
     --token=*)             TOKEN="${arg#--token=}"             ;;
     --agent=*)             AGENT="${arg#--agent=}"             ;;
     --agent-token=*)       AGENT_TOKEN_OVERRIDE="${arg#--agent-token=}" ;;
@@ -36,7 +36,7 @@ for arg in "$@"; do
 done
 
 if [[ -z "$CCC" || -z "$AGENT" ]]; then
-  echo "Usage: bootstrap.sh --rcc=<url> --token=<bootstrap-token> --agent=<name> [--agent-token=<token>]" >&2
+  echo "Usage: bootstrap.sh --ccc=<url> --token=<bootstrap-token> --agent=<name> [--agent-token=<token>]" >&2
   echo "  --token is required unless --agent-token is provided directly." >&2
   exit 1
 fi
@@ -62,25 +62,25 @@ echo ""
 info "Cleaning up previous install..."
 pkill -f "openclaw.*gateway" 2>/dev/null || true
 
-# Back up .rcc/.env before wiping — we restore it if bootstrap fails
+# Back up .ccc/.env before wiping — we restore it if bootstrap fails
 ENV_BACKUP=""
-if [[ -f "$HOME/.rcc/.env" ]]; then
-  ENV_BACKUP="$(mktemp /tmp/rcc-env-backup.XXXXXX)"
-  cp "$HOME/.rcc/.env" "$ENV_BACKUP"
+if [[ -f "$HOME/.ccc/.env" ]]; then
+  ENV_BACKUP="$(mktemp /tmp/ccc-env-backup.XXXXXX)"
+  cp "$HOME/.ccc/.env" "$ENV_BACKUP"
   info "Backed up existing .env to $ENV_BACKUP"
 fi
 
 # Remove old directories but NOT .env backup (we restore below on failure)
-rm -rf "$HOME/.openclaw" "$HOME/.rcc" 2>/dev/null || true
+rm -rf "$HOME/.openclaw" "$HOME/.ccc" 2>/dev/null || true
 success "Clean slate ready"
 
 # Trap: restore .env backup if we exit unexpectedly before step 8
 _restore_env_on_failure() {
   local code=$?
   if [[ $code -ne 0 && -n "$ENV_BACKUP" && -f "$ENV_BACKUP" ]]; then
-    mkdir -p "$HOME/.rcc"
-    cp "$ENV_BACKUP" "$HOME/.rcc/.env"
-    chmod 600 "$HOME/.rcc/.env"
+    mkdir -p "$HOME/.ccc"
+    cp "$ENV_BACKUP" "$HOME/.ccc/.env"
+    chmod 600 "$HOME/.ccc/.env"
     echo "⚠ Bootstrap failed (exit $code) — restored previous .env from backup" >&2
     rm -f "$ENV_BACKUP"
   fi
@@ -127,13 +127,13 @@ else
 fi
 
 # ── 3. Clone / update CCC workspace ──────────────────────────────────────
-CCC_WORKSPACE="$HOME/.rcc/workspace"
+CCC_WORKSPACE="$HOME/.ccc/workspace"
 info "Setting up CCC workspace at $CCC_WORKSPACE..."
 if [[ -d "$CCC_WORKSPACE/.git" ]]; then
   warn "Already cloned — pulling latest"
   git -C "$CCC_WORKSPACE" pull --ff-only
 else
-  git clone "${RCC_REPO:-https://github.com/jordanhubbard/rockyandfriends.git}" "$CCC_WORKSPACE"
+  git clone "${CCC_REPO:-https://github.com/jordanhubbard/rockyandfriends.git}" "$CCC_WORKSPACE"
 fi
 success "CCC workspace ready"
 
@@ -141,7 +141,7 @@ success "CCC workspace ready"
 BOOTSTRAP_JSON=""
 REPO_URL=""
 AGENT_TOKEN=""
-CCC_URL="${CCC}"  # default to the --rcc URL; may be overridden by API response
+CCC_URL="${CCC}"  # default to the --ccc URL; may be overridden by API response
 DEPLOY_KEY=""
 
 if [[ -n "$AGENT_TOKEN_OVERRIDE" ]]; then
@@ -176,7 +176,7 @@ else
 
     REPO_URL=$(_parse   ".repoUrl")
     AGENT_TOKEN=$(_parse ".agentToken")
-    CCC_URL=$(_parse    ".rccUrl")
+    CCC_URL=$(_parse    ".cccUrl")
     DEPLOY_KEY=$(_parse  ".deployKey")
 
     if [[ -z "$AGENT_TOKEN" ]]; then
@@ -234,14 +234,14 @@ fi
 if [[ -n "$DEPLOY_KEY" ]]; then
   info "Installing deploy key..."
   mkdir -p "$HOME/.ssh"
-  printf '%s\n' "$DEPLOY_KEY" > "$HOME/.ssh/rcc-deploy-key"
-  chmod 600 "$HOME/.ssh/rcc-deploy-key"
+  printf '%s\n' "$DEPLOY_KEY" > "$HOME/.ssh/ccc-deploy-key"
+  chmod 600 "$HOME/.ssh/ccc-deploy-key"
   SSH_CONF="$HOME/.ssh/config"
-  if ! grep -q "rcc-deploy-key" "$SSH_CONF" 2>/dev/null; then
+  if ! grep -q "ccc-deploy-key" "$SSH_CONF" 2>/dev/null; then
     cat >> "$SSH_CONF" <<'SSHEOF'
 
 Host github.com
-  IdentityFile ~/.ssh/rcc-deploy-key
+  IdentityFile ~/.ssh/ccc-deploy-key
   StrictHostKeyChecking no
 SSHEOF
     chmod 600 "$SSH_CONF"
@@ -416,10 +416,10 @@ cat > "$OC_CONFIG" <<OCEOF
 OCEOF
 success "openclaw.json written"
 
-# ── 8. Write ~/.rcc/.env ──────────────────────────────────────────────────
-info "Writing ~/.rcc/.env..."
-mkdir -p "$HOME/.rcc"
-ENV_FILE="$HOME/.rcc/.env"
+# ── 8. Write ~/.ccc/.env ──────────────────────────────────────────────────
+info "Writing ~/.ccc/.env..."
+mkdir -p "$HOME/.ccc"
+ENV_FILE="$HOME/.ccc/.env"
 touch "$ENV_FILE"
 for key in AGENT_NAME CCC_AGENT_TOKEN CCC_URL AGENT_HOST NVIDIA_API_KEY NVIDIA_API_BASE; do
   sed -i "/^${key}=/d" "$ENV_FILE" 2>/dev/null || true
@@ -448,10 +448,10 @@ for _VAR in AGENT_NAME CCC_AGENT_TOKEN CCC_URL; do
   fi
 done
 if [[ "$_SMOKE_OK" == true ]]; then
-  success "~/.rcc/.env written and smoke-tested (all critical vars non-empty)"
+  success "~/.ccc/.env written and smoke-tested (all critical vars non-empty)"
 else
   # Don't exit — secrets may be written in 8b. But flag it.
-  warn "~/.rcc/.env has empty critical vars — check the file before using this agent"
+  warn "~/.ccc/.env has empty critical vars — check the file before using this agent"
 fi
 
 # ── 8b. Write full secrets bundle to .env ────────────────────────────────
@@ -568,7 +568,7 @@ fi
 # ── 9e. Install agentfs-sync ──────────────────────────────────────────────
 AGENTFS_BIN="/usr/local/bin/agentfs-sync"
 AGENTFS_SVC="/etc/systemd/system/agentfs-sync.service"
-AGENTFS_SVC_SRC="$CCC_WORKSPACE/rcc/agentfs-sync/agentfs-sync.service"
+AGENTFS_SVC_SRC="$CCC_WORKSPACE.ccc/agentfs-sync/agentfs-sync.service"
 
 if [[ ! -f "$AGENTFS_BIN" ]]; then
   info "Downloading agentfs-sync from MinIO..."
@@ -586,7 +586,7 @@ fi
 if [[ -f "$AGENTFS_BIN" ]]; then
   if [[ -f "$AGENTFS_SVC_SRC" ]]; then
     info "Installing agentfs-sync systemd service..."
-    mkdir -p "$HOME/.rcc/logs"
+    mkdir -p "$HOME/.ccc/logs"
     sed "s/AGENT_USER/$(whoami)/g" "$AGENTFS_SVC_SRC" | sudo tee "$AGENTFS_SVC" > /dev/null
     sudo systemctl daemon-reload
     sudo systemctl enable agentfs-sync
@@ -599,11 +599,11 @@ fi
 
 # ── 9f. Install openclaw-register service ────────────────────────────────
 REGISTER_SVC="/etc/systemd/system/openclaw-register.service"
-REGISTER_SVC_SRC="$CCC_WORKSPACE/rcc/scripts/openclaw-register.service"
+REGISTER_SVC_SRC="$CCC_WORKSPACE.ccc/scripts/openclaw-register.service"
 
 if [[ -f "$REGISTER_SVC_SRC" ]]; then
   info "Installing openclaw-register systemd service..."
-  mkdir -p "$HOME/.rcc/logs"
+  mkdir -p "$HOME/.ccc/logs"
   sed "s/AGENT_USER/$(whoami)/g" "$REGISTER_SVC_SRC" | sudo tee "$REGISTER_SVC" > /dev/null
   sudo systemctl daemon-reload
   sudo systemctl enable openclaw-register
@@ -898,7 +898,7 @@ echo ""
 echo "  OpenClaw workspace:  ${OC_WORKSPACE}"
 echo "  OpenClaw config:     ${OC_CONFIG}"
 echo "  CCC workspace:       ${CCC_WORKSPACE}"
-echo "  CCC env:             ${HOME}/.rcc/.env"
+echo "  CCC env:             ${HOME}/.ccc/.env"
 echo ""
 if [[ -z "$TELEGRAM_TOKEN" && -z "$MATTERMOST_TOKEN" ]]; then
   echo -e "${YELLOW}  ⚠ No messaging channels configured.${NC}"

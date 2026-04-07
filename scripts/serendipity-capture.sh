@@ -36,16 +36,16 @@ VALID_READINESS="idea-only partially-implemented implementation-complete tested"
 
 # --- CCC config ---
 CCC_URL="${CCC_URL:-https://api.yourmom.photos}"
-RCC_TOKEN="${CCC_AGENT_TOKEN:-}"
-if [ -z "$RCC_TOKEN" ]; then
-  # Try sourcing from ~/.rcc/.env
-  if [ -f "$HOME/.rcc/.env" ]; then
+CCC_TOKEN="${CCC_AGENT_TOKEN:-}"
+if [ -z "$CCC_TOKEN" ]; then
+  # Try sourcing from ~/.ccc/.env
+  if [ -f "$HOME/.ccc/.env" ]; then
     # shellcheck disable=SC1090
-    source "$HOME/.rcc/.env" 2>/dev/null || true
-    RCC_TOKEN="${CCC_AGENT_TOKEN:-}"
+    source "$HOME/.ccc/.env" 2>/dev/null || true
+    CCC_TOKEN="${CCC_AGENT_TOKEN:-}"
   fi
 fi
-if [ -z "$RCC_TOKEN" ]; then
+if [ -z "$CCC_TOKEN" ]; then
   echo "Error: CCC_AGENT_TOKEN not set. Cannot post to workqueue." >&2
   exit 1
 fi
@@ -121,7 +121,7 @@ fi
 SCOUT_KEY="serendipity:$(echo "$TITLE" | python3 -c 'import sys,hashlib; print(hashlib.sha256(sys.stdin.read().strip().encode()).hexdigest()[:12])')"
 
 # --- Export vars for python subprocess ---
-export TITLE DESCRIPTION CATEGORY RATIONALE READINESS SCOUT_KEY CCC_URL RCC_TOKEN AGENT_NAME
+export TITLE DESCRIPTION CATEGORY RATIONALE READINESS SCOUT_KEY CCC_URL CCC_TOKEN AGENT_NAME
 
 # --- Post to CCC workqueue ---
 RESPONSE=$(python3 -c "
@@ -143,7 +143,7 @@ req = urllib.request.Request(
     data=data,
     headers={
         'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + os.environ['RCC_TOKEN'],
+        'Authorization': 'Bearer ' + os.environ['CCC_TOKEN'],
     },
     method='POST'
 )
@@ -157,7 +157,7 @@ except urllib.error.HTTPError as e:
     sys.exit(1)
 " 2>&1) || { echo "Error: Failed to post to CCC: $RESPONSE" >&2; exit 1; }
 
-export TITLE DESCRIPTION CATEGORY RATIONALE READINESS SCOUT_KEY CCC_URL RCC_TOKEN AGENT_NAME
+export TITLE DESCRIPTION CATEGORY RATIONALE READINESS SCOUT_KEY CCC_URL CCC_TOKEN AGENT_NAME
 
 # --- Update rate limit counter ---
 echo $((EXISTING_COUNT + 1)) > "$RATE_FILE"

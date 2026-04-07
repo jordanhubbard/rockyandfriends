@@ -59,7 +59,7 @@ For us specifically: Natasha has Milvus (semantic search), daily memory files (e
 
 ## Adoption Plan
 
-**Phase 1 (immediate, ~1h):** Extract the tiered render strategy + stop word list + `extractQueryTerms()` as a standalone utility in `rcc/lib/memory-utils.mjs`. Wire into our existing `memory_search` post-processing.
+**Phase 1 (immediate, ~1h):** Extract the tiered render strategy + stop word list + `extractQueryTerms()` as a standalone utility in .ccc/lib/memory-utils.mjs`. Wire into our existing `memory_search` post-processing.
 
 **Phase 2 (~3h):** Build `WorkingMemoryAssembler.mjs` that wraps Milvus search with token budgeting. Use for session context injection at heartbeat startup.
 

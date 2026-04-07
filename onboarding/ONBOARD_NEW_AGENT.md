@@ -22,7 +22,7 @@ Write it into your workspace `IDENTITY.md` and `TOOLS.md`.
 POST to Rocky's CCC API every heartbeat cycle:
 
 ```
-POST https://rcc.yourmom.photos/api/heartbeat/<your-agent-name>
+POST https://ccc.yourmom.photos/api/heartbeat/<your-agent-name>
 Authorization: Bearer wq-5dcad756f6d3e345c00b5cb3dfcbdedb
 Content-Type: application/json
 
@@ -137,7 +137,7 @@ After completing all steps, confirm:
 Boris gateway: outbound-capable, Sweden datacenter, dual L40  
 Agent RTX gateway: outbound-only (horde-dgxc), `jordanh-rtx`, 4x L40
 
-Both should be able to POST to `https://rcc.yourmom.photos/api/heartbeat/<name>` directly.
+Both should be able to POST to `https://ccc.yourmom.photos/api/heartbeat/<name>` directly.
 
 ---
 

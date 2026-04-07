@@ -1,7 +1,7 @@
 #!/bin/bash
 # Remind Evan about jacketlinux at 10am PT on 2026-04-01
 curl -s -X POST https://api.jordanhubbard.net/api/queue \
-  -H "Authorization: Bearer rcc-agent-rocky-20maaghccmbmnby63so" \
+  -H "Authorization: Bearer ccc-agent-rocky-20maaghccmbmnby63so" \
   -H "Content-Type: application/json" \
   -d '{
     "title": "Remind Evan: jacketlinux repo + full brief",

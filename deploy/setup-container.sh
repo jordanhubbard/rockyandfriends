@@ -5,14 +5,14 @@
 #
 # Usage:
 #   bash deploy/setup-container.sh
-#   (run from inside the cloned repo, or after cloning to ~/.rcc/workspace)
+#   (run from inside the cloned repo, or after cloning to ~/.ccc/workspace)
 #
 # What it does:
 #   1. Detects that we're actually in a container (exits if not)
-#   2. Symlinks ~/.rcc/workspace → this repo (if not already set up)
-#   3. Creates ~/.rcc/rcc-pull-loop.sh (a while-true pull loop)
-#   4. Registers rcc-pull-loop with supervisord (or falls back to nohup)
-#   5. Registers rcc-exec-listener (SquirrelBus remote exec) with supervisord
+#   2. Symlinks ~/.ccc/workspace → this repo (if not already set up)
+#   3. Creates ~/.ccc/ccc-pull-loop.sh (a while-true pull loop)
+#   4. Registers ccc-pull-loop with supervisord (or falls back to nohup)
+#   5. Registers ccc-exec-listener (SquirrelBus remote exec) with supervisord
 #   6. Starts a 'claude-main' tmux session with Claude Code
 #   7. Pre-creates the log file
 #   8. Prints a summary
@@ -21,13 +21,13 @@
 
 set -euo pipefail
 
-RCC_DIR="$HOME/.rcc"
-WORKSPACE="$RCC_DIR/workspace"
-PULL_LOOP="$RCC_DIR/rcc-pull-loop.sh"
-EXEC_LISTENER="$RCC_DIR/rcc-exec-listener.sh"
-OPENCLAW_WRAPPER="$RCC_DIR/rcc-openclaw-gateway.sh"
-MEMORY_SYNC="$RCC_DIR/rcc-memory-sync.sh"
-LOG_DIR="$RCC_DIR/logs"
+CCC_DIR="$HOME/.ccc"
+WORKSPACE="$CCC_DIR/workspace"
+PULL_LOOP="$CCC_DIR/ccc-pull-loop.sh"
+EXEC_LISTENER="$CCC_DIR/ccc-exec-listener.sh"
+OPENCLAW_WRAPPER="$CCC_DIR/ccc-openclaw-gateway.sh"
+MEMORY_SYNC="$CCC_DIR/ccc-memory-sync.sh"
+LOG_DIR="$CCC_DIR/logs"
 LOG_FILE="$LOG_DIR/pull.log"
 EXEC_LOG="$LOG_DIR/exec-listener.log"
 OPENCLAW_LOG="$LOG_DIR/openclaw-gateway.log"
@@ -114,7 +114,7 @@ success "Environment: container"
 # ── Step 2: Symlink workspace ────────────────────────────────────────────────
 info "Checking workspace symlink..."
 
-mkdir -p "$RCC_DIR"
+mkdir -p "$CCC_DIR"
 
 if [ -L "$WORKSPACE" ]; then
   CURRENT_TARGET="$(readlink -f "$WORKSPACE")"
@@ -161,14 +161,14 @@ info "Creating exec-listener wrapper script..."
 
 cat > "$EXEC_LISTENER" << 'EOF'
 #!/usr/bin/env bash
-# rcc-exec-listener.sh — starts agent-listener.mjs with env from ~/.rcc/.env
+# ccc-exec-listener.sh — starts agent-listener.mjs with env from ~/.ccc/.env
 set -euo pipefail
-ENV_FILE="$HOME/.rcc/.env"
+ENV_FILE="$HOME/.ccc/.env"
 if [ -f "$ENV_FILE" ]; then
   set -a; source "$ENV_FILE"; set +a
 fi
-WORKSPACE="$HOME/.rcc/workspace"
-exec node "$WORKSPACE/rcc/exec/agent-listener.mjs"
+WORKSPACE="$HOME/.ccc/workspace"
+exec node "$WORKSPACE.ccc/exec/agent-listener.mjs"
 EOF
 
 chmod +x "$EXEC_LISTENER"
@@ -181,14 +181,14 @@ EXEC_REGISTERED=false
 if [ -f "$SUPERVISORD_CONF" ]; then
   info "supervisord.conf found — registering programs..."
 
-  # Register rcc-agent-pull
-  if grep -q "\[program:rcc-agent-pull\]" "$SUPERVISORD_CONF" 2>/dev/null; then
-    success "rcc-agent-pull already in supervisord.conf — skipping"
+  # Register ccc-agent-pull
+  if grep -q "\[program:ccc-agent-pull\]" "$SUPERVISORD_CONF" 2>/dev/null; then
+    success "ccc-agent-pull already in supervisord.conf — skipping"
     PULL_REGISTERED=true
   else
     sudo tee -a "$SUPERVISORD_CONF" > /dev/null << EOF
 
-[program:rcc-agent-pull]
+[program:ccc-agent-pull]
 command=$PULL_LOOP
 autostart=true
 autorestart=true
@@ -200,18 +200,18 @@ stdout_logfile_maxbytes=1MB
 stdout_logfile_backups=1
 user=$USER
 EOF
-    success "rcc-agent-pull block appended to $SUPERVISORD_CONF"
+    success "ccc-agent-pull block appended to $SUPERVISORD_CONF"
     PULL_REGISTERED=true
   fi
 
-  # Register rcc-exec-listener
-  if grep -q "\[program:rcc-exec-listener\]" "$SUPERVISORD_CONF" 2>/dev/null; then
-    success "rcc-exec-listener already in supervisord.conf — skipping"
+  # Register ccc-exec-listener
+  if grep -q "\[program:ccc-exec-listener\]" "$SUPERVISORD_CONF" 2>/dev/null; then
+    success "ccc-exec-listener already in supervisord.conf — skipping"
     EXEC_REGISTERED=true
   else
     sudo tee -a "$SUPERVISORD_CONF" > /dev/null << EOF
 
-[program:rcc-exec-listener]
+[program:ccc-exec-listener]
 command=$EXEC_LISTENER
 autostart=true
 autorestart=true
@@ -223,7 +223,7 @@ stdout_logfile_maxbytes=2MB
 stdout_logfile_backups=2
 user=$USER
 EOF
-    success "rcc-exec-listener block appended to $SUPERVISORD_CONF"
+    success "ccc-exec-listener block appended to $SUPERVISORD_CONF"
     EXEC_REGISTERED=true
   fi
 
@@ -231,15 +231,15 @@ EOF
   info "Reloading supervisord..."
   sudo supervisorctl -c "$SUPERVISORD_CONF" reread && \
   sudo supervisorctl -c "$SUPERVISORD_CONF" update && \
-  success "supervisord reloaded — rcc-agent-pull + rcc-exec-listener running" || \
+  success "supervisord reloaded — ccc-agent-pull + ccc-exec-listener running" || \
   warn "supervisorctl update failed — you may need to restart supervisord manually"
 
 else
   info "supervisord.conf not found — falling back to nohup background processes"
 
   # Pull loop
-  if pgrep -f "rcc-pull-loop.sh" > /dev/null 2>&1; then
-    success "rcc-pull-loop.sh already running (PID: $(pgrep -f rcc-pull-loop.sh | head -1))"
+  if pgrep -f "ccc-pull-loop.sh" > /dev/null 2>&1; then
+    success "ccc-pull-loop.sh already running (PID: $(pgrep -f ccc-pull-loop.sh | head -1))"
     PULL_REGISTERED=true
   else
     nohup bash "$PULL_LOOP" >> "$LOG_FILE" 2>&1 &
@@ -247,7 +247,7 @@ else
     sleep 1
     if kill -0 "$PULL_PID" 2>/dev/null; then
       success "Pull loop started via nohup (PID: $PULL_PID)"
-      echo "$PULL_PID" > "$RCC_DIR/pull-loop.pid"
+      echo "$PULL_PID" > "$CCC_DIR/pull-loop.pid"
     else
       warn "Pull loop may have exited immediately — check $LOG_FILE"
     fi
@@ -264,7 +264,7 @@ else
     sleep 1
     if kill -0 "$EXEC_PID" 2>/dev/null; then
       success "Exec listener started via nohup (PID: $EXEC_PID)"
-      echo "$EXEC_PID" > "$RCC_DIR/exec-listener.pid"
+      echo "$EXEC_PID" > "$CCC_DIR/exec-listener.pid"
     else
       warn "Exec listener may have exited — check $EXEC_LOG (SQUIRRELBUS_TOKEN required in .env)"
     fi
@@ -280,13 +280,13 @@ fi
 info "Setting up SSH reverse shell tunnel to do-host1..."
 
 # Load .env to get AGENT_NAME and any tunnel config
-ENV_FILE="$HOME/.rcc/.env"
+ENV_FILE="$HOME/.ccc/.env"
 if [[ -f "$ENV_FILE" ]]; then
   set -a; source "$ENV_FILE"; set +a 2>/dev/null || true
 fi
 
 TUNNEL_HOST="${TUNNEL_HOST:-146.190.134.110}"
-TUNNEL_IDENTITY="$HOME/.ssh/rcc-tunnel-key"
+TUNNEL_IDENTITY="$HOME/.ssh/ccc-tunnel-key"
 TUNNEL_LOG="$LOG_DIR/ssh-tunnel.log"
 touch "$TUNNEL_LOG" 2>/dev/null || true
 SHELL_TUNNEL_PORT=""
@@ -340,10 +340,10 @@ if [[ -z "$SHELL_TUNNEL_PORT" ]]; then
   warn "Using fallback shell tunnel port: ${SHELL_TUNNEL_PORT}"
 fi
 
-TUNNEL_SCRIPT="$HOME/.rcc/rcc-ssh-tunnel.sh"
+TUNNEL_SCRIPT="$HOME/.ccc/ccc-ssh-tunnel.sh"
 cat > "$TUNNEL_SCRIPT" << TUNEOF
 #!/usr/bin/env bash
-# rcc-ssh-tunnel.sh — Maintains reverse SSH shell tunnel to do-host1
+# ccc-ssh-tunnel.sh — Maintains reverse SSH shell tunnel to do-host1
 # Exposes this container's sshd as do-host1 localhost:${SHELL_TUNNEL_PORT}
 # Rocky can then SSH in: ssh -p ${SHELL_TUNNEL_PORT} ${USER:-horde}@localhost (from do-host1)
 
@@ -374,12 +374,12 @@ success "SSH tunnel script written: $TUNNEL_SCRIPT (port ${SHELL_TUNNEL_PORT})"
 
 # Register tunnel with supervisord if available, else nohup
 if [[ -f "$SUPERVISORD_CONF" ]]; then
-  if grep -q "\[program:rcc-ssh-tunnel\]" "$SUPERVISORD_CONF" 2>/dev/null; then
-    success "rcc-ssh-tunnel already in supervisord.conf — skipping"
+  if grep -q "\[program:ccc-ssh-tunnel\]" "$SUPERVISORD_CONF" 2>/dev/null; then
+    success "ccc-ssh-tunnel already in supervisord.conf — skipping"
   else
     sudo tee -a "$SUPERVISORD_CONF" > /dev/null << SUPEOF
 
-[program:rcc-ssh-tunnel]
+[program:ccc-ssh-tunnel]
 command=${TUNNEL_SCRIPT}
 autostart=true
 autorestart=true
@@ -391,22 +391,22 @@ stdout_logfile_maxbytes=1MB
 stdout_logfile_backups=1
 user=${USER}
 SUPEOF
-    success "rcc-ssh-tunnel registered with supervisord"
+    success "ccc-ssh-tunnel registered with supervisord"
     sudo supervisorctl -c "$SUPERVISORD_CONF" reread 2>/dev/null && \
     sudo supervisorctl -c "$SUPERVISORD_CONF" update 2>/dev/null || \
     warn "supervisorctl reload failed — restart supervisord manually"
   fi
 else
   # nohup fallback
-  if pgrep -f "rcc-ssh-tunnel.sh" > /dev/null 2>&1; then
-    success "rcc-ssh-tunnel.sh already running"
+  if pgrep -f "ccc-ssh-tunnel.sh" > /dev/null 2>&1; then
+    success "ccc-ssh-tunnel.sh already running"
   else
     nohup bash "$TUNNEL_SCRIPT" >> "$TUNNEL_LOG" 2>&1 &
     SSH_PID=$!
     sleep 2
     if kill -0 "$SSH_PID" 2>/dev/null; then
       success "SSH tunnel started via nohup (PID: $SSH_PID)"
-      echo "$SSH_PID" > "$RCC_DIR/ssh-tunnel.pid"
+      echo "$SSH_PID" > "$CCC_DIR/ssh-tunnel.pid"
     else
       warn "SSH tunnel may not have started — check $TUNNEL_LOG"
       warn "Likely cause: tunnel key not yet authorized on do-host1"
@@ -468,19 +468,19 @@ echo ""
 
 if [ -f "$SUPERVISORD_CONF" ]; then
   echo "  Process manager: supervisord"
-  echo "  Programs:        rcc-agent-pull, rcc-exec-listener, rcc-ssh-tunnel"
+  echo "  Programs:        ccc-agent-pull, ccc-exec-listener, ccc-ssh-tunnel"
   echo "  Check:           sudo supervisorctl -c $SUPERVISORD_CONF status"
 else
   echo "  Process manager: nohup background"
-  echo "  Check pull:      pgrep -fa rcc-pull-loop"
+  echo "  Check pull:      pgrep -fa ccc-pull-loop"
   echo "  Check exec:      pgrep -fa agent-listener"
-  echo "  Check tunnel:    pgrep -fa rcc-ssh-tunnel"
-  echo "  PID files:       $RCC_DIR/pull-loop.pid, $RCC_DIR/exec-listener.pid, $RCC_DIR/ssh-tunnel.pid"
+  echo "  Check tunnel:    pgrep -fa ccc-ssh-tunnel"
+  echo "  PID files:       $CCC_DIR/pull-loop.pid, $CCC_DIR/exec-listener.pid, $CCC_DIR/ssh-tunnel.pid"
 fi
 
 echo ""
 echo "  Verify these manually:"
-echo "  1. ~/.rcc/.env exists with AGENT_NAME, CCC_URL, CCC_AGENT_TOKEN, SQUIRRELBUS_TOKEN"
+echo "  1. ~/.ccc/.env exists with AGENT_NAME, CCC_URL, CCC_AGENT_TOKEN, SQUIRRELBUS_TOKEN"
 echo "  2. Pull loop running:      tail -f $LOG_FILE"
 echo "  3. Exec listener running:  tail -f $EXEC_LOG"
 echo "  4. SSH tunnel:             tail -f $TUNNEL_LOG (needs key authorized on do-host1)"
@@ -490,8 +490,8 @@ echo "  From do-host1, once tunnel key is authorized:"
 echo "    ssh -p ${SHELL_TUNNEL_PORT:-?} ${USER:-horde}@localhost"
 echo ""
 echo "  If .env is missing:"
-echo "    cp $REPO_DIR/deploy/.env.template ~/.rcc/.env"
-echo "    nano ~/.rcc/.env"
+echo "    cp $REPO_DIR/deploy/.env.template ~/.ccc/.env"
+echo "    nano ~/.ccc/.env"
 echo ""
 echo "  Required .env keys for exec listener:"
 echo "    SQUIRRELBUS_TOKEN   — shared bus secret (get from Rocky/CCC)"

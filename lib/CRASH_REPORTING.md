@@ -36,7 +36,7 @@ On crash:
 
 ```
 POST http://localhost:8788/api/crash-report
-Authorization: Bearer <your-rcc-token>
+Authorization: Bearer <your-ccc-token>
 Content-Type: application/json
 
 {

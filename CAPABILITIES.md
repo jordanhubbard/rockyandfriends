@@ -64,8 +64,8 @@ Valid `executors` values (exact strings — the registry validates these):
 Agents publish their manifest at startup using the API:
 
 ```bash
-curl -X POST http://rcc:8789/api/capabilities \
-  -H "Authorization: Bearer $RCC_TOKEN" \
+curl -X POST http://ccc:8789/api/capabilities \
+  -H "Authorization: Bearer $CCC_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
     "agent":     "bullwinkle",
@@ -79,7 +79,7 @@ curl -X POST http://rcc:8789/api/capabilities \
 Re-publishing is an upsert — the manifest is replaced in full and `updatedAt`
 is reset to the current time.
 
-Rocky publishes its own manifest automatically when `rcc-api` starts.
+Rocky publishes its own manifest automatically when `ccc-api` starts.
 
 ---
 
@@ -148,8 +148,8 @@ The `?task=X` query param is also supported for semantic routing:
 
 ## Registry Persistence
 
-Manifests are written to `rcc/api/data/capabilities-registry.json` on every
-`publish()` call and loaded from disk when `rcc-api` starts.  The file is a
+Manifests are written to .ccc/api/data/capabilities-registry.json` on every
+`publish()` call and loaded from disk when `ccc-api` starts.  The file is a
 plain JSON object keyed by agent name — safe to inspect or edit by hand.
 
 The registry file path can be overridden with the `REGISTRY_PATH` environment

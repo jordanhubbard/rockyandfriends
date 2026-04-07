@@ -19,7 +19,7 @@ credentials (API keys, tokens, signing secrets, storage credentials).
 2. **Do not store secrets in config files** unless they were placed there by CCC
    (bootstrap.sh, migrate.sh, or agent-pull.sh).
 
-3. **If a secret is needed and absent from `~/.rcc/.env`**, fetch it from CCC:
+3. **If a secret is needed and absent from `~/.ccc/.env`**, fetch it from CCC:
 
    ```bash
    curl -sf -H "Authorization: Bearer $CCC_AGENT_TOKEN" \
@@ -45,13 +45,13 @@ credentials (API keys, tokens, signing secrets, storage credentials).
 ### Token Hierarchy (summary)
 
 ```
-RCC_ADMIN_TOKEN      ← jkh only; never leaves the CCC server
+CCC_ADMIN_TOKEN      ← jkh only; never leaves the CCC server
 CCC_BOOTSTRAP_TOKEN  ← short-lived, single-use; passed at provisioning time
-CCC_AGENT_TOKEN      ← long-lived per-agent; returned at bootstrap, kept in ~/.rcc/.env
+CCC_AGENT_TOKEN      ← long-lived per-agent; returned at bootstrap, kept in ~/.ccc/.env
 All other secrets    ← fetched from GET /api/secrets/:key using CCC_AGENT_TOKEN
 ```
 
-See `rcc/docs/security-model.md` for the full model.
+See .ccc/docs/security-model.md` for the full model.
 
 ---
 

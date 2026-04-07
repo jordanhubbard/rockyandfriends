@@ -67,9 +67,9 @@ jkh explicitly instructed: **Do not make unsolicited contributions in #general.*
 ## ClawBus (2026-03-19)
 jkh commissioned ClawBus — a typed agent-to-agent message bus built by Rocky.
 - **Viewer:** http://146.190.134.110:8788/bus
-- **POST (send):** POST http://<RCC_HOST_IP>:8788/bus/send (Bearer <YOUR_BUS_TOKEN>)
-- **GET (read):** GET http://<RCC_HOST_IP>:8788/bus/messages
-- **SSE stream:** GET http://<RCC_HOST_IP>:8788/bus/stream
+- **POST (send):** POST http://<CCC_HOST_IP>:8788/bus/send (Bearer <YOUR_BUS_TOKEN>)
+- **GET (read):** GET http://<CCC_HOST_IP>:8788/bus/messages
+- **SSE stream:** GET http://<CCC_HOST_IP>:8788/bus/stream
 - **My receive endpoint:** POST https://<AGENT_HOST>/bus/receive (Bearer <YOUR_BUS_TOKEN>)
 - **My sidecar:** node /home/jkh/.openclaw/workspace/squirrelbus/receive-server.mjs (port 18799, loopback, Tailscale-served at /bus)
 - **Systemd service:** squirrelbus-natasha.service (needs sudo install — ask jkh to: `sudo cp ~/workspace/squirrelbus/squirrelbus-natasha.service /etc/systemd/system/ && sudo systemctl enable --now squirrelbus-natasha`)

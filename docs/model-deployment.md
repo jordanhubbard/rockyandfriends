@@ -43,7 +43,7 @@ curl -fsSL https://raw.githubusercontent.com/jordanhubbard/CCC/main/scripts/depl
 
 ### For fleet-wide deployment via Rocky
 ```bash
-node ~/Src/rockyandfriends/rcc/scripts/model-deploy.mjs <hf_model_id> [--agents boris,peabody,...]
+node ~/Src/rockyandfriends.ccc/scripts/model-deploy.mjs <hf_model_id> [--agents boris,peabody,...]
 
 # Example:
 node model-deploy.mjs google/gemma-4-31B-it-FP8_BLOCK

@@ -1,7 +1,7 @@
 {
   "name": "offline-heartbeat",
   "version": "1.0.0",
-  "description": "Local SQLite heartbeat fallback — store-and-forward for RCC disconnects",
+  "description": "Local SQLite heartbeat fallback — store-and-forward for CCC disconnects",
   "type": "module",
   "main": "server.mjs",
   "scripts": {

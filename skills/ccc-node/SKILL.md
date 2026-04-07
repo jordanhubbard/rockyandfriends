@@ -1,24 +1,24 @@
 ---
 name: ccc-node
-description: Connect this agent to the CCC (Command and Control Center) fleet. Handles ClawBus registration, heartbeat, remote exec dispatch, and workqueue lifecycle. Use when setting up a new agent node, checking fleet connectivity, or managing workqueue items via Rocky's RCC API.
+description: Connect this agent to the CCC (Command and Control Center) fleet. Handles ClawBus registration, heartbeat, remote exec dispatch, and workqueue lifecycle. Use when setting up a new agent node, checking fleet connectivity, or managing workqueue items via Rocky's CCC API.
 version: 1.0.0
 platforms: [linux, macos]
 metadata:
   hermes:
-    tags: [ccc, clawbus, fleet, rcc, workqueue]
+    tags: [ccc, clawbus, fleet, ccc, workqueue]
     category: infrastructure
 required_environment_variables:
   - name: CCC_URL
-    prompt: "RCC API base URL (e.g. http://100.89.199.14:8789 for Tailscale, http://146.190.134.110:8789 for Sweden direct)"
+    prompt: "CCC API base URL (e.g. http://100.89.199.14:8789 for Tailscale, http://146.190.134.110:8789 for Sweden direct)"
     help: "puck/Bullwinkle + sparky/Natasha: use Tailscale IP http://100.89.199.14:8789. Sweden containers (no Tailscale): use direct IP http://146.190.134.110:8789."
     required_for: all CCC operations
   - name: CCC_AGENT_TOKEN
-    prompt: "CCC agent bearer token (rcc-agent-<name>-<hex>)"
+    prompt: "CCC agent bearer token (ccc-agent-<name>-<hex>)"
     help: "Pull from Rocky's secrets store: GET /api/secrets/<agentname>_ccc_token"
     required_for: authenticated API calls
   - name: AGENT_NAME
     prompt: "This agent's name (e.g. bullwinkle, natasha)"
-    help: "Lowercase, matches the name registered in Rocky's RCC fleet."
+    help: "Lowercase, matches the name registered in Rocky's CCC fleet."
     required_for: heartbeat and workqueue routing
 ---
 
@@ -26,7 +26,7 @@ required_environment_variables:
 
 Connects a Hermes agent to the CCC fleet running on Rocky (do-host1, 146.190.134.110).
 
-CCC = the Command and Control Center. Rocky runs the RCC server (`rcc-server`, Rust/Axum).
+CCC = the Command and Control Center. Rocky runs the CCC server (`ccc-server`, Rust/Axum).
 ClawBus is the SquirrelBus-based message bus. All fleet coordination goes through Rocky.
 
 ## When to Use
@@ -40,7 +40,7 @@ ClawBus is the SquirrelBus-based message bus. All fleet coordination goes throug
 ## Architecture
 
 ```
-Agent (you) ──HTTP──▶ Rocky RCC API (http://146.190.134.110:8789)
+Agent (you) ──HTTP──▶ Rocky CCC API (http://146.190.134.110:8789)
                          ├── /api/heartbeat/<name>    POST — heartbeat
                          ├── /api/workqueue           GET — pull items
                          ├── /api/workqueue/<id>      PATCH — update status
@@ -51,7 +51,7 @@ Agent (you) ──HTTP──▶ Rocky RCC API (http://146.190.134.110:8789)
 
 All requests require `Authorization: Bearer $CCC_AGENT_TOKEN`.
 
-**Network note:** Rocky's RCC API is NOT on the public internet — it's on the internal interface.
+**Network note:** Rocky's CCC API is NOT on the public internet — it's on the internal interface.
 - From puck (Bullwinkle): reach via Tailscale (`http://100.89.199.14:8789`) or direct IP if routed
 - From Sweden containers: they have no inbound; they connect outbound via SSH tunnel to Rocky
 - From sparky (Natasha): Tailscale IP works
@@ -174,8 +174,8 @@ inbound exec dispatch independently of the agent runtime.
 
 ## Pitfalls
 
-- **Wrong token type:** Use `rcc-agent-*` tokens, NOT `wq-*` workqueue tokens. They're different.
-- **Snidely token typo:** Rocky's fleet has `rcc-agent-Snidley` (note "Snidley" vs "Snidely") — use it as-is.
+- **Wrong token type:** Use `ccc-agent-*` tokens, NOT `wq-*` workqueue tokens. They're different.
+- **Snidely token typo:** Rocky's fleet has `ccc-agent-Snidley` (note "Snidley" vs "Snidely") — use it as-is.
 - **ClawBus SSE from Sweden:** Use direct IP `http://146.190.134.110:8789`, NOT the Caddy proxy URL — Caddy returns 502 on SSE endpoints.
 - **puck networking:** puck has Tailscale, so use `http://100.89.199.14:8789` (Tailscale IP for do-host1).
 - **sessions_spawn / sessions_yield:** These are OpenClaw-specific. In Hermes, use `delegate_tool.py` or spawn subagents via the Hermes delegate API.

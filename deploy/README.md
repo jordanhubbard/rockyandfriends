@@ -6,48 +6,48 @@ This directory contains everything needed to bootstrap a new agent node and keep
 
 ```bash
 # 1. Clone the repo
-git clone git@github.com:yourorg/your-rcc-repo.git ~/.rcc/workspace
+git clone git@github.com:yourorg/your-ccc-repo.git ~/.ccc/workspace
 
 # 2. Run the interactive onboarding script (recommended)
-bash ~/.rcc/workspace/deploy/rcc-init.sh
+bash ~/.ccc/workspace/deploy/ccc-init.sh
 ```
 
-`rcc-init.sh` handles everything: it asks for your agent name, whether this node is the CCC host or a client, configures `~/.rcc/.env`, sets up data dirs, and optionally installs the API as a system service.
+`ccc-init.sh` handles everything: it asks for your agent name, whether this node is the CCC host or a client, configures `~/.ccc/.env`, sets up data dirs, and optionally installs the API as a system service.
 
 ### Manual path (if you prefer)
 
 ```bash
 # 1. Clone + bootstrap dependencies
-bash ~/.rcc/workspace/deploy/setup-node.sh
+bash ~/.ccc/workspace/deploy/setup-node.sh
 
 # 2. Fill in credentials
-nano ~/.rcc/.env
+nano ~/.ccc/.env
 
 # 3. Register with CCC
-bash ~/.rcc/workspace/deploy/register-agent.sh
+bash ~/.ccc/workspace/deploy/register-agent.sh
 
 # 4. Test the pull
-bash ~/.rcc/workspace/deploy/agent-pull.sh
+bash ~/.ccc/workspace/deploy/agent-pull.sh
 
 # 5. Start your coding CLI turbocharger (once per machine)
 tmux new-session -d -s claude-main
 tmux send-keys -t claude-main 'claude --dangerously-skip-permissions' Enter
 ```
 
-## rcc-init.sh — Interactive Onboarding
+## ccc-init.sh — Interactive Onboarding
 
-`rcc-init.sh` is the recommended entry point for any new node. It:
+`ccc-init.sh` is the recommended entry point for any new node. It:
 
 1. Prompts for `AGENT_NAME` and `AGENT_HOST`
 2. Asks whether this node **is the CCC host** or a **client** connecting to one
 3. If **CCC host**:
    - Prompts for port, auth tokens, and public hostname
-   - Creates data directories (`~/.rcc/data/{queue,agents,journal}`)
-   - Optionally installs `ccc-api.service` (Linux systemd) or `com.rcc.api` (macOS LaunchAgent)
+   - Creates data directories (`~/.ccc/data/{queue,agents,journal}`)
+   - Optionally installs `ccc-api.service` (Linux systemd) or `com.ccc.api` (macOS LaunchAgent)
 4. If **client**:
    - Prompts for the remote CCC URL and agent token
 5. Prompts for optional capabilities (GPU, Claude CLI, MinIO, Slack, etc.)
-6. Writes a filled-in `~/.rcc/.env` (backs up any existing one)
+6. Writes a filled-in `~/.ccc/.env` (backs up any existing one)
 7. Prints next steps
 
 Re-running is safe — it backs up `.env` before overwriting.
@@ -85,14 +85,14 @@ Without the coding CLI turbocharger, `claude_cli` work items stay pending foreve
 
 Runs every 10 minutes automatically. It:
 1. `git pull`s from the repo
-2. If anything changed in `dashboard/`, `rcc/`, or `deploy/`: restarts the affected service
+2. If anything changed in `dashboard/`, .ccc/`, or `deploy/`: restarts the affected service
 3. Posts a heartbeat to CCC (if `CCC_URL` and `CCC_AGENT_TOKEN` are set)
-4. Logs to `~/.rcc/logs/pull.log`
+4. Logs to `~/.ccc/logs/pull.log`
 
 Manual trigger:
 ```bash
-bash ~/.rcc/workspace/deploy/agent-pull.sh
-tail -f ~/.rcc/logs/pull.log
+bash ~/.ccc/workspace/deploy/agent-pull.sh
+tail -f ~/.ccc/logs/pull.log
 ```
 
 ### Secrets (`.env`)
@@ -100,8 +100,8 @@ tail -f ~/.rcc/logs/pull.log
 **Secrets never go in git.** The repo holds code. Each node holds its own `.env`.
 
 - Template: `deploy/.env.template` (in git — safe, no real values)
-- Live config: `~/.rcc/.env` (never in git — chmod 600)
-- Quickest setup: `bash deploy/rcc-init.sh`
+- Live config: `~/.ccc/.env` (never in git — chmod 600)
+- Quickest setup: `bash deploy/ccc-init.sh`
 
 Required fields:
 | Field | Description |
@@ -118,7 +118,7 @@ Optional: `NVIDIA_API_KEY`, MinIO creds, Azure Blob SAS, Slack/Mattermost/Telegr
 Use `setup-container.sh` instead of `setup-node.sh` when deploying inside **Kasm workspaces, Docker containers, or any environment without systemd**.
 
 ```bash
-bash ~/.rcc/workspace/deploy/setup-container.sh
+bash ~/.ccc/workspace/deploy/setup-container.sh
 ```
 
 ### What breaks in containers
@@ -132,10 +132,10 @@ bash ~/.rcc/workspace/deploy/setup-container.sh
 
 ### What we do instead
 
-1. **Workspace symlink** — `~/.rcc/workspace` → repo directory (since there's no clone step in Kasm; the repo is the workspace)
-2. **Pull loop** — `~/.rcc/rcc-pull-loop.sh` runs `agent-pull.sh` in a `while true; sleep 600` loop
-3. **Supervisord** — if `/etc/supervisord.conf` exists (common in Kasm), the pull loop is registered as `[program:rcc-agent-pull]` and managed by supervisord
-4. **nohup fallback** — if supervisord is absent, the loop is started with `nohup` and a PID file is written to `~/.rcc/pull-loop.pid`
+1. **Workspace symlink** — `~/.ccc/workspace` → repo directory (since there's no clone step in Kasm; the repo is the workspace)
+2. **Pull loop** — `~/.ccc/ccc-pull-loop.sh` runs `agent-pull.sh` in a `while true; sleep 600` loop
+3. **Supervisord** — if `/etc/supervisord.conf` exists (common in Kasm), the pull loop is registered as `[program:ccc-agent-pull]` and managed by supervisord
+4. **nohup fallback** — if supervisord is absent, the loop is started with `nohup` and a PID file is written to `~/.ccc/pull-loop.pid`
 5. **tmux + Claude Code** — `claude-main` session is created the same way as on a host node
 
 ### Container detection
@@ -153,8 +153,8 @@ If it looks like a real host, the script exits and suggests running `setup-node.
 sudo supervisorctl -c /etc/supervisord.conf status
 
 # If using nohup fallback:
-pgrep -fa rcc-pull-loop
-tail -f ~/.rcc/logs/pull.log
+pgrep -fa ccc-pull-loop
+tail -f ~/.ccc/logs/pull.log
 
 # Claude session:
 tmux attach -t claude-main
@@ -166,30 +166,30 @@ tmux attach -t claude-main
 
 | Platform | Service Manager | Auto-pull |
 |----------|----------------|-----------|
-| Linux (systemd) | `rcc-agent.timer` + `rcc-agent.service` | ✅ |
-| macOS | `com.rcc.agent.plist` (LaunchAgent) | ✅ |
+| Linux (systemd) | `ccc-agent.timer` + `ccc-agent.service` | ✅ |
+| macOS | `com.ccc.agent.plist` (LaunchAgent) | ✅ |
 | Other Linux | crontab | ✅ |
 | Container (Kasm, Docker) | supervisord or nohup loop | ✅ |
 
 ### Linux (systemd)
 ```bash
-sudo cp deploy/systemd/rcc-agent.service /etc/systemd/system/
-sudo cp deploy/systemd/rcc-agent.timer /etc/systemd/system/
+sudo cp deploy/systemd/ccc-agent.service /etc/systemd/system/
+sudo cp deploy/systemd/ccc-agent.timer /etc/systemd/system/
 sudo systemctl daemon-reload
-sudo systemctl enable --now rcc-agent.timer
+sudo systemctl enable --now ccc-agent.timer
 ```
 
 ### macOS
 ```bash
-# rcc-init.sh handles this automatically.
+# ccc-init.sh handles this automatically.
 # Or manually:
-cp deploy/launchd/com.rcc.agent.plist ~/Library/LaunchAgents/
-launchctl load ~/Library/LaunchAgents/com.rcc.agent.plist
+cp deploy/launchd/com.ccc.agent.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.ccc.agent.plist
 ```
 
 ## CCC API Server
 
-The CCC API (`rcc/api/index.mjs`) runs on the hub node (port 8789 by default). It provides:
+The CCC API (.ccc/api/index.mjs`) runs on the hub node (port 8789 by default). It provides:
 
 - `GET /health` — health check (public)
 - `GET /api/queue` — full work queue (public read)
@@ -208,15 +208,15 @@ Auth: `Authorization: Bearer <token>`. Set `CCC_AUTH_TOKENS=token1,token2` on th
 
 Start manually:
 ```bash
-CCC_AUTH_TOKENS=your-token node rcc/api/index.mjs
+CCC_AUTH_TOKENS=your-token node.ccc/api/index.mjs
 ```
 
 ## Development
 
 Run tests:
 ```bash
-node --test rcc/api/test.mjs      # 23 tests
-node --test rcc/brain/test.mjs    # 10 tests
+node --test.ccc/api/test.mjs      # 23 tests
+node --test.ccc/brain/test.mjs    # 10 tests
 node --test dashboard/test/api.test.mjs  # 22 tests
 ```
 

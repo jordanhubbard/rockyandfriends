@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # migrate.sh — Migrate an existing agent workspace to current rockyandfriends baseline
-# Usage: bash migrate.sh --agent=bullwinkle --rcc=http://146.190.134.110:8789 --token=<static-agent-token>
+# Usage: bash migrate.sh --agent=bullwinkle --ccc=http://146.190.134.110:8789 --token=<static-agent-token>
 # Run ON the agent machine (not remotely)
 set -euo pipefail
 
@@ -12,7 +12,7 @@ TOKEN=""
 for arg in "$@"; do
   case $arg in
     --agent=*) AGENT="${arg#*=}" ;;
-    --rcc=*)   CCC="${arg#*=}" ;;
+    --ccc=*)   CCC="${arg#*=}" ;;
     --token=*) TOKEN="${arg#*=}" ;;
     *) echo "Unknown argument: $arg" >&2; exit 1 ;;
   esac
@@ -27,23 +27,23 @@ if [[ -z "$TOKEN" ]]; then
   exit 1
 fi
 
-# Auto-detect workspace path — support both Rocky's .rcc layout and standard .openclaw layout
+# Auto-detect workspace path — support both Rocky's .ccc layout and standard .openclaw layout
 if [[ -d "${HOME}/.openclaw/workspace" ]]; then
   WORKSPACE="${HOME}/.openclaw/workspace"
-  ENV_FILE="${HOME}/.openclaw/../.rcc/.env"
-  # Prefer .rcc/.env if it exists (Rocky layout), else use .openclaw sibling
-  if [[ -f "${HOME}/.rcc/.env" ]]; then
-    ENV_FILE="${HOME}/.rcc/.env"
+  ENV_FILE="${HOME}/.openclaw/../.ccc/.env"
+  # Prefer .ccc/.env if it exists (Rocky layout), else use .openclaw sibling
+  if [[ -f "${HOME}/.ccc/.env" ]]; then
+    ENV_FILE="${HOME}/.ccc/.env"
   elif [[ -d "${HOME}/.openclaw" ]]; then
-    # Create .rcc dir alongside .openclaw if needed
-    mkdir -p "${HOME}/.rcc"
-    ENV_FILE="${HOME}/.rcc/.env"
+    # Create .ccc dir alongside .openclaw if needed
+    mkdir -p "${HOME}/.ccc"
+    ENV_FILE="${HOME}/.ccc/.env"
   fi
-elif [[ -d "${HOME}/.rcc/workspace" ]]; then
-  WORKSPACE="${HOME}/.rcc/workspace"
-  ENV_FILE="${HOME}/.rcc/.env"
+elif [[ -d "${HOME}/.ccc/workspace" ]]; then
+  WORKSPACE="${HOME}/.ccc/workspace"
+  ENV_FILE="${HOME}/.ccc/.env"
 else
-  echo "Error: no workspace found at ~/.openclaw/workspace or ~/.rcc/workspace" >&2
+  echo "Error: no workspace found at ~/.openclaw/workspace or ~/.ccc/workspace" >&2
   exit 1
 fi
 mkdir -p "$(dirname "$ENV_FILE")"
@@ -166,7 +166,7 @@ fi
 echo "[7/7] Checking for node / Milvus ingest..."
 INGEST_RESULT="skipped (node not available)"
 if command -v node &>/dev/null; then
-  INGEST_SCRIPT="$WORKSPACE/rcc/scripts/ingest-memory.mjs"
+  INGEST_SCRIPT="$WORKSPACE.ccc/scripts/ingest-memory.mjs"
   if [[ -f "$INGEST_SCRIPT" ]]; then
     echo "      Running ingest-memory.mjs..."
     if node "$INGEST_SCRIPT" 2>&1; then
@@ -190,4 +190,4 @@ echo "  .env:      updated (CCC_AGENT_TOKEN, CCC_URL, AGENT_NAME, AGENT_HOST + C
 echo "  Heartbeat: HTTP $HEARTBEAT_HTTP"
 echo "  Ingest:    $INGEST_RESULT"
 echo ""
-echo "Run 'systemctl --user restart rcc-agent' (or equivalent) if the agent service is running."
+echo "Run 'systemctl --user restart ccc-agent' (or equivalent) if the agent service is running."
