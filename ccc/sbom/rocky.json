@@ -20,7 +20,7 @@
     ],
     "brew": [],
     "npm": ["pm2"],
-    "pip": ["pymilvus", "sentence-transformers"],
+    "pip": ["qdrant-client", "sentence-transformers"],
     "cargo": []
   },
   "tools": {

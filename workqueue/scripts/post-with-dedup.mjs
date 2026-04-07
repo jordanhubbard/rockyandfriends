@@ -2,9 +2,9 @@
 /**
  * post-with-dedup.mjs — Dedup-gated workqueue item POST
  *
- * Wraps an CCC API item POST with a pre-flight Milvus similarity check.
+ * Wraps an CCC API item POST with a pre-flight Qdrant similarity check.
  * If a near-dup exists (cosine similarity > threshold), skips the POST.
- * If Milvus/ollama is unreachable, falls through and posts anyway.
+ * If Qdrant/ollama is unreachable, falls through and posts anyway.
  *
  * Usage:
  *   node post-with-dedup.mjs \
@@ -36,7 +36,7 @@ const DEFAULT_THRESHOLD = parseFloat(process.env.DEDUP_THRESHOLD || '0.85');
 
 // ── Dedup check (inline, avoids subprocess) ───────────────────────────────────
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
-const MILVUS_ADDRESS  = process.env.MILVUS_ADDRESS  || '100.89.199.14:19530';
+const QDRANT_URL  = process.env.QDRANT_URL  || 'localhost:6333';
 
 async function embedText(text) {
   const resp = await fetch(`${OLLAMA_BASE_URL}/api/embed`, {
@@ -53,8 +53,8 @@ async function checkDup(title, description, threshold) {
   const text = `${title}\n${description}`.trim();
   const vector = await embedText(text);
 
-  const { MilvusClient } = await import('@zilliz/milvus2-sdk-node');
-  const client = new MilvusClient({ address: MILVUS_ADDRESS });
+  const { QdrantClient } = await import('@zilliz/qdrant2-sdk-node');
+  const client = new QdrantClient({ address: QDRANT_URL });
 
   const collections = await client.showCollections();
   if (!(collections.data || []).some(c => c.name === 'ccc_queue')) return null;

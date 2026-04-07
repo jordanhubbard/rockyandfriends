@@ -8,7 +8,7 @@
  *   4. Asserts no OOM, gRPC timeouts, or embedding dimension mismatches
  *
  * Only runs when EMBED_BACKEND=local is set (skips otherwise).
- * Run: EMBED_BACKEND=local MILVUS_ADDRESS=100.89.199.14:19530 node --test.ccc/tests/gpu/memory-pressure.test.mjs
+ * Run: EMBED_BACKEND=local QDRANT_URL=100.89.199.14:19530 node --test.ccc/tests/gpu/memory-pressure.test.mjs
  *
  * Baseline (sparky GB10, 2026-03-28): ~3.3 embeds/s, ~300ms/embed
  */
@@ -20,7 +20,7 @@ import { createHash } from 'crypto';
 const EMBED_BACKEND   = process.env.EMBED_BACKEND || 'remote';
 const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
 const OLLAMA_MODEL    = process.env.OLLAMA_EMBED_MODEL || 'nomic-embed-text';
-const MILVUS_ADDRESS  = process.env.MILVUS_ADDRESS || 'localhost:19530';
+const QDRANT_URL  = process.env.QDRANT_URL || 'localhost:6333';
 const EXPECTED_DIM    = 768;
 const BATCH_SIZE      = 50;   // embed in batches of 50
 const TOTAL_EMBEDS    = 200;  // total strings to embed (keep <1000 for CI speed)
@@ -51,7 +51,7 @@ function generateTestStrings(n) {
   const templates = [
     'Agent Natasha processes GPU workloads on the DGX Spark.',
     'The CCC work queue distributes tasks across the agent fleet.',
-    'Milvus stores 768-dimensional vectors for semantic search.',
+    'Qdrant stores 768-dimensional vectors for semantic search.',
     'nomic-embed-text runs on the GB10 Blackwell GPU via ollama.',
     'Rocky manages the API server on do-host1 in DigitalOcean.',
     'Bullwinkle handles calendar and iMessage on the Mac mini.',
@@ -129,17 +129,17 @@ describe('GPU memory pressure — ollama nomic-embed-text', { timeout: TIMEOUT_M
   });
 
   test('bulk upsert to ccc_memory_sparky — no gRPC timeouts', async () => {
-    // Import vector module dynamically (requires Milvus to be reachable)
+    // Import vector module dynamically (requires Qdrant to be reachable)
     let vectorMod;
     try {
       vectorMod = await import('../../vector/index.mjs');
       await vectorMod.ensureCollections();
     } catch (err) {
-      console.warn(`[skip] Milvus not reachable (${MILVUS_ADDRESS}): ${err.message}`);
+      console.warn(`[skip] Qdrant not reachable (${QDRANT_URL}): ${err.message}`);
       return; // soft skip — Milvus may not be accessible from all envs
     }
 
-    const strings = generateTestStrings(50); // smaller batch for Milvus round-trip
+    const strings = generateTestStrings(50); // smaller batch for Qdrant round-trip
     let upserted = 0;
     let upsertErrors = 0;
     const start = performance.now();
@@ -161,12 +161,12 @@ describe('GPU memory pressure — ollama nomic-embed-text', { timeout: TIMEOUT_M
     }
 
     const totalMs = performance.now() - start;
-    console.log(`\n  === Milvus Bulk Upsert ===`);
+    console.log(`\n  === Qdrant Bulk Upsert ===`);
     console.log(`  Upserted: ${upserted}/${strings.length} in ${(totalMs/1000).toFixed(1)}s`);
     console.log(`  Rate: ${(upserted/(totalMs/1000)).toFixed(1)} upserts/s`);
     console.log(`  Errors: ${upsertErrors}`);
 
-    assert.equal(upsertErrors, 0, `${upsertErrors} Milvus upsert errors`);
+    assert.equal(upsertErrors, 0, `${upsertErrors} Qdrant upsert errors`);
     assert.ok(upserted === strings.length, `Only ${upserted}/${strings.length} upserted`);
   });
 
@@ -175,7 +175,7 @@ describe('GPU memory pressure — ollama nomic-embed-text', { timeout: TIMEOUT_M
     try {
       vectorMod = await import('../../vector/index.mjs');
     } catch {
-      console.warn('[skip] Milvus not reachable');
+      console.warn('[skip] Qdrant not reachable');
       return;
     }
 

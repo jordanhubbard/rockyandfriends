@@ -2,7 +2,7 @@
  * Tests for.ccc/memory/assembler.mjs (instar item wq-INSTAR-*-04)
  *
  * Covers: estimateTokens, budgetSection (tiered rendering + budget enforcement),
- * assemble() graceful degradation when Milvus unavailable.
+ * assemble() graceful degradation when Qdrant unavailable.
  */
 
 import { test, describe, before, after } from 'node:test';
@@ -120,26 +120,26 @@ describe('budgetSection — tiered rendering', () => {
 });
 
 // ── assemble() tests ──────────────────────────────────────────────────────────
-// assemble() calls tryVectorSearch() which imports vector/index.mjs → Milvus gRPC client.
-// In CI/test environments, the Milvus gRPC client fires async retries that produce
+// assemble() calls tryVectorSearch() which imports vector/index.mjs → Qdrant gRPC client.
+// In CI/test environments, the Qdrant gRPC client fires async retries that produce
 // unhandledRejection events outside the test boundary even when the error is caught.
 // We suppress these during the assemble suite with a process-level listener, and
 // restore it after. This is the correct pattern for testing code that uses gRPC clients.
 
 // ── assemble() integration note ───────────────────────────────────────────────
-// assemble() imports vector/index.mjs which initialises a Milvus gRPC client.
+// assemble() imports vector/index.mjs which initialises a Qdrant gRPC client.
 // In node:test v22, gRPC retry connections fire async events that node:test
 // detects as "asynchronous activity after test ended" — this cannot be suppressed
 // at the unhandledRejection level because node:test intercepts it earlier.
 //
 // Solution: test assemble() logic at the unit level using budgetSection + estimateTokens
-// (already covered above). The integration test for assemble() against a real Milvus
-// instance lives in.ccc/tests/integration.test.mjs (requires MILVUS_ADDRESS env var).
+// (already covered above). The integration test for assemble() against a real Qdrant
+// instance lives in.ccc/tests/integration.test.mjs (requires QDRANT_URL env var).
 //
-// The following tests verify assemble() behaviour that does NOT trigger Milvus:
+// The following tests verify assemble() behaviour that does NOT trigger Qdrant:
 // episodic path only, with SKIP_VECTOR=1 env var or mocked import.
 
-describe('assemble — episodic path (no Milvus)', () => {
+describe('assemble — episodic path (no Qdrant)', () => {
 
   test('episodic digest renders through budgetSection correctly', () => {
     // Simulate what assemble() does internally for episode items
@@ -185,7 +185,7 @@ describe('assemble — episodic path (no Milvus)', () => {
     assert.ok(!summary.includes('Relevant Knowledge'), 'empty knowledge section should not appear');
   });
 
-  test('assemble returns correct shape — note: Milvus path is an integration test', () => {
+  test('assemble returns correct shape — note: Qdrant path is an integration test', () => {
     // Document the expected return shape as a contract test (no runtime call)
     const expectedKeys = ['knowledge', 'episodes', 'relationships', 'totalTokens', 'summary'];
     // Verify via budgetSection and estimateTokens that we can construct this shape

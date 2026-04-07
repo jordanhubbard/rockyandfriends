@@ -82,11 +82,11 @@ const SECRETS_MAP = {
   // Azure
   'azure/blob_public_url':       env.AZURE_BLOB_PUBLIC_URL,
 
-  // Milvus
-  'milvus/address':              env.MILVUS_ADDRESS,
-  'milvus/embed_model':          env.EMBED_MODEL,
-  'milvus/embed_dim':            env.EMBED_DIM,
-  'milvus/nvidia_embed_url':     env.NVIDIA_EMBED_URL,
+  // Qdrant
+  'qdrant/url':              env.QDRANT_URL,
+  'qdrant/embed_model':          env.EMBED_MODEL,
+  'qdrant/embed_dim':            env.EMBED_DIM,
+  'qdrant/nvidia_embed_url':     env.NVIDIA_EMBED_URL,
 
   // Peer agent URLs (these are internal network addresses, not really secrets,
   // but centralizing them means agents don't hardcode Tailscale IPs)

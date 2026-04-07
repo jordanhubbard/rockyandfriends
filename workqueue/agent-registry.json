@@ -16,7 +16,7 @@
     "capabilities": [
       "claude_cli",
       "gpu",
-      "milvus",
+      "qdrant",
       "squirrelbus",
       "tts"
     ],

@@ -76,7 +76,7 @@
     "optional": [
       "github_token (GH_TOKEN — for Issues/PR integration)",
       "squirrelbus (SQUIRRELBUS_URL, SQUIRRELBUS_TOKEN — agent messaging backbone)",
-      "vector_store (MILVUS_URL — semantic dedup, memory features)",
+      "vector_store (QDRANT_URL — semantic dedup, memory features)",
       "tunnel_config (TUNNEL_AUTH_KEYS, TUNNEL_USER, TUNNEL_PORT_START — Sweden GPU fleet)",
       "minio_s3 (endpoint, access key, secret — file storage)"
     ]

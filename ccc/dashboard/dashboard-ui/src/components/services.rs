@@ -42,7 +42,7 @@ impl ServiceStatus {
             "whisper-api"    => "🎙️",
             "clawfs"        => "📁",
             "usdagent"       => "🎨",
-            "milvus"         => "🔍",
+            "qdrant"         => "🔍",
             "ollama"         => "🦙",
             _                => "⚙️",
         }

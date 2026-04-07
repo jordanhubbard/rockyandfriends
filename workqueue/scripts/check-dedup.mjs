@@ -7,9 +7,9 @@
  *
  * Strategy A (default): Embedding similarity via ollama nomic-embed-text
  *   Embeds title+description, computes cosine similarity against all
- *   pending items fetched from CCC API. No Milvus dependency.
+ *   pending items fetched from CCC API. No Qdrant dependency.
  *
- * Strategy B (--milvus): Query ccc_queue_sparky Milvus collection (768-dim)
+ * Strategy B (--qdrant): Query ccc_queue_sparky Qdrant collection (768-dim)
  *   Faster for large queues, requires items to have been ingested first.
  *
  * Usage:

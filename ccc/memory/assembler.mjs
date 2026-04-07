@@ -19,7 +19,7 @@ import { recentDigests } from './episodic.mjs';
 
 // ── Token budget defaults ───────────────────────────────────────────────────
 const DEFAULT_BUDGET = {
-  knowledge:     800,  // tokens for semantic/Milvus results
+  knowledge:     800,  // tokens for semantic/Qdrant results
   episodes:      400,  // tokens for episodic digests
   relationships: 300,  // tokens for person/entity context
   total:        2000,
@@ -98,7 +98,7 @@ async function tryVectorSearch(query, limit = 10) {
       score:   h.score,
     }));
   } catch {
-    // Milvus unavailable — degrade gracefully
+    // Qdrant unavailable — degrade gracefully
     return [];
   }
 }

@@ -147,7 +147,7 @@ if [ -n "$CCC_URL" ] && [ -n "$CCC_AGENT_TOKEN" ] && command -v node >/dev/null 
     fi
     _sync_count=$((_sync_count + 1))
   }
-  for _alias in slack mattermost minio milvus nvidia github; do
+  for _alias in slack mattermost minio qdrant nvidia github; do
     _resp=$(curl -sf --max-time 5 \
       -H "Authorization: Bearer ${CCC_AGENT_TOKEN}" \
       "${CCC_URL}/api/secrets/${_alias}" 2>/dev/null || true)

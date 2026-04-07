@@ -20,7 +20,7 @@
       "squirrelchat/server.mjs — superseded by squirrelchat-server Rust crate",
       .ccc/brain/index.mjs (299 lines) — work pump, folds into Rust API",
       .ccc/scout/github.mjs (308 lines) — GitHub integration, folds into Rust API",
-      .ccc/vector/index.mjs — Milvus dedup, becomes Rust client",
+      .ccc/vector/index.mjs — Qdrant dedup, becomes Rust client",
       "squirrelbus/receive-server.mjs — bus receiver, folds into Rust API",
       "ccc-hub/ — entire directory is a mirror of.ccc/api/ — DELETE"
     ],

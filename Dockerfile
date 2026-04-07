@@ -1,71 +1,58 @@
-# RCC — Rocky Command Center
-# Multi-stage build: RCC API + SquirrelChat (Node.js/Express) in one image.
+# CCC — Claw Command Center
+# Multi-stage build: Rust ccc-server API binary.
 #
-# The WASM dashboard static files (rcc/dashboard/dist/) are NOT baked into
+# The WASM dashboard static files (ccc/dashboard/dist/) are NOT baked into
 # this image — they are bind-mounted at runtime from the repo checkout.
 # The dist/ is pre-built and committed; kept current by wasm-build.yml CI.
 #
-# Build: docker build -t rcc .
+# Build: docker build -t ccc .
 # Run:   docker compose up   (see docker-compose.yml)
 
-# ── Stage 1: deps ──────────────────────────────────────────────────────────
-FROM node:22-slim AS deps
-WORKDIR /app
+# ── Stage 1: Rust build ──────────────────────────────────────────────────
+FROM rust:1.82-slim AS builder
+WORKDIR /build
 
-# RCC deps
-COPY rcc/package.json rcc/package-lock.json* ./rcc/
-RUN cd rcc && npm ci --omit=dev
-
-# SquirrelChat deps
-COPY squirrelchat/package.json squirrelchat/package-lock.json* ./squirrelchat/
-RUN cd squirrelchat && npm ci --omit=dev
-
-# Root-level deps (shared utils)
-COPY package.json package-lock.json* ./
-RUN npm ci --omit=dev 2>/dev/null || true
-
-# ── Stage 2: final image ───────────────────────────────────────────────────
-FROM node:22-slim
-WORKDIR /app
-
-# Runtime deps only
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    ca-certificates \
+    pkg-config libssl-dev \
  && rm -rf /var/lib/apt/lists/*
 
-# Copy source
-COPY --from=deps /app/node_modules ./node_modules
-COPY --from=deps /app/rcc/node_modules ./rcc/node_modules
-COPY --from=deps /app/squirrelchat/node_modules ./squirrelchat/node_modules
+# Cache deps first
+COPY ccc/dashboard/Cargo.toml ccc/dashboard/Cargo.lock ./ccc/dashboard/
+COPY ccc/dashboard/ccc-server/Cargo.toml ./ccc/dashboard/ccc-server/
+RUN mkdir -p ccc/dashboard/ccc-server/src && echo 'fn main(){}' > ccc/dashboard/ccc-server/src/main.rs
+RUN cd ccc/dashboard && cargo build --release --bin ccc-server 2>/dev/null || true
 
-# RCC API
-COPY rcc/ ./rcc/
+# Full source
+COPY ccc/dashboard/ ./ccc/dashboard/
+RUN cd ccc/dashboard && cargo build --release --bin ccc-server
 
-# SquirrelChat backend
-COPY squirrelchat/server.mjs ./squirrelchat/server.mjs
-COPY squirrelchat/public/ ./squirrelchat/public/
+# ── Stage 2: final image ─────────────────────────────────────────────────
+FROM debian:bookworm-slim
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    curl ca-certificates \
+ && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /build/ccc/dashboard/target/release/ccc-server /usr/local/bin/ccc-server
 
 # Deploy assets (scripts, templates)
 COPY deploy/ ./deploy/
-COPY onboarding/ ./onboarding/
 COPY workqueue/ ./workqueue/
 
 # Data directories (overridden by volume mounts in production)
-RUN mkdir -p /data/rcc /data/squirrelchat /data/logs
+RUN mkdir -p /data/ccc /data/logs
 
 # Non-root user for security
-RUN groupadd -r rcc && useradd -r -g rcc -s /bin/false rcc \
- && chown -R rcc:rcc /app /data
-USER rcc
+RUN groupadd -r ccc && useradd -r -g ccc -s /bin/false ccc \
+ && chown -R ccc:ccc /app /data
+USER ccc
 
-# Ports: 8789=RCC API, 8790=SquirrelChat
+# Port: 8789=CCC API (Rust/Axum)
 EXPOSE 8789
-EXPOSE 8790
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD curl -f http://localhost:8789/health || exit 1
 
-# Default: start RCC API. SquirrelChat runs as a separate compose service.
-CMD ["node", "rcc/api/index.mjs"]
+CMD ["ccc-server"]

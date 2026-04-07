@@ -113,7 +113,7 @@ echo "      .env updated — CCC_AGENT_TOKEN, CCC_URL, AGENT_NAME, AGENT_HOST se
 echo "[4b/7] Fetching secrets from CCC..."
 _secrets_synced=0
 if command -v node &>/dev/null; then
-  for _alias in slack mattermost minio milvus nvidia github; do
+  for _alias in slack mattermost minio qdrant nvidia github; do
     _resp=$(curl -sf -H "Authorization: Bearer ${TOKEN}" \
       "${CCC}/api/secrets/${_alias}" 2>/dev/null || true)
     [[ -z "$_resp" ]] && continue
@@ -163,7 +163,7 @@ else
 fi
 
 # ── Step 7: Ingest memory (non-fatal) ────────────────────────────────────────
-echo "[7/7] Checking for node / Milvus ingest..."
+echo "[7/7] Checking for node / Qdrant ingest..."
 INGEST_RESULT="skipped (node not available)"
 if command -v node &>/dev/null; then
   INGEST_SCRIPT="$WORKSPACE.ccc/scripts/ingest-memory.mjs"
