@@ -1,5 +1,5 @@
 [workspace]
-members = ["dashboard-server", "dashboard-ui", "rcc-server"]
+members = ["dashboard-server", "dashboard-ui", "ccc-server"]
 resolver = "2"
 
 [profile.release]

@@ -34,12 +34,18 @@ fn http_client() -> &'static reqwest::Client {
 
 fn qdrant_base() -> &'static str {
     QDRANT_BASE.get_or_init(|| {
-        std::env::var("QDRANT_URL").unwrap_or_else(|_| "http://127.0.0.1:6333".to_string())
+        std::env::var("QDRANT_URL")
+            .or_else(|_| std::env::var("QDRANT_FLEET_URL"))
+            .unwrap_or_else(|_| "http://127.0.0.1:6333".to_string())
     })
 }
 
 fn qdrant_api_key() -> &'static Option<String> {
-    QDRANT_API_KEY.get_or_init(|| std::env::var("QDRANT_API_KEY").ok())
+    QDRANT_API_KEY.get_or_init(|| {
+        std::env::var("QDRANT_API_KEY")
+            .or_else(|_| std::env::var("QDRANT_FLEET_KEY"))
+            .ok()
+    })
 }
 
 // ── Embedding helper ──────────────────────────────────────────────────────────
