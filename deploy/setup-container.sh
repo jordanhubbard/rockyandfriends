@@ -414,6 +414,149 @@ else
   fi
 fi
 
+# ── Step 6b: Tailscale (userspace networking — containers only) ──────────────
+# Standard Tailscale requires CAP_NET_ADMIN + a kernel TUN device — both are
+# unavailable in most containers.  tailscaled --tun=userspace-networking works
+# anywhere because it implements the WireGuard/TUN stack entirely in userspace.
+#
+# Detection: IS_CONTAINER=true was established above (PID 1 is supervisord /
+# docker-init / tini, or /.dockerenv / /run/.containerenv was found).  We never
+# rely on knowing the host name; the same logic fires for any outbound-only
+# container regardless of where it lives.
+#
+# Full VMs (systemd PID 1, no containerenv) use setup-node.sh instead, which
+# installs Tailscale with normal kernel TUN via the standard Tailscale package.
+info "Setting up Tailscale (userspace networking for container)..."
+
+TS_DIR="$HOME/.tailscale"
+TS_SOCK="$TS_DIR/tailscaled.sock"
+TS_LOG="$LOG_DIR/tailscaled.log"
+TS_LOGIN_SERVER="${TS_LOGIN_SERVER:-https://vpn.mass-hysteria.org}"
+TS_AUTHKEY="${TS_AUTHKEY:-}"
+
+mkdir -p "$TS_DIR"
+touch "$TS_LOG" 2>/dev/null || true
+
+# Install tailscale/tailscaled binaries if missing
+if ! command -v tailscale &>/dev/null || ! command -v tailscaled &>/dev/null; then
+  info "Installing Tailscale..."
+  if command -v curl &>/dev/null; then
+    curl -fsSL https://tailscale.com/install.sh | sh 2>/dev/null && \
+      success "Tailscale installed" || \
+      warn "Tailscale auto-install failed — install manually: https://tailscale.com/download/linux"
+  else
+    warn "curl not found — install Tailscale manually: https://tailscale.com/download/linux"
+  fi
+else
+  success "Tailscale binaries present ($(tailscale version 2>/dev/null | head -1 || echo 'version unknown'))"
+fi
+
+# Locate supervisord drop-in directory (preferred) or fall back to main conf
+SUPERVISORD_CONFD=""
+for _dir in "/etc/supervisor/conf.d" "/etc/supervisord.d"; do
+  if [ -d "$_dir" ]; then
+    SUPERVISORD_CONFD="$_dir"
+    break
+  fi
+done
+
+TS_REGISTERED=false
+
+if [ -n "$SUPERVISORD_CONFD" ]; then
+  TS_CONF_FILE="$SUPERVISORD_CONFD/tailscaled.conf"
+  if [ -f "$TS_CONF_FILE" ]; then
+    success "tailscaled supervisord conf already exists: $TS_CONF_FILE — skipping"
+    TS_REGISTERED=true
+  else
+    sudo tee "$TS_CONF_FILE" > /dev/null << TSEOF
+[program:tailscaled]
+command=tailscaled --tun=userspace-networking --socket=${TS_SOCK} --statedir=${TS_DIR}
+user=${USER}
+environment=HOME="${HOME}",TS_LOGIN_SERVER="${TS_LOGIN_SERVER}"
+stdout_logfile=${TS_LOG}
+stdout_logfile_maxbytes=5MB
+stdout_logfile_backups=0
+redirect_stderr=true
+autostart=true
+autorestart=true
+priority=5
+TSEOF
+    success "tailscaled conf written: $TS_CONF_FILE"
+    TS_REGISTERED=true
+    sudo supervisorctl -c "$SUPERVISORD_CONF" reread 2>/dev/null && \
+    sudo supervisorctl -c "$SUPERVISORD_CONF" update 2>/dev/null || \
+    warn "supervisorctl reload failed — restart supervisord manually to start tailscaled"
+  fi
+elif [ -f "$SUPERVISORD_CONF" ]; then
+  if grep -q "\[program:tailscaled\]" "$SUPERVISORD_CONF" 2>/dev/null; then
+    success "tailscaled already in $SUPERVISORD_CONF — skipping"
+    TS_REGISTERED=true
+  else
+    sudo tee -a "$SUPERVISORD_CONF" > /dev/null << TSEOF
+
+[program:tailscaled]
+command=tailscaled --tun=userspace-networking --socket=${TS_SOCK} --statedir=${TS_DIR}
+user=${USER}
+environment=HOME="${HOME}",TS_LOGIN_SERVER="${TS_LOGIN_SERVER}"
+stdout_logfile=${TS_LOG}
+stdout_logfile_maxbytes=5MB
+stdout_logfile_backups=0
+redirect_stderr=true
+autostart=true
+autorestart=true
+priority=5
+TSEOF
+    success "tailscaled appended to $SUPERVISORD_CONF"
+    TS_REGISTERED=true
+    sudo supervisorctl -c "$SUPERVISORD_CONF" reread 2>/dev/null && \
+    sudo supervisorctl -c "$SUPERVISORD_CONF" update 2>/dev/null || \
+    warn "supervisorctl reload failed — restart supervisord manually"
+  fi
+fi
+
+# Fallback: no supervisord config found at all — nohup
+if [ "$TS_REGISTERED" = false ]; then
+  warn "No supervisord config found — starting tailscaled via nohup"
+  if pgrep -f "tailscaled" > /dev/null 2>&1; then
+    success "tailscaled already running"
+  else
+    nohup tailscaled --tun=userspace-networking --socket="$TS_SOCK" --statedir="$TS_DIR" \
+      >> "$TS_LOG" 2>&1 &
+    sleep 2
+    success "tailscaled started via nohup"
+  fi
+fi
+
+# Wait up to 10s for tailscaled to become responsive, then run tailscale up
+_ts_wait=0
+while [ "$_ts_wait" -lt 10 ]; do
+  tailscale --socket="$TS_SOCK" status &>/dev/null 2>&1 && break
+  sleep 1
+  _ts_wait=$((_ts_wait + 1))
+done
+
+if tailscale --socket="$TS_SOCK" status &>/dev/null 2>&1; then
+  TS_BACKEND=$(tailscale --socket="$TS_SOCK" status --json 2>/dev/null \
+    | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('BackendState',''))" \
+    2>/dev/null || echo "")
+  if [ "$TS_BACKEND" = "Running" ]; then
+    TS_IP=$(tailscale --socket="$TS_SOCK" ip -4 2>/dev/null || echo "unknown")
+    success "Tailscale connected (IP: $TS_IP, login server: $TS_LOGIN_SERVER)"
+  else
+    info "Running tailscale up (login server: $TS_LOGIN_SERVER)..."
+    TS_UP_CMD="tailscale --socket=${TS_SOCK} up --login-server=${TS_LOGIN_SERVER}"
+    [ -n "$TS_AUTHKEY" ] && TS_UP_CMD="$TS_UP_CMD --authkey=${TS_AUTHKEY}"
+    $TS_UP_CMD 2>&1 | tee -a "$TS_LOG" || \
+      warn "tailscale up incomplete — if an auth URL was printed, visit it to authorize"
+    warn "  Or run manually: tailscale --socket=${TS_SOCK} up --login-server=${TS_LOGIN_SERVER}"
+    [ -z "$TS_AUTHKEY" ] && \
+      warn "  For unattended setup, set TS_AUTHKEY in ~/.ccc/.env and re-run this script"
+  fi
+else
+  warn "tailscaled not yet responding — supervisord will start it on next boot"
+  warn "  Then run: tailscale --socket=${TS_SOCK} up --login-server=${TS_LOGIN_SERVER}"
+fi
+
 # ── Step 7: Claude tmux session ─────────────────────────────────────────────
 info "Checking claude-main tmux session..."
 
@@ -461,20 +604,23 @@ echo "  Workspace:      $WORKSPACE"
 echo "  Pull loop:      $PULL_LOOP"
 echo "  Exec listener:  $EXEC_LISTENER"
 echo "  SSH tunnel:     $TUNNEL_SCRIPT (port ${SHELL_TUNNEL_PORT:-?} → do-host1)"
+echo "  Tailscale:      $TS_DIR  (login: $TS_LOGIN_SERVER)"
 echo "  Pull log:       $LOG_FILE"
 echo "  Exec log:       $EXEC_LOG"
 echo "  Tunnel log:     $TUNNEL_LOG"
+echo "  Tailscale log:  $TS_LOG"
 echo ""
 
-if [ -f "$SUPERVISORD_CONF" ]; then
+if [ -f "$SUPERVISORD_CONF" ] || [ -n "$SUPERVISORD_CONFD" ]; then
   echo "  Process manager: supervisord"
-  echo "  Programs:        ccc-agent-pull, ccc-exec-listener, ccc-ssh-tunnel"
+  echo "  Programs:        ccc-agent-pull, ccc-exec-listener, ccc-ssh-tunnel, tailscaled"
   echo "  Check:           sudo supervisorctl -c $SUPERVISORD_CONF status"
 else
   echo "  Process manager: nohup background"
   echo "  Check pull:      pgrep -fa ccc-pull-loop"
   echo "  Check exec:      pgrep -fa agent-listener"
   echo "  Check tunnel:    pgrep -fa ccc-ssh-tunnel"
+  echo "  Check tailscale: pgrep -fa tailscaled"
   echo "  PID files:       $CCC_DIR/pull-loop.pid, $CCC_DIR/exec-listener.pid, $CCC_DIR/ssh-tunnel.pid"
 fi
 
@@ -484,7 +630,8 @@ echo "  1. ~/.ccc/.env exists with AGENT_NAME, CCC_URL, CCC_AGENT_TOKEN, SQUIRRE
 echo "  2. Pull loop running:      tail -f $LOG_FILE"
 echo "  3. Exec listener running:  tail -f $EXEC_LOG"
 echo "  4. SSH tunnel:             tail -f $TUNNEL_LOG (needs key authorized on do-host1)"
-echo "  5. Claude session:         tmux attach -t claude-main"
+echo "  5. Tailscale status:       tailscale --socket=${TS_SOCK} status"
+echo "  6. Claude session:         tmux attach -t claude-main"
 echo ""
 echo "  From do-host1, once tunnel key is authorized:"
 echo "    ssh -p ${SHELL_TUNNEL_PORT:-?} ${USER:-horde}@localhost"
@@ -499,4 +646,8 @@ echo "    SQUIRRELBUS_URL     — http://146.190.134.110:8788"
 echo "    CCC_URL             — http://146.190.134.110:8789"
 echo "    CCC_AGENT_TOKEN     — your agent bearer token"
 echo "    AGENT_NAME          — your agent name (peabody, sherman, etc.)"
+echo ""
+echo "  Optional .env keys for Tailscale:"
+echo "    TS_LOGIN_SERVER     — coordination server (default: https://vpn.mass-hysteria.org)"
+echo "    TS_AUTHKEY          — pre-auth key for unattended join (generate in Headscale admin)"
 echo ""
