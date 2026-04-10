@@ -5,6 +5,11 @@ use std::sync::Arc;
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
+        // Both endpoints are intentionally unauthenticated.
+        // /api/health is a liveness probe — must respond even if auth is misconfigured.
+        // /api/status is a readiness probe used by load balancers, Consul, and the dashboard.
+        // Neither endpoint exposes sensitive data; they return structural metrics only.
+        // Auth is enforced on all mutating endpoints (/api/queue, /api/agents, etc.).
         .route("/api/health", get(health_handler))
         .route("/api/status", get(status_handler))
 }

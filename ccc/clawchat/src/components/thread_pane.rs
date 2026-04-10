@@ -3,7 +3,7 @@ use leptos::*;
 use leptos::html::Div;
 use wasm_bindgen_futures::spawn_local;
 use crate::types::{BusMessage, ChatContext};
-use crate::components::message::{Message, MessageList, fmt_time};
+use crate::components::message::{Message, MessageList};
 
 #[component]
 pub fn ThreadPane() -> impl IntoView {

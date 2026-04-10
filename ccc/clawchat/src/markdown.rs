@@ -20,7 +20,8 @@ pub fn render_markdown(text: &str) -> String {
 }
 
 /// Return true if the text looks like it contains markdown.
-/// Used to decide whether to run through the full renderer.
+/// Intended for use as a fast pre-filter before calling render_markdown.
+#[allow(dead_code)]
 pub fn has_markdown(text: &str) -> bool {
     text.contains("**")
         || text.contains("__")

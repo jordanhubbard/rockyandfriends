@@ -62,12 +62,6 @@ pub fn InputBar() -> impl IntoView {
         });
     };
 
-    /// Wrap selected text (or insert placeholder) with markdown markers.
-    let wrap_text = |marker: &'static str| {
-        let cur = text.get();
-        set_text.set(format!("{marker}{cur}{marker}"));
-    };
-
     view! {
         <div class="input-bar">
             // ── Destination label ─────────────────────────────────────────

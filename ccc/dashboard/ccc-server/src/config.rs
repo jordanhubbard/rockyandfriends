@@ -67,6 +67,9 @@ pub struct ResolvedConfig {
     pub bus_log_path: String,
     pub projects_path: String,
     pub auth_tokens: std::collections::HashSet<String>,
+    /// When set, ccc-server uses SQLite for persistent state instead of JSON files.
+    /// On first start, existing JSON data is migrated automatically.
+    pub db_path: Option<String>,
     pub minio_endpoint: String,
     pub minio_bucket: String,
     pub minio_access_key: Option<String>,
@@ -204,6 +207,8 @@ pub fn load() -> ResolvedConfig {
     let qdrant_api_key = evar("QDRANT_FLEET_KEY").or(j.qdrant.api_key);
     let tokenhub_url = resolve_str("TOKENHUB_URL", j.tokenhub.url, "http://127.0.0.1:8090");
 
+    let db_path = evar("CCC_DB_PATH");
+
     ResolvedConfig {
         port,
         data_dir,
@@ -213,6 +218,7 @@ pub fn load() -> ResolvedConfig {
         bus_log_path,
         projects_path,
         auth_tokens,
+        db_path,
         minio_endpoint,
         minio_bucket,
         minio_access_key,

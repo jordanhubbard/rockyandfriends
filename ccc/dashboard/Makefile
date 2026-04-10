@@ -1,17 +1,15 @@
 .PHONY: build dev release clean check install-tools
 
 # Paths
+CLAWCHAT_UI   := ../clawchat
 DASHBOARD_UI  := dashboard-ui
-DASHBOARD_SRV := dashboard-server
-DIST          := dist
+CCC_SERVER    := ccc-server
+DIST          := $(CLAWCHAT_UI)/dist
 
 # ── Tool availability checks ──────────────────────────────────────────────
-TRUNK   := $(shell command -v trunk 2>/dev/null)
-WASM_TG := $(shell rustup target list --installed 2>/dev/null | grep wasm32-unknown-unknown)
-
 check:
 	@echo "=== Build tool check ==="
-	@command -v cargo >/dev/null 2>&1 && echo "  ✓ cargo" || echo "  ✗ cargo (install Rust)"
+	@command -v cargo >/dev/null 2>&1 && echo "  ✓ cargo" || echo "  ✗ cargo (install Rust via rustup)"
 	@command -v trunk >/dev/null 2>&1  && echo "  ✓ trunk" || echo "  ✗ trunk (run: cargo install trunk)"
 	@rustup target list --installed 2>/dev/null | grep -q wasm32-unknown-unknown \
 		&& echo "  ✓ wasm32 target" \
@@ -22,54 +20,64 @@ install-tools:
 	rustup target add wasm32-unknown-unknown
 	cargo install trunk
 
-# ── Build ─────────────────────────────────────────────────────────────────
+# ── Primary: ccc-server + ClawChat ───────────────────────────────────────
+# ccc-server serves both the API and the WASM SPA when DASHBOARD_DIST is set.
+# This replaces the old dashboard-server proxy pattern.
+
 build: build-ui build-server
 
 build-ui:
-	@echo "=== Building WASM frontend ==="
-	cd $(DASHBOARD_UI) && trunk build
+	@echo "=== Building ClawChat WASM ==="
+	cd $(CLAWCHAT_UI) && trunk build
 
 build-server:
-	@echo "=== Building Rust server ==="
-	cargo build -p dashboard-server
+	@echo "=== Building ccc-server ==="
+	cargo build -p ccc-server
 
 # ── Release ───────────────────────────────────────────────────────────────
 release: release-ui release-server
 
 release-ui:
-	@echo "=== Building WASM frontend (release) ==="
-	cd $(DASHBOARD_UI) && trunk build --release
+	@echo "=== Building ClawChat WASM (release) ==="
+	cd $(CLAWCHAT_UI) && trunk build --release
 
 release-server:
-	@echo "=== Building server (release) ==="
-	cargo build -p dashboard-server --release
+	@echo "=== Building ccc-server (release) ==="
+	cargo build -p ccc-server --release
 
-# ── Dev (hot-reload UI + run server) ─────────────────────────────────────
+# ── Dev (hot-reload ClawChat + ccc-server) ────────────────────────────────
+# trunk serves ClawChat dev at :8080 and proxies /bus/* to ccc-server.
+# ccc-server serves the API at :8789.
 dev:
-	@echo "Starting dev: trunk watch + server"
-	@echo "Frontend: http://localhost:8790"
-	@echo "  trunk serves dev proxy; server proxies RCC API"
+	@echo "Starting dev: trunk watch + ccc-server"
+	@echo "  ClawChat dev: http://localhost:8080"
+	@echo "  API: http://localhost:8789"
 	@trap 'kill %1 %2 2>/dev/null' EXIT; \
-		cd $(DASHBOARD_UI) && trunk watch &  \
-		RCC_DASHBOARD_PORT=8790 cargo run -p dashboard-server &  \
+		cd $(CLAWCHAT_UI) && trunk watch & \
+		cargo run -p ccc-server & \
 		wait
+
+# ── Run (after build) ─────────────────────────────────────────────────────
+run: build-server
+	DASHBOARD_DIST=$(DIST) \
+	CCC_PORT=$${CCC_PORT:-8789} \
+	CCC_AUTH_TOKENS=$${CCC_AUTH_TOKENS:-} \
+	./target/debug/ccc-server
+
+run-release: release-server
+	DASHBOARD_DIST=$(DIST) \
+	CCC_PORT=$${CCC_PORT:-8789} \
+	CCC_AUTH_TOKENS=$${CCC_AUTH_TOKENS:-} \
+	./target/release/ccc-server
 
 # ── Clean ─────────────────────────────────────────────────────────────────
 clean:
 	cargo clean
 	rm -rf $(DIST)
 
-# ── Run (after build) ─────────────────────────────────────────────────────
-run: build-server
-	DASHBOARD_DIST=$(DIST) \
-	RCC_DASHBOARD_PORT=$${RCC_DASHBOARD_PORT:-8790} \
-	RCC_URL=$${RCC_URL:-http://localhost:8789} \
-	RCC_AGENT_TOKEN=$${RCC_AGENT_TOKEN:-} \
-	./target/debug/dashboard-server
-
-run-release: release-server
-	DASHBOARD_DIST=$(DIST) \
-	RCC_DASHBOARD_PORT=$${RCC_DASHBOARD_PORT:-8790} \
-	RCC_URL=$${RCC_URL:-http://localhost:8789} \
-	RCC_AGENT_TOKEN=$${RCC_AGENT_TOKEN:-} \
-	./target/release/dashboard-server
+# ── Legacy: dashboard-server (deprecated) ────────────────────────────────
+# dashboard-server is superseded by ccc-server + DASHBOARD_DIST.
+# These targets remain for reference only.
+build-dashboard-server:
+	@echo "WARNING: dashboard-server is deprecated. Use 'make build-server' instead."
+	cargo build -p dashboard-server

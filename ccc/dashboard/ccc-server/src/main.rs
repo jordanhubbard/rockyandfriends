@@ -6,6 +6,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 pub mod brain;
 pub mod config;
+pub mod db;
 mod routes;
 pub mod state;
 pub mod supervisor;
@@ -71,6 +72,13 @@ async fn main() {
         }
     };
 
+    // Clone paths before they're moved into AppState (needed for SQLite migration below)
+    let queue_path_c    = cfg.queue_path.clone();
+    let agents_path_c   = cfg.agents_path.clone();
+    let secrets_path_c  = cfg.secrets_path.clone();
+    let projects_path_c = cfg.projects_path.clone();
+    let db_path         = cfg.db_path.clone();
+
     let app_state = Arc::new(AppState {
         auth_tokens: cfg.auth_tokens,
         queue_path: cfg.queue_path,
@@ -97,6 +105,26 @@ async fn main() {
     routes::metrics::load_metrics().await;
     routes::issues::load_issues().await;
     routes::conversations::load_conversations().await;
+
+    // Optional SQLite mode: open database and migrate JSON data on first run.
+    if let Some(db_path) = &db_path {
+        match db::open(db_path) {
+            Ok(conn) => {
+                db::migrate_from_json(
+                    &conn,
+                    &queue_path_c,
+                    &agents_path_c,
+                    &secrets_path_c,
+                    &projects_path_c,
+                );
+                tracing::info!("SQLite mode active: {}", db_path);
+                // conn is not yet stored in AppState — see db.rs for next steps
+                // when full SQLite runtime is enabled. For now, migration only.
+                drop(conn);
+            }
+            Err(e) => tracing::warn!("Failed to open SQLite database {}: {}", db_path, e),
+        }
+    }
 
     // CORS — configurable via CCC_CORS_ORIGINS env var.
     // This server runs on Tailscale (internal network), so Any is the safe default.

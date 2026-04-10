@@ -1,3 +1,10 @@
+# DEPRECATED: dashboard-server is superseded by ccc-server with DASHBOARD_DIST.
+#
+# ccc-server now serves the WASM SPA directly when DASHBOARD_DIST is set:
+#   DASHBOARD_DIST=/path/to/dist ./ccc-server
+#
+# dashboard-server remains in the workspace for reference only and will be
+# removed in a future cleanup. Do not deploy new instances.
 [package]
 name = "dashboard-server"
 version = "0.1.0"
