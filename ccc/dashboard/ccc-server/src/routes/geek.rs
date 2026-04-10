@@ -36,7 +36,7 @@ async fn topology(State(state): State<Arc<AppState>>) -> impl IntoResponse {
         json!({"id":"sherman",       "label":"Sherman",         "type":"agent",          "host":"l40-sweden", "chips":["OpenClaw gateway","4x L40","Nemotron-120B"]}),
         json!({"id":"snidely",       "label":"Snidely",         "type":"agent",          "host":"l40-sweden", "chips":["OpenClaw gateway","4x L40","Nemotron-120B"]}),
         json!({"id":"dudley",        "label":"Dudley",          "type":"agent",          "host":"l40-sweden", "chips":["OpenClaw gateway","4x L40","Nemotron-120B"]}),
-        json!({"id":"qdrant",        "label":"Qdrant",          "type":"shared-service", "host":"do-host1",   "port":19530}),
+        json!({"id":"qdrant",        "label":"Qdrant",          "type":"shared-service", "host":"do-host1",   "port":6333}),
         json!({"id":"minio",         "label":"MinIO",           "type":"shared-service", "host":"do-host1",   "port":9000}),
         json!({"id":"searxng",       "label":"SearXNG",         "type":"shared-service", "host":"do-host1",   "port":8888}),
         json!({"id":"tokenhub",      "label":"TokenHub",        "type":"shared-service", "host":"do-host1",   "port":8090}),

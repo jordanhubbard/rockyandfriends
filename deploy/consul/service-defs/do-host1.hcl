@@ -67,21 +67,6 @@ services {
 }
 
 services {
-  name = "milvus"
-  id   = "milvus-do-host1"
-  port = 19530
-  tags = ["database", "vector"]
-  meta {
-    host = "do-host1"
-  }
-  check {
-    tcp      = "127.0.0.1:19530"
-    interval = "15s"
-    timeout  = "3s"
-  }
-}
-
-services {
   name = "minio"
   id   = "minio-do-host1"
   port = 9000
@@ -108,22 +93,6 @@ services {
     http     = "http://127.0.0.1:8888/"
     interval = "30s"
     timeout  = "5s"
-  }
-}
-
-services {
-  name = "squirrelchat"
-  id   = "squirrelchat-do-host1"
-  port = 8793
-  tags = ["chat", "collaboration"]
-  meta {
-    host = "do-host1"
-    url  = "https://chat.yourmom.photos"
-  }
-  check {
-    http     = "http://127.0.0.1:8793/"
-    interval = "15s"
-    timeout  = "3s"
   }
 }
 

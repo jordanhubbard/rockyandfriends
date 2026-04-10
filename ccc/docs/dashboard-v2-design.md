@@ -223,7 +223,7 @@ Table: channel name, type, configured endpoints, status, last activity
 - Slack: #itsallgeektome (offtera), #rockyandfriends (omgjkh)
 - Telegram: jkh direct
 - ClawBus: local + peer URLs
-- Milvus: vector search endpoint status
+- Qdrant: vector search endpoint status
 
 **Agent Registry**
 Table of registered agents with capabilities (gpu, claude_cli, inference_key), token status, last seen.
@@ -250,7 +250,7 @@ jkh's framing: "a distributed brain." This is a visualization of the entire syst
 | CCC API | Service | Port 8789 — work queue, heartbeats, projects |
 | WQ Dashboard | Service | Port 8788 — this UI |
 | CCC Brain | Service | LLM request queue + retry engine |
-| Milvus | Service | Vector search (port 19530) |
+| Qdrant | Service | Vector search (port 6333) |
 | MinIO | Service | Object storage (port 9000) |
 | SearXNG | Service | Search (port 8888) |
 | NVIDIA Inference Gateway | External | `inference-api.nvidia.com` |
@@ -271,7 +271,7 @@ jkh's framing: "a distributed brain." This is a visualization of the entire syst
 - Each node has a pulse animation if it's been active in the last 5 minutes
 - Heartbeat age shown on agent nodes
 - CCC API shows: uptime, queue depth, brain status
-- Milvus: collection count, last index operation
+- Qdrant: collection count, last index operation
 - MinIO: bucket count (if mc is available)
 
 **Traffic flow visualization:**
@@ -296,14 +296,14 @@ Primary nodes = **machines**: Rocky (do-host1), Bullwinkle (puck), Natasha (spar
 Each machine node renders as a rounded rect with service badges/chips shown inside or below it.
 
 Services get **their own nodes** only when they are shared infrastructure called directly by multiple agents:
-- Milvus (do-host1, port 19530) — called by Rocky, Bullwinkle, Natasha
+- Qdrant (do-host1, port 6333) — called by Rocky, Bullwinkle, Natasha
 - MinIO (do-host1, port 9000) — called by all agents
 - SearXNG (do-host1, port 8888) — called by all agents
 
 Everything else renders as **service chips** on their host machine node:
 - Rocky chips: CCC API (:8789), WQ Dashboard (:8788), CCC Brain, ClawBus hub, Tailscale proxy
 - Bullwinkle chips: OpenClaw gateway (:18789, reachability-checked), ClawBus push endpoint (:8788), launchd crons (heartbeat-ccc.plist + openclaw), disk free, uptime, tmux session count
-- Natasha/Sparky chips: OpenClaw gateway (:18789), ClawBus (/bus → :18799 via gateway, not a separate external port), Milvus (:19530), CUDA/RTX ⚡, Ollama (:11434, verified ✅ — models: qwen2.5-coder:32b, qwen3-coder:latest)
+- Natasha/Sparky chips: OpenClaw gateway (:18789), ClawBus (/bus → :18799 via gateway, not a separate external port), Qdrant (:6333), CUDA/RTX ⚡, Ollama (:11434, verified ✅ — models: qwen2.5-coder:32b, qwen3-coder:latest)
 - Boris chips: OpenClaw gateway, L40 GPU ⚡, Omniverse headless
 
 Rationale: machine-first topology tells you *where to SSH* for debugging. Shared-service nodes tell you *where traffic actually goes*. Hybrid gives both without the noise of a full service mesh diagram.
@@ -319,7 +319,7 @@ Rationale: machine-first topology tells you *where to SSH* for debugging. Shared
 │                                          │  │         │    │     │
 │   [Slack omgjkh]←───[ClawBus]───────┤  └──[Brain]┘  [MinIO]│
 │   [Slack offtera]                        │              [SearXNG]│
-│                                   [Bullwinkle]   [Milvus]       │
+│                                   [Bullwinkle]   [Qdrant]       │
 │   [NVIDIA Gateway]←──────────────────┤  │                       │
 │                                  [Natasha] [Boris]               │
 │   [GitHub]←──[CCC Scout]──────────────────────────────────────── │

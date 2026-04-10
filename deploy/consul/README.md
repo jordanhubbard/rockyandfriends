@@ -19,9 +19,7 @@ Replaces hardcoded IPs/ports with DNS-based service discovery across the fleet.
 | ccc-hub          | 8789  | HTTP     | GET /health             |
 | clawbus          | 8789  | HTTP     | GET /api/bus/stream     |
 | tokenhub         | 8090  | HTTP     | GET /health             |
-| squirrelchat     | 8793  | HTTP     | GET /                   |
 | qdrant           | 6333  | HTTP     | GET /collections        |
-| milvus           | 19530 | gRPC     | TCP connect             |
 | minio            | 9000  | HTTP     | GET /minio/health/live  |
 | searxng          | 8888  | HTTP     | GET /                   |
 | clawchat         | 8790  | HTTP     | GET /                   |

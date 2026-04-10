@@ -8,7 +8,7 @@
  *   4. Asserts no OOM, gRPC timeouts, or embedding dimension mismatches
  *
  * Only runs when EMBED_BACKEND=local is set (skips otherwise).
- * Run: EMBED_BACKEND=local QDRANT_URL=100.89.199.14:19530 node --test.ccc/tests/gpu/memory-pressure.test.mjs
+ * Run: EMBED_BACKEND=local QDRANT_URL=100.89.199.14:6333 node --test .ccc/tests/gpu/memory-pressure.test.mjs
  *
  * Baseline (sparky GB10, 2026-03-28): ~3.3 embeds/s, ~300ms/embed
  */
@@ -136,7 +136,7 @@ describe('GPU memory pressure — ollama nomic-embed-text', { timeout: TIMEOUT_M
       await vectorMod.ensureCollections();
     } catch (err) {
       console.warn(`[skip] Qdrant not reachable (${QDRANT_URL}): ${err.message}`);
-      return; // soft skip — Milvus may not be accessible from all envs
+      return; // soft skip — Qdrant may not be accessible from all envs
     }
 
     const strings = generateTestStrings(50); // smaller batch for Qdrant round-trip

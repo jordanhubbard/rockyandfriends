@@ -1,32 +1,29 @@
 [Unit]
-Description=RCC WASM Dashboard Server (Rust/Axum)
+Description=CCC Dashboard Server (nginx + WASM SPA)
 Documentation=https://github.com/jordanhubbard/rockyandfriends
-After=network.target
+After=network.target ccc-server.service
+Wants=ccc-server.service
 
 [Service]
 Type=simple
 User=jkh
-WorkingDirectory=/home/jkh/Src/rockyandfriends/rcc/dashboard
+WorkingDirectory=/home/jkh/Src/CCC
 
-# Binary built from rcc/dashboard/dashboard-server
-ExecStart=/home/jkh/Src/rockyandfriends/rcc/dashboard/target/release/dashboard-server
+# Serves the Leptos WASM SPA from ccc/dashboard/dist/
+# Build with: cd ccc/dashboard && make release-ui
+ExecStart=/home/jkh/Src/CCC/ccc/dashboard/target/release/dashboard-server
 
-# Environment
 Environment=RCC_DASHBOARD_PORT=8788
-Environment=RCC_URL=http://146.190.134.110:8789
-Environment=SC_URL=http://localhost:8790
-Environment=DASHBOARD_DIST=/home/jkh/Src/rockyandfriends/rcc/dashboard/dist
-Environment=RCC_AGENT_TOKEN=wq-5dcad756f6d3e345c00b5cb3dfcbdedb
-Environment=OPERATOR_HANDLE=jkh
+Environment=RCC_URL=http://127.0.0.1:8789
+Environment=DASHBOARD_DIST=/home/jkh/Src/CCC/ccc/dashboard/dist
+Environment=CCC_AGENT_TOKEN=
 
-# Restart on crash (but not clean exits)
 Restart=on-failure
 RestartSec=5s
 
-# Logging
 StandardOutput=journal
 StandardError=journal
-SyslogIdentifier=rcc-dashboard
+SyslogIdentifier=ccc-dashboard
 
 [Install]
 WantedBy=multi-user.target

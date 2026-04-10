@@ -51,7 +51,7 @@ without re-provisioning.
 │    slack       SLACK_BOT_TOKEN, SLACK_SIGNING_SECRET, etc.          │
 │    (mattermost retired 2026-04-01)                                  │
 │    minio       MINIO_ACCESS_KEY, MINIO_SECRET_KEY, MINIO_ENDPOINT   │
-│    milvus      MILVUS_ADDRESS                                       │
+│    qdrant      QDRANT_FLEET_URL, QDRANT_FLEET_KEY                   │
 │    nvidia      NVIDIA_API_KEY, NVIDIA_API_BASE                      │
 │    github      GITHUB_TOKEN (deploy key handled separately)         │
 │                                                                     │

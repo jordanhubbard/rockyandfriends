@@ -21,7 +21,7 @@
 | API Core | `api/index.mjs` | ~2132 | HTTP server, routing, auth, shared state init |
 | API Routes (split) | `api/routes/*.mjs` | ~4985 | queue, agents, bus, agentos, memory, ui, services, projects, setup |
 | Brain | `brain/index.mjs` | 299 | LLM dispatch via TokenHub |
-| Vector | `vector/index.mjs` + `ingest.mjs` | 880 | Milvus embeddings + ingest |
+| Vector | `vector/index.mjs` + `ingest.mjs` | 880 | Qdrant embeddings + ingest |
 | Lessons | `lessons/index.mjs` | 467 | Distributed lessons ledger |
 | Issues | `issues/index.mjs` | 372 | GitHub issues cache |
 | Scout | `scout/pump.mjs` + `github.mjs` | 644 | GitHub repo watcher, work item generator |
@@ -50,7 +50,7 @@ Rocky has started porting routes natively into Rust (ccc-server binary). SOA cle
 │  │ (axum)    │ │ (axum)    │ │ (axum+sqlite)│   │
 │  └───────────┘ └───────────┘ └──────────────┘   │
 │  ┌───────────┐ ┌───────────┐ ┌──────────────┐   │
-│  │ Brain     │ │ Scout     │ │ Vector/Milvus│   │
+│  │ Brain     │ │ Scout     │ │ Vector/Qdrant│   │
 │  │ (reqwest) │ │ (octocrab)│ │ (reqwest)    │   │
 │  └───────────┘ └───────────┘ └──────────────┘   │
 │  ┌───────────┐ ┌───────────┐                     │
@@ -110,7 +110,7 @@ rusqlite = { version = "0.33", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
-# HTTP client (for TokenHub, GitHub, Milvus)
+# HTTP client (for TokenHub, GitHub, Qdrant)
 reqwest = { version = "0.12", features = ["json", "rustls-tls"] }
 
 # GitHub API
@@ -178,7 +178,7 @@ SSE streaming is straightforward in Axum with `axum::response::Sse`.
 | Component | Rust module | Notes |
 |-----------|-------------|-------|
 | Brain (LLM dispatch) | `services/brain.rs` | reqwest → TokenHub `/v1/chat/completions` |
-| Vector (Milvus) | `services/vector.rs` | reqwest → Milvus API + TokenHub embeddings |
+| Vector (Qdrant) | `services/vector.rs` | reqwest → Qdrant REST API + TokenHub embeddings |
 | Scout (GitHub) | `services/scout.rs` | `octocrab` crate for GitHub API |
 | LLM Registry | `services/llm_registry.rs` | In-memory registry with JSON persistence |
 
@@ -291,15 +291,16 @@ Replace 58 env vars with `ccc.json`:
     "url": "http://localhost:8090",
     "admin_token": "..."
   },
-  "milvus": {
-    "url": "http://localhost:19530"
+  "qdrant": {
+    "url": "http://localhost:6333",
+    "api_key": ""
   },
   "slack": {
     "bot_token": "...",
     "signing_secret": "...",
     "agent_channel": "..."
   },
-  "squirrelbus": {
+  "clawbus": {
     "url": "https://dashboard.jordanhubbard.net",
     "token": "..."
   },

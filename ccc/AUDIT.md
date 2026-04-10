@@ -23,7 +23,7 @@ RCC/CCC is **mostly healthy** — no external heavy deps, no reimplemented openc
 |---------|-------|--------------|---------|-------|
 | Config / env vars | 27–51 | 50+ process.env reads, path constants | **Extract** | Should be ccc.json + config module. wq-CCC-setup-001 covers this. |
 | Services map | 52–128 | Probes URLs, returns health | **Keep / Extract** | Move to `ccc/services/index.mjs` |
-| Semantic dedup | 129–172 | Background Milvus indexer for queue dedup | **Keep / Extract** | Move to `ccc/vector/` (module already exists there) |
+| Semantic dedup | 129–172 | Background Qdrant indexer for queue dedup | **Keep / Extract** | Move to `ccc/vector/` (module already exists there) |
 | ClawBus | 173–238 | File-based message bus (JSONL) | **Extract** | `clawbus/` dir exists at repo root with a separate implementation. Duplication — needs reconciliation. |
 | Slack config + helpers | 239–285, 1802–1900 | Bot token, signing secret, post/verify/format | **Delegate** | openclaw handles Slack natively. CCC should send via openclaw or tokenhub, not own a bot. |
 | Heartbeats | 286–352 | In-memory agent heartbeat tracking, offline detection | **Keep / Extract** | Core CCC feature. Move to `ccc/agents/heartbeat.mjs` |
@@ -49,7 +49,7 @@ RCC/CCC is **mostly healthy** — no external heavy deps, no reimplemented openc
 |-----------|-------|--------|-------|
 | `api/index.mjs` | 8103 | ⚠️ Overgrown | All routes in one file — multiple generations visible |
 | `brain/index.mjs` | 299 | ✅ Clean | LLM dispatch, tokenhub wired, good |
-| `vector/index.mjs` | 680 | ✅ Clean | Milvus + tokenhub embeddings |
+| `vector/index.mjs` | 680 | ✅ Clean | Qdrant + tokenhub embeddings |
 | `lessons/index.mjs` | 467 | ✅ Clean | Well-factored, does one thing |
 | `issues/index.mjs` | 372 | ✅ Clean | GH issues cache |
 | `scout/pump.mjs` | 336 | ✅ Clean | GitHub watcher |
@@ -151,7 +151,7 @@ ccc/
 ACK_LOG_PATH, AGENTFS_URL, AGENTOS_ARCH, AGENTS_PATH, BOOTSTRAP_TOKENS_PATH,
 BUS_LOG_PATH, CALENDAR_PATH, CAPABILITIES_PATH, CONVERSATIONS_PATH, DEAD_LOG_PATH,
 DECISION_JOURNAL_PATH, DEFAULT_TRIAGING_AGENT, EXEC_LOG_PATH, HOME, LLM_REGISTRY_PATH,
-MILVUS_URL, NANOC_BIN, OFFLINE_THRESHOLD_MS, OMGJKH_BOT, PROJECTS_PATH, PROVIDERS_PATH,
+NANOC_BIN, OFFLINE_THRESHOLD_MS, OMGJKH_BOT, PROJECTS_PATH, PROVIDERS_PATH,
 QUEUE_DEDUP_THRESHOLD, QUEUE_PATH, RCC_ADMIN_TOKEN, RCC_AGENT_TOKEN, RCC_AUTH_TOKENS,
 RCC_EXTERNAL_URL, RCC_PORT, RCC_PUBLIC_URL, REPOS_PATH, REQUESTS_PATH, SBOM_DIR,
 SECRETS_PATH, SLACK_AGENT_CHANNEL, SLACK_BOT_TOKEN, SLACK_NOTIFY_USER, SLACK_SIGNING_SECRET,
@@ -379,7 +379,7 @@ This section completes **`workqueue/wq-RCC-audit-001.json`** against the **CCC**
 | Queue, agents, heartbeats, secrets, bus | Yes (core) | — |
 | LLM calls | Thin client | **tokenhub** |
 | Slack UX | Minimal bridge if any | **openclaw** |
-| Embeddings / Milvus | Orchestration | **tokenhub** + Milvus API |
+| Embeddings / Qdrant | Orchestration | **tokenhub** + Qdrant REST API |
 | agentOS debug / mesh | Until bridge exists | **agentOS** or `agentos-bridge` (P4) |
 | HTML playground / pkg pages | Optional | **dashboard-server** + WASM UI |
 
@@ -416,7 +416,7 @@ Illustrative schema for moving path/port/integration defaults out of raw `proces
   "staleClaims": { "defaultMs": null, "claudeMs": null, "gpuMs": null, "llmMs": null, "inferenceMs": null },
   "integrations": {
     "tokenhubUrl": "http://127.0.0.1:8090",
-    "milvusUrl": "http://127.0.0.1:9091",
+    "qdrantUrl": "http://127.0.0.1:6333",
     "clawbusUrl": ""
   }
 }

@@ -30,7 +30,7 @@ credentials (API keys, tokens, signing secrets, storage credentials).
    - `GET /api/secrets/slack`       → Slack bot tokens + signing secret
    - `GET /api/secrets/mattermost`  → Mattermost token + URL
    - `GET /api/secrets/minio`       → MinIO access key + secret
-   - `GET /api/secrets/milvus`      → Milvus address
+   - `GET /api/secrets/qdrant`       → Qdrant URL + API key
    - `GET /api/secrets/nvidia`      → NVIDIA API key + base URL
    - `GET /api/secrets/github`      → GitHub token / deploy key
 
