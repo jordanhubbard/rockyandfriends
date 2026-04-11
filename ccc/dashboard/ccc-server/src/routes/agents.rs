@@ -2,7 +2,7 @@ use axum::{
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Json},
-    routing::{get, post},
+    routing::{delete, get, post},
     Router,
 };
 use serde_json::{json, Value};
@@ -14,7 +14,7 @@ pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/api/agents", get(get_agents).post(post_agent))
         .route("/api/agents/register", post(register_agent))
-        .route("/api/agents/:name", get(get_agent_by_name).post(upsert_agent).patch(patch_agent))
+        .route("/api/agents/:name", get(get_agent_by_name).post(upsert_agent).patch(patch_agent).delete(delete_agent))
         .route("/api/agents/:name/heartbeat", post(agent_heartbeat))
         .route("/api/agents/:name/health", get(get_agent_health))
         .route("/api/heartbeat/:agent", post(post_heartbeat))
@@ -341,6 +341,24 @@ async fn patch_agent(
     flush_agents(&state).await;
 
     Json(json!({"ok": true, "agent": updated})).into_response()
+}
+
+async fn delete_agent(
+    State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    if !state.is_authed(&headers) {
+        return (StatusCode::UNAUTHORIZED, Json(json!({"error": "Unauthorized"}))).into_response();
+    }
+    let mut agents = state.agents.write().await;
+    let agents_map = agents.as_object_mut().unwrap();
+    if agents_map.remove(&name).is_none() {
+        return (StatusCode::NOT_FOUND, Json(json!({"error": "Agent not found"}))).into_response();
+    }
+    drop(agents);
+    flush_agents(&state).await;
+    Json(json!({"ok": true, "name": name, "deleted": true})).into_response()
 }
 
 async fn post_heartbeat(

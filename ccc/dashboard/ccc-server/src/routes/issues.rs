@@ -6,7 +6,7 @@ use crate::AppState;
 use axum::{
     extract::{Path, Query, State},
     response::{IntoResponse, Json},
-    routing::{get, post},
+    routing::{delete, get, post},
     Router,
 };
 use serde::Deserialize;
@@ -81,7 +81,7 @@ pub fn router() -> Router<Arc<AppState>> {
         // static paths before :id to avoid capture
         .route("/api/issues/sync", post(sync_issues))
         .route("/api/issues/create-from-wq", post(create_from_wq))
-        .route("/api/issues/:id", get(get_issue))
+        .route("/api/issues/:id", get(get_issue).patch(patch_issue).delete(delete_issue))
         .route("/api/issues/:id/link", post(link_issue))
 }
 
@@ -184,6 +184,77 @@ async fn get_issue(
             Json(json!({"error": "Issue not found"})),
         )
             .into_response(),
+    }
+}
+
+// ── PATCH /api/issues/:id ─────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct PatchIssueBody {
+    repo: Option<String>,
+    state: Option<String>,
+    title: Option<String>,
+    labels: Option<Value>,
+    assignee: Option<String>,
+}
+
+async fn patch_issue(
+    State(_state): State<Arc<AppState>>,
+    Path(id): Path<u64>,
+    Json(body): Json<PatchIssueBody>,
+) -> impl IntoResponse {
+    let updated = {
+        let mut store = issues_store().write().await;
+        match store.iter_mut().find(|i| {
+            i.get("number").and_then(|v| v.as_u64()) == Some(id)
+                && body.repo.as_deref().map_or(true, |r| i.get("repo").and_then(|v| v.as_str()) == Some(r))
+        }) {
+            None => None,
+            Some(issue) => {
+                let obj = issue.as_object_mut().unwrap();
+                if let Some(state) = &body.state { obj.insert("state".into(), json!(state)); }
+                if let Some(title) = &body.title { obj.insert("title".into(), json!(title)); }
+                if let Some(labels) = &body.labels { obj.insert("labels".into(), labels.clone()); }
+                if let Some(assignee) = &body.assignee { obj.insert("assignee".into(), json!(assignee)); }
+                obj.insert("updatedAt".into(), json!(chrono::Utc::now().to_rfc3339()));
+                Some(issue.clone())
+            }
+        }
+    };
+    match updated {
+        None => (axum::http::StatusCode::NOT_FOUND, Json(json!({"error": "Issue not found"}))).into_response(),
+        Some(issue) => {
+            save_issues().await;
+            Json(json!({"ok": true, "issue": issue})).into_response()
+        }
+    }
+}
+
+// ── DELETE /api/issues/:id ────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+struct DeleteIssueQuery {
+    repo: Option<String>,
+}
+
+async fn delete_issue(
+    State(_state): State<Arc<AppState>>,
+    Path(id): Path<u64>,
+    Query(params): Query<DeleteIssueQuery>,
+) -> impl IntoResponse {
+    let mut store = issues_store().write().await;
+    let idx = store.iter().position(|i| {
+        i.get("number").and_then(|v| v.as_u64()) == Some(id)
+            && params.repo.as_deref().map_or(true, |r| i.get("repo").and_then(|v| v.as_str()) == Some(r))
+    });
+    match idx {
+        None => (axum::http::StatusCode::NOT_FOUND, Json(json!({"error": "Issue not found"}))).into_response(),
+        Some(i) => {
+            store.remove(i);
+            drop(store);
+            save_issues().await;
+            Json(json!({"ok": true, "number": id, "deleted": true})).into_response()
+        }
     }
 }
 

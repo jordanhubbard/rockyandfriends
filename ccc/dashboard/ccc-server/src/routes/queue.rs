@@ -4,7 +4,7 @@ use axum::{
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
     response::{IntoResponse, Json},
-    routing::{get, post},
+    routing::{delete, get, post},
     Router,
 };
 use serde_json::{json, Value};
@@ -15,7 +15,7 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/api/queue", get(get_queue).post(post_queue))
         .route("/api/queue/stale", get(get_stale))
         .route("/api/queue/claimed", get(get_claimed))
-        .route("/api/item/:id", get(get_item))
+        .route("/api/item/:id", get(get_item).patch(patch_item).delete(delete_item))
         .route("/api/item/:id/claim", post(claim_item))
         .route("/api/item/:id/complete", post(complete_item))
         .route("/api/item/:id/fail", post(fail_item))
@@ -325,6 +325,92 @@ async fn post_queue(
     flush_queue(&state).await;
 
     (StatusCode::CREATED, Json(json!({"ok": true, "item": item}))).into_response()
+}
+
+async fn patch_item(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> impl IntoResponse {
+    if !state.is_authed(&headers) {
+        return (StatusCode::UNAUTHORIZED, Json(json!({"error": "Unauthorized"}))).into_response();
+    }
+    let mut q = state.queue.write().await;
+    let now = chrono::Utc::now().to_rfc3339();
+    let item_pos = q.items.iter().position(|i| i.get("id").and_then(|v| v.as_str()) == Some(&id));
+    match item_pos {
+        None => (StatusCode::NOT_FOUND, Json(json!({"error": "Item not found"}))).into_response(),
+        Some(pos) => {
+            let obj = q.items[pos].as_object_mut().unwrap();
+            let valid_priorities = ["critical", "high", "medium", "normal", "low", "idea"];
+            if let Some(title) = body.get("title").and_then(|v| v.as_str()) {
+                obj.insert("title".into(), json!(title));
+            }
+            if let Some(desc) = body.get("description").and_then(|v| v.as_str()) {
+                obj.insert("description".into(), json!(desc));
+            }
+            if let Some(p) = body.get("priority").and_then(|v| v.as_str()) {
+                if valid_priorities.contains(&p) { obj.insert("priority".into(), json!(p)); }
+            }
+            if let Some(assignee) = body.get("assignee").and_then(|v| v.as_str()) {
+                obj.insert("assignee".into(), json!(assignee));
+            }
+            if let Some(tags) = body.get("tags") { obj.insert("tags".into(), tags.clone()); }
+            if let Some(notes) = body.get("notes").and_then(|v| v.as_str()) {
+                obj.insert("notes".into(), json!(notes));
+            }
+            let version = obj.get("itemVersion").and_then(|n| n.as_u64()).unwrap_or(0) + 1;
+            obj.insert("itemVersion".into(), json!(version));
+
+            let agent = body.get("_author").and_then(|v| v.as_str()).unwrap_or("api");
+            let entry = json!({"ts": now, "author": agent, "type": "patch", "text": "Item metadata updated"});
+            if let Some(j) = obj.get_mut("journal").and_then(|j| j.as_array_mut()) {
+                j.push(entry);
+            }
+
+            let updated = q.items[pos].clone();
+            drop(q);
+            flush_queue(&state).await;
+            (StatusCode::OK, Json(json!({"ok": true, "item": updated}))).into_response()
+        }
+    }
+}
+
+async fn delete_item(
+    State(state): State<Arc<AppState>>,
+    Path(id): Path<String>,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> impl IntoResponse {
+    if !state.is_authed(&headers) {
+        return (StatusCode::UNAUTHORIZED, Json(json!({"error": "Unauthorized"}))).into_response();
+    }
+    let mut q = state.queue.write().await;
+    let now = chrono::Utc::now().to_rfc3339();
+
+    // Check active items first
+    let item_pos = q.items.iter().position(|i| i.get("id").and_then(|v| v.as_str()) == Some(&id));
+    if let Some(pos) = item_pos {
+        let mut item = q.items.remove(pos);
+        let obj = item.as_object_mut().unwrap();
+        let agent = body.get("_author").and_then(|v| v.as_str()).unwrap_or("api");
+        let reason = body.get("reason").and_then(|v| v.as_str()).unwrap_or("Cancelled via API");
+        obj.insert("status".into(), json!("cancelled"));
+        obj.insert("completedAt".into(), json!(now));
+        let version = obj.get("itemVersion").and_then(|n| n.as_u64()).unwrap_or(0) + 1;
+        obj.insert("itemVersion".into(), json!(version));
+        let entry = json!({"ts": now, "author": agent, "type": "cancel", "text": reason});
+        if let Some(j) = obj.get_mut("journal").and_then(|j| j.as_array_mut()) {
+            j.push(entry);
+        }
+        q.completed.push(item.clone());
+        drop(q);
+        flush_queue(&state).await;
+        return (StatusCode::OK, Json(json!({"ok": true, "item": item, "cancelled": true}))).into_response();
+    }
+
+    (StatusCode::NOT_FOUND, Json(json!({"error": "Item not found or already completed"}))).into_response()
 }
 
 async fn claim_item(
