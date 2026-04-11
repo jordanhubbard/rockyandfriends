@@ -358,7 +358,7 @@ if [[ "$PLATFORM" == "linux" ]] && command -v systemctl &>/dev/null; then
     warn "ccc-agent.service already installed — skipping"
   else
     if [ -w "/etc/systemd/system" ] || command -v sudo &>/dev/null; then
-      sudo cp "$SERVICE_SRC" "$SERVICE_DST" 2>/dev/null && \
+      sed "s|AGENT_USER|$(whoami)|g; s|AGENT_HOME|$HOME|g" "$SERVICE_SRC" | sudo tee "$SERVICE_DST" > /dev/null && \
       sudo systemctl daemon-reload && \
       sudo systemctl enable ccc-agent && \
       sudo systemctl start ccc-agent && \

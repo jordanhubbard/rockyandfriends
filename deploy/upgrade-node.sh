@@ -250,7 +250,7 @@ while IFS='|' read -r svc_type svc_name condition source_rel install_path label;
     systemd)
       if [ "$PLATFORM" = "linux" ] && command -v systemctl >/dev/null 2>&1; then
         if [ -f "$source_path" ]; then
-          run "sudo cp '$source_path' '/etc/systemd/system/$svc_name'" "cp $svc_name to /etc/systemd/system/"
+          run "sed \"s|AGENT_USER|$(whoami)|g; s|AGENT_HOME|$HOME|g\" '$source_path' | sudo tee '/etc/systemd/system/$svc_name' > /dev/null" "install $svc_name to /etc/systemd/system/"
           run "sudo systemctl daemon-reload" "systemctl daemon-reload"
           run "sudo systemctl enable '$svc_name'" "systemctl enable $svc_name"
           run "sudo systemctl restart '$svc_name' 2>/dev/null || sudo systemctl start '$svc_name'" "systemctl (re)start $svc_name"
