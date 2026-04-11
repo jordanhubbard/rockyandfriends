@@ -12,11 +12,15 @@ CCC is a lightweight, self-hosted coordination layer for multi-agent teams. It p
 | Git | any | For repo sync |
 | curl | any | For heartbeats + API calls |
 | Tailscale | any | Mesh networking — all agents must join the tailnet |
+| Python 3.10+ | 3.10+ | For hermes-agent and doltlite (hub nodes only) |
+| pipx | any | For hermes-agent install: `pip3 install pipx` |
 | MinIO (optional) | any | For durable storage / ClawFS; runs without it |
 | wasm32 target (optional) | — | For building ClawChat WASM: `rustup target add wasm32-unknown-unknown` |
 | trunk (optional) | any | For building ClawChat WASM: `cargo install trunk` |
 
 Node.js is **not required** — CCC runs as a single Rust binary (`ccc-server`).
+
+**Hub/master nodes** additionally require: TokenHub, hermes-agent, and doltlite. See [§Master Node: Additional Services](#master-node-additional-services).
 
 ---
 
@@ -111,7 +115,30 @@ Or via systemd (installed by `setup-node.sh` on Linux):
 sudo systemctl enable --now ccc-server
 ```
 
-### 7. (Optional) Build and serve ClawChat
+### 7. Install master node services (hub node only)
+
+Master nodes require three additional services beyond ccc-server. See [§Master Node: Additional Services](#master-node-additional-services) for full setup.
+
+| Service | Purpose |
+|---------|---------|
+| **TokenHub** | LLM routing proxy — routes agent requests to vLLM, Anthropic, NVIDIA |
+| **hermes-agent** | Standard agent runtime — replaces OpenClaw as the fleet launcher |
+| **doltlite** | Version-controlled SQL database — audit log and structured agent state |
+
+Quick install summary:
+```bash
+# TokenHub (see §TokenHub for full config)
+sudo systemctl enable --now tokenhub
+
+# hermes-agent
+pipx install hermes-agent   # or: pip3 install git+https://github.com/jordanhubbard/hermes-agent.git
+
+# doltlite
+git clone https://github.com/timsehn/doltlite.git ~/Src/doltlite
+cd ~/Src/doltlite && pip3 install -e .
+```
+
+### 8. (Optional) Build and serve ClawChat
 
 ```bash
 cd ~/Src/CCC/ccc/clawchat
@@ -275,9 +302,11 @@ The old `vllm-tunnel` supervisord program (SSH reverse tunnel) is **deprecated**
 
 ## TokenHub — LLM Routing Proxy
 
-TokenHub runs on the hub node (port 8090) and provides a unified OpenAI-compatible API routing to NVIDIA inference, vLLM on GPU nodes, Anthropic, etc.
+TokenHub runs on the hub node (port 8090) and provides a unified OpenAI-compatible API routing to NVIDIA inference, vLLM on GPU nodes, Anthropic, etc. Full install and configuration: see [§Master Node: Additional Services → TokenHub](#tokenhub--llm-routing-proxy-1).
 
-### Registering a vLLM provider
+All agents route through tokenhub (`http://127.0.0.1:8090/v1/...`) — **never call vLLM directly** from application code.
+
+### Adding a vLLM GPU node as a provider
 
 Add to `~/.tokenhub/credentials` on the hub:
 
@@ -292,8 +321,6 @@ Add to `~/.tokenhub/credentials` on the hub:
 ```
 
 `base_url` uses the **Tailscale IP**. After editing: `sudo systemctl restart tokenhub`.
-
-All agents route through tokenhub (`http://127.0.0.1:8090/v1/...`) — **never call vLLM directly** from application code.
 
 ---
 
@@ -443,6 +470,193 @@ DASHBOARD_DIST=ccc/clawchat/dist ./target/release/ccc-server
 ```
 
 Open `http://localhost:8789` — log in with any agent token.
+
+---
+
+## Master Node: Additional Services
+
+A CCC master/hub node runs ccc-server plus three services that client nodes depend on. Install all three before registering any agents.
+
+---
+
+### TokenHub — LLM Routing Proxy
+
+TokenHub is a unified OpenAI-compatible API proxy. All agents and ccc-server route LLM calls through it — never to vLLM or Anthropic directly. It runs on port **8090** on the hub.
+
+**Install:**
+```bash
+# Binary distribution (preferred — check releases for your arch)
+curl -L https://github.com/jordanhubbard/tokenhub/releases/latest/download/tokenhub-linux-amd64 \
+  -o /usr/local/bin/tokenhub
+chmod +x /usr/local/bin/tokenhub
+
+# Or build from source
+git clone https://github.com/jordanhubbard/tokenhub.git ~/Src/tokenhub
+cd ~/Src/tokenhub && cargo build --release
+sudo cp target/release/tokenhub /usr/local/bin/
+```
+
+**Configure (`~/.tokenhub/credentials`):**
+
+Create one provider entry per backend. Example for an Anthropic + local vLLM setup:
+
+```json
+[
+  {
+    "id": "anthropic",
+    "type": "anthropic",
+    "api_key": "<your-anthropic-key>",
+    "models": [
+      { "id": "claude-sonnet-4-6", "upstream_id": "claude-sonnet-4-6-20251001" }
+    ]
+  },
+  {
+    "id": "sherman-gemma",
+    "type": "vllm",
+    "base_url": "http://<sherman-tailscale-ip>:8080",
+    "api_key": "",
+    "models": [
+      { "id": "gemma", "upstream_id": "gemma" }
+    ]
+  }
+]
+```
+
+**Start:**
+```bash
+# systemd (preferred)
+sudo cp ~/Src/CCC/deploy/systemd/tokenhub.service /etc/systemd/system/
+sudo systemctl enable --now tokenhub
+
+# Manual
+TOKENHUB_PORT=8090 tokenhub serve
+```
+
+**Verify:**
+```bash
+curl -s http://127.0.0.1:8090/v1/models | python3 -m json.tool
+```
+
+All agents configure `TOKENHUB_URL=http://127.0.0.1:8090` (already the default in ccc-server).
+
+---
+
+### hermes-agent — Standard Agent Runtime
+
+hermes-agent is the standard fleet agent runtime. It replaces OpenClaw as the launcher for all Claude-based agents and includes CCC fleet integration built in.
+
+**Install:**
+```bash
+# Preferred: pipx (isolated environment, no dep conflicts)
+pipx install git+https://github.com/jordanhubbard/hermes-agent.git
+
+# Alternative: pip
+pip3 install git+https://github.com/jordanhubbard/hermes-agent.git
+
+# Or clone and install editable (for development)
+git clone https://github.com/jordanhubbard/hermes-agent.git ~/Src/hermes-agent
+cd ~/Src/hermes-agent && pipx install -e .
+```
+
+**Verify:**
+```bash
+hermes --version
+```
+
+**Migrate from OpenClaw (if applicable):**
+```bash
+hermes claw migrate   # copies OpenClaw config → hermes format
+```
+
+**Configure (`~/.hermes/config.yaml`):**
+```yaml
+env:
+  CCC_URL: "http://127.0.0.1:8789"
+  CCC_AGENT_TOKEN: "<your-token>"
+  AGENT_NAME: "<your-agent-name>"
+  TOKENHUB_URL: "http://127.0.0.1:8090"
+```
+
+**Install the CCC fleet skill:**
+```bash
+cp -r ~/Src/CCC/skills/ccc-node/ ~/.hermes/skills/ccc-node/
+```
+
+**Start the gateway:**
+```bash
+hermes gateway
+```
+
+**systemd unit (hub node):**
+```bash
+sudo cp ~/Src/CCC/deploy/systemd/hermes-agent.service /etc/systemd/system/
+sudo systemctl enable --now hermes-agent
+```
+
+OpenClaw remains installed for backward compatibility but hermes is the active launcher.
+
+---
+
+### doltlite — Version-Controlled SQL Database
+
+doltlite provides a lightweight, Git-like version-controlled SQL database. On the hub, it stores structured agent state, audit logs, and decision history — giving every data change a commit hash and full diff history.
+
+**Install:**
+```bash
+git clone https://github.com/timsehn/doltlite.git ~/Src/doltlite
+cd ~/Src/doltlite
+pip3 install -e .
+
+# Verify
+doltlite --version
+```
+
+**Initialize the CCC database:**
+```bash
+mkdir -p ~/.ccc/doltlite && cd ~/.ccc/doltlite
+doltlite init
+doltlite sql -q "CREATE TABLE IF NOT EXISTS agent_events (
+  id        TEXT PRIMARY KEY,
+  agent     TEXT NOT NULL,
+  event     TEXT NOT NULL,
+  payload   TEXT,
+  ts        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
+);"
+doltlite add -A && doltlite commit -m "init: CCC schema"
+```
+
+**Environment:**
+```env
+DOLTLITE_DIR=~/.ccc/doltlite    # path to the doltlite repo
+DOLTLITE_ENABLED=true
+```
+
+**Verify:**
+```bash
+cd ~/.ccc/doltlite && doltlite log
+```
+
+---
+
+### Master Node Checklist
+
+After completing all installs, verify each service:
+
+```bash
+# ccc-server
+curl -s http://127.0.0.1:8789/api/health | python3 -m json.tool
+
+# tokenhub
+curl -s http://127.0.0.1:8090/v1/models | python3 -m json.tool
+
+# hermes-agent
+hermes --version && hermes status
+
+# doltlite
+cd ~/.ccc/doltlite && doltlite log | head -5
+```
+
+All four should respond before registering any client agents.
 
 ---
 
