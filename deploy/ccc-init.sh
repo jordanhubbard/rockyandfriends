@@ -190,11 +190,11 @@ ask "Enable ClawFS? (true/false) [true]: "
 read -r CLAWFS_ENABLED
 CLAWFS_ENABLED="${CLAWFS_ENABLED:-true}"
 CLAWFS_MOUNT="$HOME/clawfs"
-CLAWFS_REDIS_URL="redis://100.89.199.14:6379/1"
+CLAWFS_REDIS_URL="redis://ccc-server.service.consul:6379/1"
 CLAWFS_CACHE_DIR="/tmp/jfscache"
 if [ "$CLAWFS_ENABLED" = "true" ]; then
   prompt CLAWFS_MOUNT "ClawFS mount point" "$HOME/clawfs"
-  prompt CLAWFS_REDIS_URL "ClawFS Redis URL" "redis://100.89.199.14:6379/1"
+  prompt CLAWFS_REDIS_URL "ClawFS Redis URL" "redis://ccc-server.service.consul:6379/1"
   prompt CLAWFS_CACHE_DIR "ClawFS cache directory" "/tmp/jfscache"
 fi
 
@@ -300,7 +300,7 @@ VLLM_EXTRA_ARGS=${VLLM_EXTRA_ARGS:-}
 NVIDIA_API_BASE=https://inference-api.nvidia.com/v1
 NVIDIA_API_KEY=${NVIDIA_API_KEY}
 # TokenHub — preferred inference router (aggregates local vLLM + NVIDIA NIM)
-TOKENHUB_URL=http://100.89.199.14:8090
+TOKENHUB_URL=http://tokenhub.service.consul:8090
 TOKENHUB_AGENT_KEY=${TOKENHUB_API_KEY:-}
 TOKENHUB_ADMIN_TOKEN=${TOKENHUB_ADMIN_TOKEN:-}
 

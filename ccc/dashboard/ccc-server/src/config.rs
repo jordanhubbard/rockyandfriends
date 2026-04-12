@@ -188,7 +188,7 @@ pub fn load() -> ResolvedConfig {
             .collect()
     };
 
-    let minio_endpoint = resolve_str("MINIO_ENDPOINT", j.minio.endpoint, "http://localhost:9000");
+    let minio_endpoint = resolve_str("MINIO_ENDPOINT", j.minio.endpoint, "http://minio.service.consul:9000");
     let minio_bucket = resolve_str("MINIO_BUCKET", j.minio.bucket, "agents");
     let minio_access_key = evar("MINIO_ACCESS_KEY").or(j.minio.access_key);
     let minio_secret_key = evar("MINIO_SECRET_KEY").or(j.minio.secret_key);
@@ -196,23 +196,23 @@ pub fn load() -> ResolvedConfig {
     let supervisor_enabled = evar("SUPERVISOR_ENABLED")
         .map(|s| s == "true")
         .unwrap_or(j.supervisor.enabled);
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
     let tokenhub_bin = resolve_str(
         "TOKENHUB_BIN",
         j.supervisor.tokenhub_bin,
-        "/home/jkh/tokenhub/bin/tokenhub",
+        &format!("{}/tokenhub/bin/tokenhub", home),
     );
 
     let qdrant_url = resolve_str(
         "QDRANT_FLEET_URL",
         j.qdrant.url,
-        "http://100.89.199.14:6333",
+        "http://qdrant.service.consul:6333",
     );
     let qdrant_api_key = evar("QDRANT_FLEET_KEY").or(j.qdrant.api_key);
-    let tokenhub_url = resolve_str("TOKENHUB_URL", j.tokenhub.url, "http://127.0.0.1:8090");
+    let tokenhub_url = resolve_str("TOKENHUB_URL", j.tokenhub.url, "http://tokenhub.service.consul:8090");
 
     let db_path = evar("CCC_DB_PATH");
 
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
     let auth_db_path = evar("AUTH_DB_PATH")
         .unwrap_or_else(|| format!("{}/.ccc/auth.db", home));
 

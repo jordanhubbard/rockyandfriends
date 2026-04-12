@@ -1,115 +1,94 @@
 # Consul Service Discovery — CCC Fleet
 
-Replaces hardcoded IPs/ports with DNS-based service discovery across the fleet.
+CCC uses Consul for all internal service mesh so that no IP addresses or personal
+domain names ever appear in source code. All required services register themselves
+with Consul and are reachable via `<name>.service.consul`.
 
 ## Fleet Topology (Tailscale)
 
-| Host      | Tailscale IP     | Role           | Location        |
-|-----------|------------------|----------------|-----------------|
-| do-host1  | 100.89.199.14    | Consul server  | DigitalOcean    |
-| sparky    | 100.87.229.125   | Consul client  | DGX Spark local |
-| puck      | 100.87.68.11     | Consul client  | Mac local       |
-| boris     | (Sweden fleet)   | Consul client  | NVIDIA DGX-C    |
+| Agent name  | Host     | Role           | Platform        |
+|-------------|----------|----------------|-----------------|
+| rocky       | do-host1 | Consul server  | Linux (DO)      |
+| natasha     | sparky   | Consul client  | Linux (GPU)     |
+| bullwinkle  | puck     | Consul client  | macOS           |
 
-## Services Registry
+## Service Ecosystem
 
-### do-host1 (100.89.199.14)
-| Service          | Port  | Protocol | Health Check            |
-|------------------|-------|----------|-------------------------|
-| ccc-hub          | 8789  | HTTP     | GET /health             |
-| clawbus          | 8789  | HTTP     | GET /api/bus/stream     |
-| tokenhub         | 8090  | HTTP     | GET /health             |
-| qdrant           | 6333  | HTTP     | GET /collections        |
-| minio            | 9000  | HTTP     | GET /minio/health/live  |
-| searxng          | 8888  | HTTP     | GET /                   |
-| clawchat         | 8790  | HTTP     | GET /                   |
+All services required by CCC — every one is registered in Consul and started
+by the CCC migration system (so removing CCC removes all of them):
 
-### sparky (100.87.229.125)
-| Service          | Port  | Protocol | Health Check            |
-|------------------|-------|----------|-------------------------|
-| whisper-api      | 8792  | HTTP     | GET /health             |
-| clawfs           | 8791  | HTTP     | GET /health             |
-| usdagent         | 8000  | HTTP     | GET /health             |
-| ollama           | 11434 | HTTP     | GET /                   |
+### rocky (hub) — service-defs/rocky.hcl
+| Service      | Port  | Consul DNS name                 | Managed by            |
+|--------------|-------|---------------------------------|-----------------------|
+| ccc-server   | 8789  | ccc-server.service.consul       | systemd (migration 0005) |
+| tokenhub     | 8090  | tokenhub.service.consul         | ccc-server supervisor |
+| qdrant       | 6333  | qdrant.service.consul           | Docker compose        |
+| minio        | 9000  | minio.service.consul            | systemd               |
+| searxng      | 8888  | searxng.service.consul          | Docker compose        |
+| prometheus   | 9090  | prometheus.service.consul       | Docker compose        |
+| grafana      | 3000  | grafana.service.consul          | Docker compose        |
 
-### boris (Sweden fleet)
-| Service          | Port  | Protocol | Health Check            |
-|------------------|-------|----------|-------------------------|
-| boris-vllm       | 18080 | HTTP     | GET /v1/models          |
+### natasha (GPU worker) — service-defs/natasha.hcl
+| Service      | Port  | Consul DNS name                 | Managed by            |
+|--------------|-------|---------------------------------|-----------------------|
+| whisper-api  | 8792  | whisper-api.service.consul      | systemd               |
+| clawfs       | 8791  | clawfs.service.consul           | systemd               |
+| ollama       | 11434 | ollama.service.consul           | systemd               |
 
-## Quick Start
+### bullwinkle (macOS dev) — service-defs/bullwinkle.hcl
+| Service      | Port  | Consul DNS name                 | Managed by            |
+|--------------|-------|---------------------------------|-----------------------|
+| clawfs       | 8791  | clawfs.service.consul           | launchd               |
 
-### 1. Deploy Consul Server (do-host1)
+## Deployment
+
+Consul is installed via the CCC migration system — no manual steps needed:
+
 ```bash
-# From CCC root on do-host1:
-scripts/consul/setup-consul-server.sh
-# This runs docker compose and waits for leader election
+# On any fleet node after git pull:
+bash deploy/run-migrations.sh
+
+# This runs 0009_install_consul.sh and 0010_configure_consul_dns.sh automatically.
 ```
 
-### 2. Deploy Client Agents (sparky, puck, boris, etc.)
+### Agent nodes require one env var in ~/.ccc/.env:
 ```bash
-# SSH to a fleet node, copy CCC, then:
-scripts/consul/setup-consul-client.sh sparky
-# Installs binary, copies configs + service defs, starts systemd unit
+CONSUL_SERVER_ADDR=<rocky-tailscale-ip>   # e.g. 100.89.199.14
 ```
 
-### 3. Set Up DNS Forwarding
+## Verifying
+
 ```bash
-scripts/consul/setup-dns-forwarding.sh
-# Configures systemd-resolved to forward .consul queries
-```
+# Check Consul is running
+consul members                               # all fleet nodes visible
 
-## CCC Scripts
+# Look up a service
+dig ccc-server.service.consul @127.0.0.1 -p 8600
+dig tokenhub.service.consul @127.0.0.1 -p 8600
 
-| Script                           | Purpose                                |
-|----------------------------------|----------------------------------------|
-| `scripts/consul/setup-consul-server.sh`  | Deploy Consul server on do-host1       |
-| `scripts/consul/setup-consul-client.sh`  | Deploy Consul client on fleet node     |
-| `scripts/consul/setup-dns-forwarding.sh` | Configure .consul DNS via resolved     |
-| `scripts/consul/consul-lookup.sh`        | Look up a service (address/url/json)   |
-| `scripts/consul/consul-services.sh`      | List all services with health status   |
+# After DNS migration 0010, no port needed:
+dig tokenhub.service.consul
 
-### Lookup Examples
-```bash
-# Get service address
-scripts/consul/consul-lookup.sh tokenhub          # → 100.89.199.14:8090
-scripts/consul/consul-lookup.sh tokenhub url       # → http://100.89.199.14:8090
-scripts/consul/consul-lookup.sh whisper-api all    # → full details + metadata
-
-# List everything
-scripts/consul/consul-services.sh                 # all services
-scripts/consul/consul-services.sh --healthy        # only passing checks
-
-# Raw DNS
-dig @127.0.0.1 -p 8600 tokenhub.service.consul SRV
-```
-
-## DNS Integration
-
-Once DNS forwarding is set up, services resolve natively:
-- `tokenhub.service.consul` → 100.89.199.14:8090
-- `qdrant.service.consul` → 100.89.199.14:6333
-- `whisper-api.service.consul` → 100.87.229.125:8792
-- `boris-vllm.service.consul` → boris:18080
-
-## Config Files
-
-```
-deploy/consul/
-├── README.md                    # This file
-├── server/
-│   ├── consul-server.hcl       # Server config (datacenter=ccc, bootstrap)
-│   └── docker-compose.yml      # Docker Compose for server
-├── client/
-│   └── consul-client.hcl       # Client template (retry_join do-host1)
-└── service-defs/
-    ├── do-host1.hcl            # 9 services (ccc-hub, clawbus, tokenhub, etc.)
-    ├── sparky.hcl              # 4 services (whisper, clawfs, usdagent, ollama)
-    └── boris.hcl               # 1 service (boris-vllm)
+# Consul UI (hub only)
+open http://127.0.0.1:8500
 ```
 
 ## Adding a New Service
 
-1. Add a `services {}` block to the appropriate `service-defs/<host>.hcl`
-2. Reload Consul: `consul reload` (client) or restart the container (server)
-3. Verify: `scripts/consul/consul-lookup.sh <service-name>`
+1. Add a `service {}` block to `service-defs/<agent-name>.hcl`
+2. Re-run migration: `bash deploy/run-migrations.sh --force=0009`
+3. Verify: `consul catalog services`
+
+## Directory Layout
+
+```
+deploy/consul/
+├── README.md                      # This file
+├── consul.hcl.tmpl                # Unified config template (rendered by migration 0009)
+└── service-defs/
+    ├── rocky.hcl                  # Hub: ccc-server, tokenhub, qdrant, minio, etc.
+    ├── natasha.hcl                # GPU: whisper-api, clawfs, ollama
+    └── bullwinkle.hcl             # macOS: clawfs
+```
+
+The old `server/` and `client/` directories are superseded by the migration system.

@@ -1,32 +1,28 @@
-# Additional Prometheus scrape targets for the CCC/agentOS/tokenhub stack.
-# Append these job_name entries to /etc/prometheus/prometheus.yml on do-host1,
+# Additional Prometheus scrape targets for the CCC stack.
+# Append these job_name entries to /etc/prometheus/prometheus.yml on rocky (hub),
 # then reload: curl -X POST http://localhost:9090/-/reload
 #
-# NOTE: tokenhub runs on sparky (100.87.229.125:8090 via Tailscale).
-#       agentOS metrics are bridged through CCC (127.0.0.1:8789).
+# Uses Consul DNS names — requires migration 0010 (*.consul DNS) to be applied.
 
 scrape_configs:
 
-  # ── tokenhub (sparky) — per-provider LLM request/cost/latency metrics ──────
-  - job_name: 'tokenhub_sparky'
+  # ── tokenhub — per-provider LLM request/cost/latency metrics ──────────────
+  - job_name: 'tokenhub'
     scrape_interval: 15s
     scrape_timeout: 10s
     static_configs:
-      - targets: ['100.87.229.125:8090']
+      - targets: ['tokenhub.service.consul:8090']
         labels:
-          host: 'sparky'
           service: 'tokenhub'
     metrics_path: '/metrics'
-    # No auth required on /metrics endpoint
 
-  # ── agentOS PD health (sparky, via CCC bridge) ───────────────────────────────
-  - job_name: 'agentos_sparky'
+  # ── ccc-server — API and queue metrics ────────────────────────────────────
+  - job_name: 'ccc-server'
     scrape_interval: 30s
     scrape_timeout: 10s
     static_configs:
-      - targets: ['127.0.0.1:8789']
+      - targets: ['ccc-server.service.consul:8789']
         labels:
-          host: 'sparky'
-          service: 'agentos'
-    metrics_path: '/api/agentos/metrics'
-    bearer_token: '<YOUR_CCC_TOKEN>'
+          service: 'ccc-server'
+    metrics_path: '/api/metrics'
+    bearer_token: '<YOUR_CCC_AGENT_TOKEN>'

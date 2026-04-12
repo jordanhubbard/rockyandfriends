@@ -301,7 +301,7 @@ fi
 # ── ClawFS / JuiceFS (shared model/file cache) ───────────────────────────
 info "Checking ClawFS (JuiceFS FUSE mount)..."
 CLAWFS_MOUNT="${CLAWFS_MOUNT:-$HOME/clawfs}"
-CLAWFS_REDIS="redis://100.89.199.14:6379/1"
+CLAWFS_REDIS="redis://ccc-server.service.consul:6379/1"
 CLAWFS_CACHE="/tmp/jfscache"
 
 _clawfs_mounted() { [[ -f "${CLAWFS_MOUNT}/.config" ]]; }
@@ -320,7 +320,7 @@ else
   warn "JuiceFS not found — to enable ClawFS on macOS:"
   warn "  1. brew install --cask macfuse   (reboot + approve system extension)"
   warn "  2. brew install juicefs"
-  warn "  3. juicefs mount --background --cache-dir /tmp/jfscache redis://100.89.199.14:6379/1 ~/clawfs"
+  warn "  3. juicefs mount --background --cache-dir /tmp/jfscache redis://ccc-server.service.consul:6379/1 ~/clawfs"
 fi
 
 # Check FUSE availability (Linux)

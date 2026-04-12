@@ -21,7 +21,7 @@ CURRENT_CCC_URL="${CCC_URL:-}"
 
 # Known CCC endpoints (in order of preference)
 CCC_PUBLIC="http://146.190.134.110:8789"
-CCC_TAILSCALE="http://100.89.199.14:8789"
+CCC_TAILSCALE="http://ccc-server.service.consul:8789"
 CCC_LOCALHOST="http://localhost:8789"
 
 log() {
