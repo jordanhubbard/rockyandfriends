@@ -224,7 +224,11 @@ if [ ! -d "$MIGRATIONS_DIR" ]; then
   exit 0
 fi
 
-mapfile -t migration_files < <(ls "$MIGRATIONS_DIR"/[0-9][0-9][0-9][0-9]_*.sh 2>/dev/null | sort)
+# mapfile is bash 4+ only; use a while-read loop for macOS bash 3.2 compat
+migration_files=()
+while IFS= read -r f; do
+  migration_files+=("$f")
+done < <(ls "$MIGRATIONS_DIR"/[0-9][0-9][0-9][0-9]_*.sh 2>/dev/null | sort)
 
 if [ ${#migration_files[@]} -eq 0 ]; then
   echo "No migration files found in $MIGRATIONS_DIR"
