@@ -21,7 +21,6 @@ AGENT_TOKEN_OVERRIDE=""
 # These may be overridden by CLI args, but CCC secrets take precedence if not provided
 NVIDIA_KEY=""
 TELEGRAM_TOKEN=""
-MATTERMOST_TOKEN=""
 
 for arg in "$@"; do
   case "$arg" in
@@ -31,7 +30,6 @@ for arg in "$@"; do
     --agent-token=*)       AGENT_TOKEN_OVERRIDE="${arg#--agent-token=}" ;;
     --nvidia-key=*)        NVIDIA_KEY="${arg#--nvidia-key=}"   ;;
     --telegram-token=*)    TELEGRAM_TOKEN="${arg#--telegram-token=}" ;;
-    --mattermost-token=*)  MATTERMOST_TOKEN="${arg#--mattermost-token=}" ;;
   esac
 done
 
@@ -232,7 +230,6 @@ _secret() { node -e "
 [[ -z "$NVIDIA_KEY"        ]] && NVIDIA_KEY=$(_secret        "NVIDIA_API_KEY"     "nvidia_api_key")
 [[ -z "$TOKENHUB_URL"      ]] && TOKENHUB_URL=$(_secret      "TOKENHUB_URL"       "tokenhub_url")
 [[ -z "$TOKENHUB_KEY"      ]] && TOKENHUB_KEY=$(_secret      "TOKENHUB_AGENT_KEY" "tokenhub_agent_key")
-[[ -z "$MATTERMOST_TOKEN"  ]] && MATTERMOST_TOKEN=$(_secret  "MATTERMOST_TOKEN"   "mattermost_token")
 [[ -z "$TELEGRAM_TOKEN"    ]] && TELEGRAM_TOKEN=$(_secret    "TELEGRAM_BOT_TOKEN" "telegram_token")
 
 # Fetch per-agent Slack tokens from CCC (stored as <agent>_slack bundle)
@@ -368,18 +365,6 @@ SLKEOF
 )
 fi
 
-MATTERMOST_FRAGMENT=""
-if [[ -n "$MATTERMOST_TOKEN" ]]; then
-  MATTERMOST_FRAGMENT=$(cat <<MMEOF
-    "mattermost": {
-      "enabled": true,
-      "url": "https://chat.yourmom.photos",
-      "token": "${MATTERMOST_TOKEN}"
-    }
-MMEOF
-)
-fi
-
 # Determine model config — use NVIDIA gateway if key provided, else anthropic direct
 if [[ -n "$NVIDIA_KEY" ]]; then
   MODEL_PROVIDER_JSON=$(cat <<MODEOF
@@ -438,7 +423,7 @@ cat > "$OC_CONFIG" <<OCEOF
     }
   },
   "channels": {
-    ${SLACK_FRAGMENT}${SLACK_FRAGMENT:+,}${TELEGRAM_FRAGMENT}${TELEGRAM_FRAGMENT:+,}${MATTERMOST_FRAGMENT}
+    ${SLACK_FRAGMENT}${SLACK_FRAGMENT:+,}${TELEGRAM_FRAGMENT}
   }
 }
 OCEOF
@@ -954,9 +939,9 @@ echo "  OpenClaw config:     ${OC_CONFIG}"
 echo "  CCC workspace:       ${CCC_WORKSPACE}"
 echo "  CCC env:             ${HOME}/.ccc/.env"
 echo ""
-if [[ -z "$TELEGRAM_TOKEN" && -z "$MATTERMOST_TOKEN" ]]; then
+if [[ -z "$TELEGRAM_TOKEN" ]]; then
   echo -e "${YELLOW}  ⚠ No messaging channels configured.${NC}"
-  echo "    Add TELEGRAM_BOT_TOKEN or MATTERMOST_TOKEN to CCC secrets and re-bootstrap,"
+  echo "    Add TELEGRAM_BOT_TOKEN to CCC secrets and re-bootstrap,"
   echo "    OR edit openclaw.json and run: openclaw gateway restart"
   echo ""
 fi

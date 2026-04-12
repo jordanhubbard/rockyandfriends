@@ -208,7 +208,6 @@ echo "  Select which channels to enable (comma-separated, or press enter for Squ
 echo ""
 echo "    squirrelchat  — Self-hosted chat (ships with CCC, always available)"
 echo "    slack          — Slack workspace integration"
-echo "    mattermost     — Mattermost server integration"
 echo "    telegram       — Telegram bot integration"
 echo ""
 echo "  Examples:  slack,telegram    or    slack    or    (blank for SquirrelChat only)"
@@ -220,8 +219,6 @@ CHANNEL_SELECTION="${CHANNEL_SELECTION:-squirrelchat}"
 # Parse channel selection
 SLACK_TOKEN=""
 SLACK_SIGNING_SECRET=""
-MATTERMOST_TOKEN=""
-MATTERMOST_URL=""
 TELEGRAM_TOKEN=""
 
 if echo "$CHANNEL_SELECTION" | grep -qi "slack"; then
@@ -229,13 +226,6 @@ if echo "$CHANNEL_SELECTION" | grep -qi "slack"; then
   info "Configuring Slack..."
   prompt SLACK_TOKEN "Slack bot token (xoxb-...)" ""
   prompt SLACK_SIGNING_SECRET "Slack signing secret (from app settings → Basic Information)" ""
-fi
-
-if echo "$CHANNEL_SELECTION" | grep -qi "mattermost"; then
-  echo ""
-  info "Configuring Mattermost..."
-  prompt MATTERMOST_URL "Mattermost server URL (e.g. https://chat.example.com)" ""
-  prompt MATTERMOST_TOKEN "Mattermost bot/personal access token" ""
 fi
 
 if echo "$CHANNEL_SELECTION" | grep -qi "telegram"; then

@@ -42,7 +42,6 @@ async fn topology(State(state): State<Arc<AppState>>) -> impl IntoResponse {
         json!({"id":"tokenhub",      "label":"TokenHub",        "type":"shared-service", "host":"do-host1",   "port":8090}),
         json!({"id":"nvidia-gateway","label":"NVIDIA Gateway",  "type":"external",       "url":"inference-api.nvidia.com"}),
         json!({"id":"github",        "label":"GitHub",          "type":"external",       "url":"api.github.com"}),
-        json!({"id":"mattermost",    "label":"Mattermost",      "type":"external",       "url":"chat.yourmom.photos"}),
         json!({"id":"slack-omgjkh",  "label":"Slack (omgjkh)",  "type":"external",       "url":"omgjkh.slack.com"}),
         json!({"id":"telegram",      "label":"Telegram",        "type":"external",       "url":"api.telegram.org"}),
         json!({"id":"clawbus",       "label":"ClawBus",     "type":"bus",            "host":"do-host1"}),
@@ -62,7 +61,6 @@ async fn topology(State(state): State<Arc<AppState>>) -> impl IntoResponse {
         json!({"from":"rocky",     "to":"tokenhub",       "type":"persistent","protocol":"HTTP/OpenAI"}),
         json!({"from":"rocky",     "to":"nvidia-gateway", "type":"on-demand", "protocol":"HTTPS/OpenAI"}),
         json!({"from":"rocky",     "to":"github",         "type":"on-demand", "protocol":"HTTPS/REST"}),
-        json!({"from":"rocky",     "to":"mattermost",     "type":"on-demand", "protocol":"HTTPS/REST"}),
         json!({"from":"rocky",     "to":"slack-omgjkh",   "type":"persistent","protocol":"Socket Mode"}),
         json!({"from":"rocky",     "to":"telegram",       "type":"on-demand", "protocol":"HTTPS/Bot API"}),
     ];
