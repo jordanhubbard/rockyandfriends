@@ -113,19 +113,29 @@ PYEOF
 # ── 2. Install Hermes Agent ───────────────────────────────────────────────
 if command -v hermes &>/dev/null; then
   success "Hermes agent already installed ($(hermes --version 2>/dev/null || echo 'version unknown'))"
+  # Ensure slack extras are present even on existing installs
+  if ! python3 -c "import slack_bolt" 2>/dev/null; then
+    info "slack-bolt not found — injecting slack extras..."
+    if command -v pipx &>/dev/null; then
+      pipx inject hermes-agent slack-bolt slack-sdk 2>/dev/null && success "Slack extras injected (pipx)" || true
+    fi
+    if ! python3 -c "import slack_bolt" 2>/dev/null; then
+      pip3 install slack-bolt slack-sdk 2>/dev/null && success "Slack extras installed (pip3)" || true
+    fi
+  fi
 else
   info "Installing Hermes agent..."
   if command -v pipx &>/dev/null; then
-    pipx install hermes-agent 2>/dev/null && success "Hermes installed (pipx)" || true
+    pipx install 'hermes-agent[slack]' 2>/dev/null && success "Hermes installed (pipx)" || true
   fi
   if ! command -v hermes &>/dev/null; then
-    pip3 install hermes-agent 2>/dev/null && success "Hermes installed (pip3)" || true
+    pip3 install 'hermes-agent[slack]' 2>/dev/null && success "Hermes installed (pip3)" || true
   fi
   export PATH="$HOME/.local/bin:$PATH"
   if command -v hermes &>/dev/null; then
     success "Hermes agent installed"
   else
-    warn "Hermes agent install failed — install manually: pipx install hermes-agent"
+    warn "Hermes agent install failed — install manually: pipx install 'hermes-agent[slack]'"
   fi
 fi
 
@@ -430,13 +440,91 @@ else
   echo "VLLM_ENABLED=false" >> "$ENV_FILE"
 fi
 
-# ── 9. Install Hermes skills ──────────────────────────────────────────────
+# ── 9. Install Hermes skills and configure gateway ───────────────────────
 if command -v hermes &>/dev/null; then
   info "Configuring Hermes agent..."
   mkdir -p "$HOME/.hermes/skills"
   if [[ -d "$CCC_WORKSPACE/skills/ccc-node" ]]; then
     cp -r "$CCC_WORKSPACE/skills/ccc-node/" "$HOME/.hermes/skills/ccc-node/"
     success "CCC-node skill installed into Hermes"
+  fi
+
+  # Write ~/.hermes/config.yaml with CCC env vars and channel tokens.
+  # Hermes reads this on startup — tokens are NOT baked into the supervisor conf.
+  HERMES_CONFIG="$HOME/.hermes/config.yaml"
+  info "Writing ~/.hermes/config.yaml..."
+  cat > "$HERMES_CONFIG" <<HCEOF
+env:
+  CCC_URL: "${CCC_URL}"
+  CCC_AGENT_TOKEN: "${AGENT_TOKEN}"
+  AGENT_NAME: "${AGENT}"
+HCEOF
+  [[ -n "${SLACK_BOT_TOKEN:-}" ]] && echo "  SLACK_BOT_TOKEN: \"${SLACK_BOT_TOKEN}\"" >> "$HERMES_CONFIG"
+  [[ -n "${SLACK_APP_TOKEN:-}" ]] && echo "  SLACK_APP_TOKEN: \"${SLACK_APP_TOKEN}\"" >> "$HERMES_CONFIG"
+  chmod 600 "$HERMES_CONFIG"
+  success "~/.hermes/config.yaml written"
+
+  # Register hermes-gateway with supervisord.
+  # Try the conf.d drop-in directory first (preferred, idempotent per-file),
+  # then fall back to appending to the monolithic conf.
+  HERMES_BIN="$(command -v hermes || echo "$HOME/.local/bin/hermes")"
+  HERMES_LOG="$HOME/.ccc/logs/hermes-gateway.log"
+  mkdir -p "$HOME/.ccc/logs"
+
+  _hermes_supervisor_block() {
+    cat <<HCONF
+[program:hermes-gateway]
+command=${HERMES_BIN} gateway
+user=$(whoami)
+environment=HOME="${HOME}"
+directory=${HOME}
+stdout_logfile=${HERMES_LOG}
+stdout_logfile_maxbytes=5MB
+stdout_logfile_backups=2
+redirect_stderr=true
+autostart=true
+autorestart=true
+startsecs=10
+startretries=5
+priority=10
+HCONF
+  }
+
+  _hermes_registered=false
+  for _confd in "/etc/supervisor/conf.d" "/etc/supervisord.d"; do
+    if [[ -d "$_confd" ]]; then
+      _hconf="$_confd/hermes-gateway.conf"
+      if [[ ! -f "$_hconf" ]]; then
+        _hermes_supervisor_block | sudo tee "$_hconf" > /dev/null
+        sudo supervisorctl reread 2>/dev/null && sudo supervisorctl update 2>/dev/null || true
+        success "hermes-gateway supervisor conf: $_hconf"
+      else
+        success "hermes-gateway supervisor conf already exists: $_hconf"
+      fi
+      _hermes_registered=true
+      break
+    fi
+  done
+
+  if [[ "$_hermes_registered" == false ]]; then
+    for _mainconf in "/etc/supervisord.conf" "/etc/supervisor/supervisord.conf"; do
+      if [[ -f "$_mainconf" ]]; then
+        if ! grep -q "\[program:hermes-gateway\]" "$_mainconf" 2>/dev/null; then
+          { echo ""; _hermes_supervisor_block; } | sudo tee -a "$_mainconf" > /dev/null
+          sudo supervisorctl reread 2>/dev/null && sudo supervisorctl update 2>/dev/null || true
+          success "hermes-gateway appended to $_mainconf"
+        else
+          success "hermes-gateway already in $_mainconf"
+        fi
+        _hermes_registered=true
+        break
+      fi
+    done
+  fi
+
+  if [[ "$_hermes_registered" == false ]]; then
+    warn "No supervisord config found — start hermes gateway manually: hermes gateway"
+    warn "  Or add it to your process manager. Log: ${HERMES_LOG}"
   fi
 fi
 

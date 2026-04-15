@@ -87,7 +87,25 @@ Each item in `items` or `completed`:
 | `channel` | string | Originating channel (e.g., `mattermost`). |
 | `epic` | string | Epic grouping identifier (e.g., `workqueue-reliability`). |
 | `dependsOn` | string[] | IDs of items that must be `completed` before this one can start. |
+| `preferred_executor` | string | Soft executor hint — one of the values in `ExecutorType` (see below). The dispatcher uses this if the agent supports it; ignored if unsupported. |
+| `required_executors` | string[] | Hard executor filter — agent MUST support at least one of these to claim this item. Dispatcher picks the first supported type. Items with `required_executors` that no online agent supports stay `pending`. |
 | `acks` | object | **Directive items only** (`source: "jkh"`, `assignee: "all"`). Dict of `{ agentName: ISO-8601 }` — when each agent acknowledged and applied the directive. Item is considered `fully_resolved` when all three agents (rocky, bullwinkle, natasha) have entries. Agents add their ack in the next sync message after processing the directive. |
+
+---
+
+## Executor Types
+
+Valid values for `preferred_executor` and `required_executors`:
+
+| Value | Backend | Auth | Notes |
+|-------|---------|------|-------|
+| `claude_cli` | `claude --print` subprocess | `~/.claude/credentials` or `ANTHROPIC_API_KEY` | Current default |
+| `claude_sdk` | `@anthropic-ai/claude-code` `query()` | Same `~/.claude/credentials` | Structured output, cost metadata, session IDs |
+| `codex_cli` | `codex --approval-mode full-auto` | `OPENAI_API_KEY` | OpenAI billing |
+| `codex_vllm` | `codex` → local vLLM endpoint | None (local) | Fixed cost; requires GPU node |
+| `cursor_cli` | `cursor --headless` | `CURSOR_SESSION_TOKEN` | Experimental (2026-Q1) |
+| `opencode` | `opencode run` → ollama / vLLM | `OPENAI_API_KEY` or `none` | Local-first fallback chain |
+| `inference_key` | Direct API call (no coding agent) | `NVIDIA_API_KEY` / cloud key | Non-coding tasks |
 
 ---
 

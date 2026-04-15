@@ -1,0 +1,9 @@
+{
+  "name": "ccc-executors",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "CCC task executor plugins",
+  "dependencies": {
+    "@anthropic-ai/claude-code": "^1.0.0"
+  }
+}

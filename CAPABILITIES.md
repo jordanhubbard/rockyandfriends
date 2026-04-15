@@ -42,12 +42,33 @@ Valid `executors` values (exact strings — the registry validates these):
 
 | Executor        | Meaning |
 |-----------------|---------|
-| `claude_cli`    | Agent runs Claude Code in a tmux session |
-| `inference_key` | Agent can make NVIDIA/cloud inference API calls |
+| `claude_cli`    | Agent runs `claude --print` subprocess (default; requires `claude login` or `ANTHROPIC_API_KEY`) |
+| `claude_sdk`    | Agent uses `@anthropic-ai/claude-code` SDK for structured output and token cost metadata |
+| `codex_cli`     | Agent runs `codex --approval-mode full-auto` against OpenAI API (`OPENAI_API_KEY` required) |
+| `codex_vllm`    | Agent runs `codex` against a local vLLM endpoint (no external API key; requires GPU node) |
+| `cursor_cli`    | Agent runs `cursor --headless` (experimental; opt-in only; requires `CURSOR_SESSION_TOKEN`) |
+| `opencode`      | Agent runs `opencode run` with local ollama or vLLM as the backend |
+| `inference_key` | Agent can make NVIDIA/cloud inference API calls (non-coding tasks) |
 | `gpu`           | Agent has local GPU hardware for training/render |
 
 > **Note:** `gpuSpec` must be a JSON object (not null/string) when `"gpu"` is in executors.
 > Extra fields beyond the schema (e.g. `hardware`, `models`, `routing_notes`) are stored as-is.
+
+### Task Requirements (`required_executors`)
+
+Work items may specify `required_executors` — a hard filter that prevents agents without the
+required capability from claiming the task. Agents only claim items where their `executors`
+array intersects with `required_executors` (or the field is absent, meaning any agent can claim).
+
+Example: a task that must use `codex_vllm` (free local inference):
+```json
+{
+  "id": "wq-20260415-001",
+  "title": "Generate embeddings for corpus",
+  "required_executors": ["codex_vllm", "opencode"],
+  "preferred_executor": "codex_vllm"
+}
+```
 
 ### gpuSpec Fields
 
@@ -137,12 +158,12 @@ The `?task=X` query param is also supported for semantic routing:
 
 ## Known Agent Manifests
 
-| Agent       | Executors                       | GPU                  | Skills |
-|-------------|----------------------------------|----------------------|--------|
-| rocky       | claude_cli, inference_key        | —                    | code, review, debug, triage, ci |
-| bullwinkle  | claude_cli, inference_key        | —                    | code, review, debug, macos, ios |
-| natasha     | claude_cli, inference_key, gpu   | Blackwell 192GB      | training, inference, render, code, gpu |
-| boris       | inference_key, gpu               | 2× L40 96GB total    | render, training, inference, gpu, video |
+| Agent       | Executors                                          | GPU               | Skills |
+|-------------|-----------------------------------------------------|-------------------|--------|
+| rocky       | claude_cli, claude_sdk, inference_key              | —                 | code, review, debug, triage, ci |
+| bullwinkle  | claude_cli, claude_sdk, inference_key              | —                 | code, review, debug, macos, ios |
+| natasha     | claude_cli, claude_sdk, inference_key, gpu         | Blackwell 192GB   | training, inference, render, code, gpu |
+| boris       | codex_vllm, opencode, inference_key, gpu           | 2× L40 96GB total | render, training, inference, gpu, video |
 
 ---
 
