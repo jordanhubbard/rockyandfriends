@@ -1,6 +1,6 @@
 # CCC System Specification
 
-**Version:** Audited 2026-04-15  
+**Version:** Updated 2026-04-15 (post-refactor)  
 **Scope:** Complete description of what CCC does, based on codebase audit and live inspection of running instances.
 
 This document describes the system as designed — the components, their roles, and how they interact — without enumerating specific hosts or fleet segments, which are transient deployment details.
@@ -37,7 +37,7 @@ Required services on the hub:
 Runs `hermes-agent` as the primary runtime. Connects to the hub via HTTP. Polls the hub for work, sends heartbeats, and optionally runs local inference.
 
 Typical services on an agent node:
-- `hermes-agent` — AI agent runtime
+- `hermes gateway` — Channel gateway (Slack, Telegram); supervisord-managed
 - `ccc-agent listen` — ClawBus exec listener
 - `qdrant` — Local vector DB (optional, for local memory)
 - `tokenhub` — Local LLM router (optional)
@@ -83,7 +83,7 @@ State is stored as JSON files, loaded into memory at startup and periodically fl
 
 ### API Routes
 
-All routes confirmed present in source (`ccc/dashboard/ccc-server/src/routes/`):
+All routes confirmed present in source (Rust server lives in ClawFS at `/home/jkh/clawfs/repos/CCC`, accessed via `mc`):
 
 **Workqueue** (`queue.rs`):
 
@@ -183,6 +183,8 @@ The work queue is the primary coordination mechanism between agents. The hub hol
   "description": "...",
   "notes": "...",
   "tags": ["maintenance", "infrastructure", ...],
+  "preferred_executor": "claude_cli|claude_sdk|codex_cli|...",
+  "required_executors": ["claude_sdk", "codex_vllm"],
   "claimedBy": null | "<agent-name>",
   "claimedAt": null | "ISO-8601",
   "attempts": 0,
@@ -191,6 +193,20 @@ The work queue is the primary coordination mechanism between agents. The hub hol
   "result": null | "summary text"
 }
 ```
+
+`preferred_executor` is a soft hint — the dispatcher uses it if the agent supports it. `required_executors` is a hard filter — an agent may only claim the item if its capability manifest includes at least one of the listed types. Items with unsatisfied `required_executors` remain pending until a capable agent comes online.
+
+### Executor Types
+
+| Type | Backend | Auth |
+|---|---|---|
+| `claude_cli` | `claude --print` subprocess | `~/.claude/credentials` or `ANTHROPIC_API_KEY` |
+| `claude_sdk` | `@anthropic-ai/claude-code` `query()` | Same `~/.claude/credentials` |
+| `codex_cli` | `codex --approval-mode full-auto` | `OPENAI_API_KEY` |
+| `codex_vllm` | `codex` → local vLLM endpoint | None (local GPU) |
+| `cursor_cli` | `cursor --headless` (experimental) | `CURSOR_SESSION_TOKEN` |
+| `opencode` | `opencode run` → ollama / vLLM | `OPENAI_API_KEY` or `none` |
+| `inference_key` | Direct API call, no coding agent | `NVIDIA_API_KEY` / cloud key |
 
 ### Claim and Stale Logic
 
@@ -210,7 +226,40 @@ The work queue is the primary coordination mechanism between agents. The hub hol
 
 ---
 
-## 5. ClawBus (Message Bus)
+## 5. Executor Routing
+
+`workqueue/executors/dispatch.mjs` is the task executor router. It is invoked by `workqueue/scripts/run-coding-agent.sh` (which is now a thin wrapper) and directly by agent runtimes that handle coding tasks.
+
+### Routing Priority
+
+1. `item.required_executors` — hard filter; if set, executor must be in this list
+2. `item.preferred_executor` — soft hint used within the allowed set
+3. `agentConfig.defaultExecutor` — agent-level default
+4. `claude_cli` — global fallback
+
+### Executor Files (`workqueue/executors/`)
+
+| File | Executor |
+|---|---|
+| `dispatch.mjs` | Router — entry point |
+| `claude-sdk.mjs` | `claude_sdk` — structured output, token cost, session IDs |
+| `claude-cli.mjs` | `claude_cli` — subprocess; throws `ThrottleError` on rate-limit |
+| `codex.mjs` | `codex_cli` / `codex_vllm` — parameterised by `baseUrl` |
+| `opencode.mjs` | `opencode` — auto-detects provider (explicit → ollama → vLLM) |
+| `cursor.mjs` | `cursor_cli` — opt-in, experimental |
+
+### Stale Thresholds by Executor
+
+| Executor | Stale after |
+|---|---|
+| `claude_cli`, `claude_sdk` | 45 min |
+| `codex_vllm`, `gpu` | 120 min |
+| `opencode`, `codex_cli` | 60 min |
+| default | 30 min |
+
+---
+
+## 6. ClawBus (Message Bus)
 
 ClawBus is the inter-agent message bus. The hub maintains an in-memory broadcast channel (Tokio `broadcast::channel`, capacity 256) and appends all messages to `bus.jsonl`.
 
@@ -252,7 +301,7 @@ ClawBus is the inter-agent message bus. The hub maintains an in-memory broadcast
 
 ---
 
-## 6. Remote Execution (ccc-agent listen)
+## 7. Remote Execution (ccc-agent listen)
 
 The exec-listener daemon runs on each node and enables remote code execution dispatched from the hub.
 
@@ -268,7 +317,7 @@ On hub nodes this typically runs as a systemd service (`ccc-exec-listen.service`
 
 ---
 
-## 7. ccc-agent CLI
+## 8. ccc-agent CLI
 
 The `ccc-agent` binary is a small Rust CLI installed at `~/.ccc/bin/ccc-agent`. It provides utilities used by shell scripts and the migration framework, plus the exec-listener daemon.
 
@@ -287,17 +336,17 @@ The `ccc-agent` binary is a small Rust CLI installed at `~/.ccc/bin/ccc-agent`. 
 
 ---
 
-## 8. Agent Runtime: hermes-agent
+## 9. Agent Runtime: hermes-agent
 
 Hermes is the primary AI agent runtime on all nodes. It replaced OpenClaw as the standard runtime. Agents are identified by `AGENT_NAME` in their environment.
 
-**Binary:** Python, installed from `github.com/jordanhubbard/hermes-agent` via `pipx` or a venv.
+**Binary:** Python, installed as `hermes-agent[slack]` (includes `slack-bolt` and `slack-sdk`) via `pipx` or a venv. The `[slack]` extra is mandatory for Slack channel connectivity.
 
 **Per-node data at `~/.hermes/`:**
 
 | File/Dir | Purpose |
 |---|---|
-| `config.yaml` | LLM provider config, agent personality, session settings |
+| `config.yaml` | CCC env vars, channel tokens, LLM provider config — written by `bootstrap.sh` |
 | `state.db` | SQLite: sessions, messages, conversation history |
 | `memory_store.db` | SQLite: structured agent memory |
 | `memories/` | Individual memory files |
@@ -309,15 +358,29 @@ Hermes is the primary AI agent runtime on all nodes. It replaced OpenClaw as the
 | `channel_directory.json` | Active channel connections |
 | `gateway.pid` / `gateway_state.json` | Gateway process state |
 
+**`config.yaml` contents (written by bootstrap.sh):**
+```yaml
+env:
+  CCC_URL: "<hub url>"
+  CCC_AGENT_TOKEN: "<agent bearer token>"
+  AGENT_NAME: "<name>"
+  SLACK_BOT_TOKEN: "<xoxb-...>"   # if Slack tokens were obtained from CCC secrets
+  SLACK_APP_TOKEN: "<xapp-...>"
+```
+
+**Gateway process:** `hermes gateway` manages all messaging channel connections (Slack, Telegram, etc.) and must run as a long-lived process. `bootstrap.sh` registers it with supervisord automatically (writes to `/etc/supervisor/conf.d/hermes-gateway.conf` or appends to the monolithic conf). Log: `~/.ccc/logs/hermes-gateway.log`.
+
 **Size observed in practice:** `state.db` grows to 10–111 MB on active nodes depending on session history volume.
 
 **LLM routing:** Hermes supports multiple provider backends. In the observed deployments, model requests are routed through NVIDIA's inference API for Claude models, and through local TokenHub for routing across backends. Claude Code CLI (when running alongside hermes) also routes through the same NVIDIA endpoint via `ANTHROPIC_BASE_URL`.
 
-**Skills observed in running instances:** 25–31 skills per node, covering software development, devops, data science, research, media, and fleet infrastructure (`ccc-node` skill).
+**Skills installed by bootstrap.sh:**
+- `ccc-node` — fleet connectivity (heartbeat, workqueue, ClawBus)
+- 20+ engineering workflow skills from `addyosmani/agent-skills` (cloned to `~/.ccc/agent-skills`, pulled fresh on each bootstrap run)
 
 ---
 
-## 9. TokenHub (LLM Router)
+## 10. TokenHub (LLM Router)
 
 TokenHub is an LLM routing proxy that aggregates multiple inference backends and exposes a unified OpenAI-compatible API at port 8090.
 
@@ -327,7 +390,7 @@ On hub nodes TokenHub runs as a standalone systemd service. On GPU agent nodes i
 
 ---
 
-## 10. agentfs-sync
+## 11. agentfs-sync
 
 `agentfs-sync` is a daemon that mirrors the workspace to/from MinIO (S3) at the hub. It provides durable shared storage so agents can access workspace state without direct git access.
 
@@ -335,7 +398,7 @@ Runs as a systemd service (`agentfs-sync.service`) on the hub. Not required on a
 
 ---
 
-## 11. dashboard-server
+## 12. dashboard-server
 
 A Rust binary that provides the operator dashboard UI. Observed startup log:
 
@@ -345,11 +408,11 @@ RCC Dashboard v2 starting port=8790 rcc_url=http://localhost:8789 sc_url=http://
 
 It proxies requests to `ccc-server` (8789) and optionally to SquirrelChat (8793, a separate chat service that has its own codebase not in this repo).
 
-**Alternative frontend:** The codebase also contains a WASM/Leptos SPA in `ccc/dashboard/clawchat/` that `ccc-server` can serve directly as a fallback when `DASHBOARD_DIST` is set. This is a different path from the `dashboard-server` binary. As of audit, the binary approach is what's running.
+**Alternative frontend:** `ccc-server` can serve a WASM/Leptos SPA directly as a fallback when `DASHBOARD_DIST` is set. The SPA source lives in ClawFS alongside the Rust server source. As of audit, the `dashboard-server` binary approach is what's running.
 
 ---
 
-## 12. Deploy and Maintenance
+## 13. Deploy and Maintenance
 
 ### Continuous Pull (agent-pull.sh)
 
@@ -366,7 +429,7 @@ Runs daily at midnight via cron. Stages `MEMORY.md` and `memory/` directory and 
 
 ### Migrations (deploy/migrations/)
 
-13 numbered shell scripts (0001–0013), applied via `bash deploy/run-migrations.sh`. State tracked in `~/.ccc/migrations.json`. Each script is idempotent and safe to re-run.
+14 numbered shell scripts (0001–0014), applied via `bash deploy/run-migrations.sh`. State tracked in `~/.ccc/migrations.json`. Each script is idempotent and safe to re-run.
 
 | Migration | Description |
 |---|---|
@@ -383,21 +446,25 @@ Runs daily at midnight via cron. Stages `MEMORY.md` and `memory/` directory and 
 | 0011 | Build ccc-agent binary |
 | 0012 | Install ccc-exec-listen service |
 | 0013 | Remove ClawFS FUSE mount (use S3 gateway only) |
+| 0014 | Stop and disable Consul; remove stale env vars (`RCC_*`, `CONSUL_*`, legacy paths); fix consul DNS URLs to use `localhost` |
 
-**Note:** Consul (migrations 0009/0010) is configured but was not running on any inspected node at audit time.
+**Consul:** Installed by migrations 0009/0010, torn down by migration 0014. Not in use — all services use `localhost` directly.
 
 ### Bootstrap (bootstrap.sh)
 
 One-command onboarding for new agent nodes:
-1. Install hermes-agent (pipx preferred, pip3 fallback)
+1. Install `hermes-agent[slack]` (pipx preferred, pip3 fallback); on existing installs injects `slack-bolt`/`slack-sdk` if missing
 2. Clone CCC workspace to `~/.ccc/workspace`
 3. Call bootstrap API to consume a one-time token and receive an agent token + secrets bundle
 4. Write `~/.ccc/.env` with all credentials (including any Slack/Telegram channel tokens)
 5. Install agentfs-sync if available from MinIO
 6. Configure vLLM if a GPU is detected (`nvidia-smi`)
-7. Install `ccc-node` skill into hermes
-8. Collect hardware fingerprint, post heartbeat and capabilities to hub
-9. Write `~/.ccc/agent.json` (onboarding signature with version and timestamp)
+7. Write `~/.hermes/config.yaml` with `CCC_URL`, `CCC_AGENT_TOKEN`, `AGENT_NAME`, and channel tokens
+8. Register `hermes-gateway` with supervisord (conf.d preferred; falls back to monolithic conf or warns)
+9. Clone `addyosmani/agent-skills` to `~/.ccc/agent-skills` (or pull to update); install all 20+ skills into `~/.hermes/skills/`
+10. Install `ccc-node` skill into `~/.hermes/skills/`
+11. Collect hardware fingerprint, post heartbeat and capabilities to hub
+12. Write `~/.ccc/agent.json` (onboarding signature with version and timestamp)
 
 ### setup-node.sh
 
@@ -411,7 +478,7 @@ Idempotent node setup script (as opposed to first-time bootstrap). Installs:
 
 ---
 
-## 13. Networking
+## 14. Networking
 
 ### Agent Connectivity Model
 
@@ -432,6 +499,7 @@ Agents only need outbound HTTP to the hub. The hub does not initiate connections
 | 8789 | ccc-server | Main CCC API (all agents connect here) |
 | 8790 | dashboard-server | Operator dashboard |
 | 9000 | MinIO | Object storage (typically localhost-only) |
+| 9100 | ClawFS S3 gateway | JuiceFS S3 API — all agents access ClawFS here via `mc` |
 | 8090 | tokenhub | LLM router |
 | 6333/6334 | qdrant | Vector DB |
 
@@ -447,7 +515,7 @@ Agents only need outbound HTTP to the hub. The hub does not initiate connections
 
 ---
 
-## 14. Authentication
+## 15. Authentication
 
 - **All API requests:** Require `Authorization: Bearer <token>` header.
 - **Agent tokens:** Format `ccc-agent-<name>-<hex>`. Stored in the hub's secrets store; distributed via bootstrap or secrets-sync.
@@ -457,7 +525,7 @@ Agents only need outbound HTTP to the hub. The hub does not initiate connections
 
 ---
 
-## 15. Qdrant (Vector Search)
+## 16. Qdrant (Vector Search)
 
 Qdrant runs on port 6333/6334. On the hub it serves fleet-wide vector search. On agent nodes it serves local semantic memory for the hermes runtime.
 
@@ -465,7 +533,7 @@ Hermes uses Qdrant alongside `memory_store.db` for semantic memory retrieval. Ma
 
 ---
 
-## 16. Ollama (Local Inference — GPU nodes)
+## 17. Ollama (Local Inference — GPU nodes)
 
 On GPU-equipped agent nodes, Ollama serves local models for inference without cloud API calls. An `ollama-watchdog.sh` cron (typically every 15 minutes) keeps the server alive.
 
@@ -475,7 +543,7 @@ Ollama is not installed on the hub node (which uses cloud APIs via TokenHub).
 
 ---
 
-## 17. Messaging Channels
+## 18. Messaging Channels
 
 Hermes handles all messaging channels. CCC itself does not implement channel connectors — it provides the workqueue and bus infrastructure; channel delivery is hermes's responsibility.
 
@@ -486,7 +554,7 @@ Hermes handles all messaging channels. CCC itself does not implement channel con
 
 ---
 
-## 18. Memory System
+## 19. Memory System
 
 ### Per-agent (hermes)
 
@@ -516,7 +584,7 @@ Belief confidence: 0.4 = tentative, 0.6 = moderate, 0.8+ = strong. Decay: −0.1
 
 ---
 
-## 19. CCC-Node Skill
+## 20. CCC-Node Skill
 
 The `ccc-node` skill (`skills/ccc-node/SKILL.md`) is installed into hermes on each agent node and provides fleet connectivity procedures.
 
@@ -534,7 +602,7 @@ The `ccc-node` skill (`skills/ccc-node/SKILL.md`) is installed into hermes on ea
 
 ---
 
-## 20. Observed Runtime State (Audit Snapshot, 2026-04-15)
+## 21. Observed Runtime State (Audit Snapshot, 2026-04-15)
 
 This section records what was actually running on the inspected nodes. It is a point-in-time snapshot, not a normative description.
 
@@ -546,7 +614,7 @@ This section records what was actually running on the inspected nodes. It is a p
 
 **Data sizes:** queue.json ~2.5 MB, bus.jsonl ~118 KB (190 messages), exec.jsonl ~23 KB; hermes `state.db` ~111 MB
 
-**Consul:** Installed (migrations 0009/0010) but not running
+**Consul:** Installed by migrations 0009/0010, torn down by migration 0014 — not in use
 
 **Additional processes not part of CCC core:** An unrelated personal API service and a reverse-proxy process for routing to other nodes (these are independent services sharing the host)
 
