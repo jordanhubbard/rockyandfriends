@@ -144,11 +144,8 @@ CCC_WORKSPACE="$HOME/.ccc/workspace"
 info "Setting up CCC workspace at $CCC_WORKSPACE..."
 if [[ -d "$CCC_WORKSPACE/.git" ]]; then
   git -C "$CCC_WORKSPACE" pull --ff-only || warn "git pull failed"
-  git -C "$CCC_WORKSPACE" submodule update --init --recursive 2>/dev/null || \
-    warn "submodule update failed (non-fatal)"
 else
-  git clone --recurse-submodules \
-    "${CCC_REPO:-https://github.com/jordanhubbard/rockyandfriends.git}" "$CCC_WORKSPACE"
+  git clone "${CCC_REPO:-https://github.com/jordanhubbard/rockyandfriends.git}" "$CCC_WORKSPACE"
 fi
 success "CCC workspace ready"
 
@@ -454,25 +451,25 @@ if command -v hermes &>/dev/null; then
     success "CCC-node skill installed into Hermes"
   fi
 
-  # agent-skills engineering workflows (submodule)
-  # Ensure the submodule is initialized — harmless if already up to date.
-  if [[ -d "$CCC_WORKSPACE/.git" ]]; then
-    git -C "$CCC_WORKSPACE" submodule update --init --recursive -- skills/agent-skills 2>/dev/null || \
-      warn "agent-skills submodule init failed — skills may be missing"
+  # agent-skills engineering workflows — clone directly (no submodule friction)
+  AGENT_SKILLS_CACHE="$HOME/.ccc/agent-skills"
+  if [[ -d "$AGENT_SKILLS_CACHE/.git" ]]; then
+    git -C "$AGENT_SKILLS_CACHE" pull --ff-only 2>/dev/null || \
+      warn "agent-skills update failed — using cached version"
+  else
+    info "Cloning agent-skills..."
+    git clone --depth=1 https://github.com/addyosmani/agent-skills.git \
+      "$AGENT_SKILLS_CACHE" 2>/dev/null || \
+      warn "agent-skills clone failed (non-fatal — skills will be missing)"
   fi
-  AGENT_SKILLS_DIR="$CCC_WORKSPACE/skills/agent-skills/skills"
-  if [[ -d "$AGENT_SKILLS_DIR" ]]; then
+  if [[ -d "$AGENT_SKILLS_CACHE/skills" ]]; then
     _count=0
-    for _skill_dir in "$AGENT_SKILLS_DIR"/*/; do
+    for _skill_dir in "$AGENT_SKILLS_CACHE/skills"/*/; do
       _skill_name="$(basename "$_skill_dir")"
-      # Only copy if the destination doesn't exist or is older
-      cp -rn "$_skill_dir" "$HOME/.hermes/skills/${_skill_name}/" 2>/dev/null || \
-        cp -r  "$_skill_dir" "$HOME/.hermes/skills/${_skill_name}/"
+      cp -r "$_skill_dir" "$HOME/.hermes/skills/${_skill_name}/"
       _count=$((_count + 1))
     done
     success "agent-skills: ${_count} engineering workflow skills installed into Hermes"
-  else
-    warn "agent-skills submodule not populated — run: git submodule update --init"
   fi
 
   # Write ~/.hermes/config.yaml with CCC env vars and channel tokens.

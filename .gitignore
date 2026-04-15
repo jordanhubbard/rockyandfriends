@@ -127,3 +127,4 @@ target/
 **/target/
 rcc/dashboard/data/
 __pycache__/
+skills/agent-skills/
