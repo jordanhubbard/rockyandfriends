@@ -7,8 +7,9 @@
     <string>com.ccc.queue-worker</string>
     <key>ProgramArguments</key>
     <array>
-        <string>/usr/bin/python3</string>
-        <string>AGENT_HOME/.ccc/workspace/deploy/queue-worker.py</string>
+        <string>/bin/bash</string>
+        <string>-c</string>
+        <string>exec "$(PATH=/opt/homebrew/bin:/usr/local/bin:$PATH which python3)" AGENT_HOME/.ccc/workspace/deploy/queue-worker.py</string>
     </array>
     <key>RunAtLoad</key>
     <true/>
