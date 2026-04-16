@@ -272,6 +272,54 @@ def run_claude(prompt: str, item_id: str) -> tuple[str, int]:
     return output, exit_code
 
 
+# ── Hermes executor ───────────────────────────────────────────────────────────
+
+# Tags that should be routed to hermes-agent instead of claude -p.
+_HERMES_TAGS = {"hermes", "gpu", "render", "simulation", "omniverse", "isaaclab"}
+
+
+def _hermes_applicable(item: dict) -> bool:
+    tags = set(item.get("tags", []))
+    preferred = item.get("preferred_executor", "")
+    return bool(tags & _HERMES_TAGS) or preferred == "hermes"
+
+
+def run_hermes(item: dict, item_id: str) -> tuple[str, int]:
+    """Route a task to hermes-driver.py instead of claude -p."""
+    driver = shutil.which("hermes-driver") or str(
+        Path(__file__).parent / "hermes-driver.py"
+    )
+    query = f"{item.get('title', '')}\n\n{item.get('description', '')}"
+    if item.get("notes"):
+        query += f"\n\nContext:\n{item['notes']}"
+
+    stop_keepalive = threading.Event()
+
+    def keepalive_loop():
+        while not stop_keepalive.wait(KEEPALIVE_INTERVAL):
+            post_keepalive(item_id, "hermes still working")
+            log.info(f"[{item_id}] keepalive sent")
+
+    threading.Thread(target=keepalive_loop, daemon=True).start()
+
+    try:
+        python = shutil.which("python3") or "python3"
+        result = subprocess.run(
+            [python, driver, "--item", item_id, "--query", query],
+            capture_output=True, text=True,
+            timeout=86400,  # 24h wall-clock; hermes-driver handles per-attempt limits
+            env={**os.environ},
+        )
+        output = result.stdout.strip() or result.stderr.strip() or "(no output)"
+        return output, result.returncode
+    except subprocess.TimeoutExpired:
+        return "[hermes-driver timed out]", 124
+    except Exception as e:
+        return f"ERROR: {e}", 1
+    finally:
+        stop_keepalive.set()
+
+
 # ── Item selector ─────────────────────────────────────────────────────────────
 
 def select_item(items: list[dict]) -> dict | None:
@@ -364,13 +412,18 @@ def main():
                 "body": f"[URGENT] {title} assigned to {AGENT_NAME} — working now",
             })
 
-        # Build prompt and run
-        prompt = build_task_prompt(item, instructions)
+        # Route to hermes or claude
         post_comment(item_id, f"{AGENT_NAME} starting execution via queue-worker")
 
-        log.info(f"[{item_id}] Invoking claude...")
-        output, exit_code = run_claude(prompt, item_id)
-        log.info(f"[{item_id}] claude exited {exit_code} ({len(output)} chars output)")
+        if _hermes_applicable(item):
+            log.info(f"[{item_id}] Routing to hermes-driver...")
+            output, exit_code = run_hermes(item, item_id)
+            log.info(f"[{item_id}] hermes-driver exited {exit_code} ({len(output)} chars output)")
+        else:
+            prompt = build_task_prompt(item, instructions)
+            log.info(f"[{item_id}] Invoking claude...")
+            output, exit_code = run_claude(prompt, item_id)
+            log.info(f"[{item_id}] claude exited {exit_code} ({len(output)} chars output)")
 
         # Post result
         if exit_code == 0:
