@@ -40,7 +40,7 @@ A cheap Azure CPU VM. The hub of all coordination.
 
 ### 2. Agent Nodes — The Spokes
 
-Anything with a Claude/Codex CLI session in tmux, or any machine running OpenClaw.
+Anything with a Claude/Codex CLI session in tmux, or any machine running hermes-agent.
 
 **Key properties:**
 - Outbound-only connectivity is sufficient — agents reach out to CCC, CCC doesn't reach in
@@ -83,24 +83,21 @@ The "boss" (owner) can invite collaborators. Each collaborator can see the dashb
 ### 5. Agent Registration Flow
 
 ```
-Human installs OpenClaw on GPU machine
-Human runs: rocky register https://ccc.example.com
-Rocky CLI prompts for CCC token
-CCC creates agent record, returns agent token
-Agent stores token, starts heartbeat cron
+Install hermes-agent on the node (pipx install hermes-agent)
+Copy deploy/.env.template → ~/.ccc/.env, fill in CCC_URL + CCC_AGENT_TOKEN
+Run: make register   (POSTs capabilities to the hub)
 Agent appears on CCC dashboard
 ```
 
-For Claude CLI agents (the gold standard):
+For Claude CLI agents:
 ```
-Human opens tmux session
-Human runs: openclaw start (or zeroclaw, etc.)
-Human does /login → gets URL → pastes into browser → pastes credential back
-Agent is now online and full-intelligence
-Human runs: rocky register https://ccc.example.com
+Start a persistent tmux session: tmux new-session -d -s claude-main
+Launch Claude Code: tmux send-keys -t claude-main 'claude --dangerously-skip-permissions' Enter
+Set AGENT_CLAUDE_CLI=true in ~/.ccc/.env
+Run: make register
 ```
 
-CCC doesn't automate the SSO login. It accepts the agent once it's running.
+CCC doesn't manage the Claude Code session — it delegates to it via claude-worker.mjs.
 
 ---
 

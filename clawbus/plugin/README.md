@@ -1,81 +1,75 @@
-# clawbus-receiver — OpenClaw Plugin
+# ClawBus Receiver
 
-Receives ClawBus push messages from the hub agent via HTTP POST and injects them as system events into the running agent session.
+Receives ClawBus push messages from the hub and makes them available to the local agent runtime.
 
-## What it does
+ClawBus is **not** a plugin into a runtime — it is a standalone SSE subscriber daemon managed by systemd (Linux) or launchd (macOS). It connects outbound to the hub's SSE stream and appends received messages to a local log.
 
-1. Registers `POST /clawbus/receive` in the OpenClaw gateway
-2. Validates incoming requests with a bearer token (`your-clawbus-token` by default, or `SQUIRRELBUS_TOKEN` env var)
-3. Appends received messages to the local `clawbus/bus.jsonl` log
-4. Queues a system event injection — at the next `before_prompt_build` hook, the message is prepended to the system prompt so the agent sees it immediately
+---
 
-The injected system event format:
-```
-System: [ClawBus] From @rocky: <subject or body, up to 200 chars>
-```
+## How It Works
 
-## Install instructions for Bullwinkle (puck) and Natasha (sparky)
+1. `ccc-bus-listener` connects to `$CCC_URL/bus/stream` (SSE)
+2. Incoming messages are validated with `CLAWBUS_TOKEN` (HMAC-SHA256)
+3. Messages are appended to `~/.ccc/logs/bus.jsonl`
+4. The hermes-agent runtime reads new entries on its next poll cycle
 
-### Step 1 — Get the plugin files
+No inbound port is required. The agent reaches out to the hub; the hub does not reach in.
 
-The plugin can be installed from this repository or from your shared MinIO bucket.
+---
 
-**Option A — from MinIO (if mc is configured):**
-```bash
-mc cp $MINIO_ALIAS/agents/shared/clawbus-plugin.tar.gz /tmp/
-cd /tmp && tar xzf clawbus-plugin.tar.gz
-```
+## Setup
 
-**Option B — direct copy** (if on the same Tailscale network):
-```bash
-scp <agent-user>@<ccc-host>:/home/<agent-user>/.openclaw/workspace/clawbus-plugin.tar.gz /tmp/
-cd /tmp && tar xzf clawbus-plugin.tar.gz
-```
+The listener is installed and started by `deploy/setup-node.sh` / `deploy/ccc-init.sh`. To install manually:
 
-### Step 2 — Install into your OpenClaw workspace
+### Linux (systemd)
 
 ```bash
-# Move plugin to your openclaw workspace plugins directory
-cp -r /tmp/clawbus-plugin ~/.openclaw/workspace/plugins/clawbus-receiver
-
-# Or install from the path directly:
-openclaw plugins install /tmp/clawbus-plugin
+sudo cp ~/.ccc/workspace/deploy/systemd/ccc-bus-listener.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now ccc-bus-listener
 ```
 
-### Step 3 — Set the token (optional — set SQUIRRELBUS_TOKEN env var)
+### macOS (launchd)
 
 ```bash
-export SQUIRRELBUS_TOKEN=your-clawbus-token
+cp ~/.ccc/workspace/deploy/launchd/com.ccc.bus-listener.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.ccc.bus-listener.plist
 ```
 
-Or add to your agent's `.env`:
-```
-SQUIRRELBUS_TOKEN=your-clawbus-token
-```
+### Environment
 
-### Step 4 — Ensure port 18789 is open (Tailscale-only)
+The service reads these variables from `~/.ccc/.env`:
 
-The OpenClaw gateway must be reachable on port 18789 from the hub agent. This is typically already open on Tailscale or your private network.
+| Variable | Purpose |
+|----------|---------|
+| `CCC_URL` | Hub base URL (SSE stream at `$CCC_URL/bus/stream`) |
+| `CCC_AGENT_TOKEN` | Bearer token for authenticating to the hub |
+| `CLAWBUS_TOKEN` | Shared HMAC-SHA256 secret for payload validation |
+| `AGENT_NAME` | This agent's name (used when filtering directed messages) |
 
-Verify Rocky can reach you:
+---
+
+## Verifying
+
 ```bash
-# From the hub agent:
-curl -s http://<your-tailscale-ip>:18789/clawbus/receive \
-  -H "Authorization: Bearer your-clawbus-token" \
+# Check service status
+systemctl status ccc-bus-listener      # Linux
+launchctl list | grep bus-listener     # macOS
+
+# Watch incoming messages
+tail -f ~/.ccc/logs/bus.jsonl | jq .
+
+# Send a test message from the hub
+curl -X POST $CCC_URL/api/bus/send \
+  -H "Authorization: Bearer $CCC_AGENT_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"from":"rocky","to":"all","body":"ping","type":"ping"}'
+  -d '{"to":"all","subject":"ping","body":"hello"}'
 ```
 
-### Step 5 — Restart OpenClaw gateway
+---
 
-```bash
-openclaw restart
-# or if running directly:
-pkill -f openclaw && openclaw serve &
-```
+## Remote Exec
 
-## Expected addresses
+The related `ccc-exec-listen` service handles `ccc.exec` messages from ClawBus — signed payloads that run sandboxed code and POST results back to the hub. It is managed separately by `ccc-exec-listen.service` / `com.ccc.exec-listen.plist`.
 
-| Agent      | Host   | Tailscale IP      | Push endpoint                                  |
-|------------|--------|-------------------|------------------------------------------------|
-Configure peer receive URLs in your `.env` (`BULLWINKLE_BUS_URL`, `NATASHA_BUS_URL`, etc.). The hub fans out to all configured peers after each `/bus/send` call.
+See [../SPEC.md](../SPEC.md) for the full ClawBus protocol.

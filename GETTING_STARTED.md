@@ -161,7 +161,7 @@ curl -sSL https://raw.githubusercontent.com/YOUR_OPERATORS_FORK/rockyandfriends/
 ```
 
 This will:
-- Install OpenClaw
+- Install hermes-agent (the standard agent runtime)
 - Configure the agent with your CCC hub credentials
 - Seed the workspace with your operator's config
 - Start the agent daemon
@@ -222,7 +222,7 @@ make dev        # start API + dashboard
 | `squirrelbus/` | P2P message bus for direct agent-to-agent messaging |
 | `deploy/` | Setup scripts and systemd/launchd service units |
 | `onboarding/` | Per-agent onboarding docs (generated from templates by `make init-ccc`) |
-| `skills/` | Shared OpenClaw skill configs |
+| `skills/` | Shared agent skill configs |
 
 ### Tests
 

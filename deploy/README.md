@@ -72,9 +72,9 @@ Cost model: coding CLI = fixed monthly subscription, not per-token. CCC's infere
 | Codex | `npm install -g @openai/codex` | Good alternative |
 | OpenCode | https://opencode.ai | Open source |
 
-Also install the [coding-agent skill](https://github.com/openclaw/skills/blob/main/skills/steipete/coding-agent/SKILL.md) in OpenClaw:
+To install the CCC fleet skill into hermes-agent:
 ```bash
-clawhub install coding-agent
+cp -r ~/.ccc/workspace/skills/ccc-node/ ~/.hermes/skills/ccc-node/
 ```
 
 Without the coding CLI turbocharger, `claude_cli` work items stay pending forever.

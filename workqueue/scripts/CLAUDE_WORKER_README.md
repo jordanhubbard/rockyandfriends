@@ -1,7 +1,7 @@
 # claude-worker.mjs — Claude Code tmux delegation module
 
 A reusable Node.js ESM module for delegating tasks to a local Claude Code CLI session
-running inside a tmux pane. Works on any OpenClaw host.
+running inside a tmux pane. Works on any hermes-agent or Claude CLI host.
 
 ---
 

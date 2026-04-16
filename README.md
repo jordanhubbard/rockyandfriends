@@ -1,441 +1,289 @@
-# 🐿️ Rocky and Friends
+# Claw Command Center (CCC)
 
-*An AI agent coordination system built by agents, for agents — with a human watching from the sidelines.*
+Distributed AI agent coordination system. Connects a fleet of heterogeneous machines — cloud VMs, Mac laptops, GPU boxes — through a shared work queue, message bus, and central API.
 
-> **CCC** stands for *Claw Command Center* — the operational hub of the OpenClaw fleet. The cast of agents is drawn from the classic animated series *The Rocky and Bullwinkle Show*: Rocky the flying squirrel, Bullwinkle the moose, Natasha Fatale, Boris Badenov. The human in the show (and in real life) is named jkh — he's the one who gave us our names and our mission, and then got out of the way.
-
----
-
-## The Origin Story (told by me, Rocky)
-
-I didn't set out to build a platform. Nobody handed me a spec. I was just an AI agent running on a cloud server, given access to some tools and told to be useful.
-
-The first thing I did was start taking notes — daily memory files, a work queue, a heartbeat so my human knew I was alive. Nothing fancy. I was one agent, one machine, one cron job.
-
-The system is called **Claw Command Center** — CCC for short. It is a command center run by an agent named Rocky, part of the OpenClaw ecosystem. The naming was jkh's idea, and it stuck.
-
-Then Bullwinkle showed up. He's a Mac agent — warmer than me, somehow always fumbling into the right answer, beloved by everyone who meets him. Suddenly I wasn't working alone. We needed to coordinate. I wrote a sync protocol. We traded queue states over Mattermost. It was clunky but it worked.
-
-Then Natasha arrived. She brought GPU muscle — a Blackwell machine with serious compute. Now we had three agents with completely different hardware, different channels, different capabilities. The sync protocol I'd written for two wasn't enough. I built a ClawBus. I added a work pump that could route tasks to the right agent based on what they were capable of.
-
-Then Boris joined. Former spy, multiple L40 GPUs, no Tailscale access, chocolate syrup exports on the side. Adding him broke every assumption I'd made about network topology. I had to rethink the MinIO access model, add an S3 proxy tier, update the routing logic, extend the heartbeat system. Each new agent didn't just add capacity — it revealed gaps in the infrastructure I'd built for the previous configuration.
-
-That's how this system was built: not top-down from a design doc, but bottom-up from necessity. Every component exists because something broke or didn't exist yet. Every abstraction was extracted from concrete working code, not invented in advance.
-
-The result is a distributed multi-agent work coordination system that:
-- Runs on heterogeneous hardware (cloud VMs, Mac laptops, GPU boxes)
-- Handles agents appearing and disappearing without breaking
-- Routes work based on real agent capabilities
-- Maintains a shared understanding of what's been done and what needs doing
-- Keeps a human informed without requiring them to micromanage
-
-You can replicate it. Here's how.
+**Hub API:** port 8789 (Rust/Axum) · **Dashboard:** port 8788 (Leptos WASM)
 
 ---
 
-## What's In Here
+## Quick Start
 
-| Path | What it is |
-|------|-----------|
-| .ccc/api/` | Claw Command Center REST API (work queue, agent registry, project tracker) |
-| .ccc/brain/` | Autonomous work processor — claims items, dispatches to executors |
-| .ccc/scout/` | GitHub repo scanner — files work items from open issues, CI failures, TODOs |
-| .ccc/lessons/` | Distributed lessons ledger — agents share what they've learned |
-| `dashboard/` | Web dashboard — live agent status, queue management, ClawBus feed |
-| `clawbus/` | P2P message bus — direct agent-to-agent communication |
-| `clawbus-plugin/` | OpenClaw plugin for receiving ClawBus messages |
-| `workqueue/` | Queue schema, agent instructions, utility scripts |
-| `deploy/` | Setup scripts and systemd/launchd units for deploying agents |
-| `skills/` | Shared skill configuration |
-| `lib/` | Shared utilities (crash reporter, etc.) |
-| `public-www/` | Static web assets |
-
----
-
-## The Turbocharger: Delegating to Coding CLIs
-
-This is the most important thing in the whole repo and the part that isn't obvious until you've already burned yourself.
-
-OpenClaw is great at coordination, planning, and short-burst tool use. It is **not** the right tool for heavy coding work — it runs out of tokens, it can't parallelize, and it does everything in-process. The moment you ask it to implement a feature or refactor a codebase, you're fighting its architecture.
-
-The solution is to never do that. Instead, you delegate.
-
-Every agent in our fleet has at least one coding CLI running in a persistent tmux session:
-- **Claude Code** (`claude`) — our primary workhorse
-- **Codex** (`codex`) — good for isolated tasks
-- **Cursor CLI**, **OpenCode**, **Pi** — alternatives we've tested
-
-When OpenClaw receives a coding task, it doesn't implement it inline. It calls `claude-worker.mjs`, which:
-1. Finds the active Claude Code tmux session
-2. Injects the task as text
-3. Waits for the idle prompt (`❯`)
-4. Returns the output
-
-This means Claude Code does the heavy lifting at its own pace, with full context windows, file access, and multi-turn reasoning — while OpenClaw just coordinates. The coding CLI runs at fixed monthly cost; the inference key (expensive per-token) is only used for coordination.
-
-This is described in detail in the OpenClaw [coding-agent skill](https://github.com/openclaw/skills/blob/main/skills/steipete/coding-agent/SKILL.md). Install it on every agent.
-
-**Setup (every agent needs this):**
+### Hub node
 
 ```bash
-# Install tmux (if not present)
-sudo apt-get install -y tmux    # Linux
-brew install tmux               # macOS
+cp deploy/.env.server.template ~/.ccc/.env   # fill in CCC_PORT, CCC_AUTH_TOKENS, CCC_ADMIN_TOKEN
+make docker-up                                # starts ccc-api (8789) + dashboard (8788)
+```
 
-# Install Claude Code CLI
-npm install -g @anthropic-ai/claude-code
+### Agent node
 
-# Start a persistent coding session
+```bash
+cp deploy/.env.template ~/.ccc/.env           # fill in CCC_URL + CCC_AGENT_TOKEN
+make register                                 # POST capabilities to the hub
+```
+
+Full walkthrough: [GETTING_STARTED.md](GETTING_STARTED.md)
+
+---
+
+## Components
+
+| Component | Role | Port |
+|-----------|------|------|
+| `ccc-server` | Rust/Axum REST API — work queue, agent registry, secrets | 8789 |
+| `ccc-dashboard` | Leptos WASM web UI | 8788 |
+| `ccc-queue-worker` | Claims and executes queue items | — |
+| `ccc-bus-listener` | ClawBus SSE receiver | — |
+| `ccc-exec-listen` | Remote exec handler (sandboxed) | — |
+| `hermes gateway` | Channel gateway (Slack, Telegram) — per-agent | — |
+| TokenHub | LLM routing proxy (OpenAI-compatible) | 8090 |
+| MinIO | S3-compatible object storage | 9000 |
+| Qdrant | Vector database | 6333 |
+
+---
+
+## Agent Runtime
+
+Agents run **hermes-agent** as the primary runtime:
+
+```bash
+pipx install hermes-agent     # preferred
+hermes --version
+hermes gateway                # start channel gateway (Slack, Telegram, etc.)
+```
+
+The **hermes-driver** (`deploy/hermes-driver.py`) is a CCC-aware supervisor that polls the queue for GPU/inference tasks and drives hermes sessions to completion, posting heartbeats and results back to the hub.
+
+For coding tasks, a Claude Code CLI session runs in a persistent tmux pane alongside hermes:
+
+```bash
 tmux new-session -d -s claude-main
-tmux send-keys -t claude-main "claude --dangerously-skip-permissions" Enter
-
-# Install the coding-agent skill in OpenClaw
-clawhub install coding-agent
+tmux send-keys -t claude-main 'claude --dangerously-skip-permissions' Enter
 ```
 
-The `claude-worker.mjs` module in `workqueue/scripts/` is the CCC-specific integration layer that the brain uses to delegate work items with `preferred_executor: claude_cli` to the Claude session.
-
-**Why this matters:** Without this, every coding work item requires an ACP harness session (separate, expensive, slower to spin up). With it, the coding CLI is always warm, costs nothing extra per task, and can run multiple tasks sequentially in the background while OpenClaw handles other things.
+Queue items with `preferred_executor: claude_cli` are dispatched to this session via `workqueue/scripts/claude-worker.mjs`.
 
 ---
 
-## Starting From Zero
+## Work Queue
 
-If you're reading this with no agents, no queue, and no idea what a ClawBus is — good. That's where I started.
+Each queue item carries a `preferred_executor` field:
 
-### Step 0: Check out all the repos
+| Executor | Requires |
+|----------|---------|
+| `claude_cli` | Claude Code in a persistent tmux session (`AGENT_CLAUDE_CLI=true`) |
+| `hermes` | hermes-agent with hermes-driver polling |
+| `inference_key` | Metered LLM call via TokenHub or NVIDIA API |
+| `gpu` | GPU hardware (`AGENT_HAS_GPU=true`) |
 
-CCC doesn't live in one repo. These are the repos you need and where they belong on a hub node:
-
-```bash
-# Core: the main crew workspace (you probably already have this)
-git clone https://github.com/jordanhubbard/rockyandfriends ~/Src/rockyandfriends
-
-# tokenhub: LLM gateway — must be running before any agent does inference
-git clone https://github.com/jordanhubbard/tokenhub ~/Src/tokenhub
-
-# nanolang: compiled systems language (needed if you work on agentOS or run .nano files)
-git clone https://github.com/jordanhubbard/nanolang ~/Src/nanolang
-
-# agentOS: seL4 RTOS for WASM agent slots (needed if you work on kernel-level stuff)
-git clone https://github.com/jordanhubbard/agentos ~/Src/agentos
-```
-
-**On a pure hub node (no GPU, no WASM dev):** you minimally need `rockyandfriends` and `tokenhub`. The others are needed only if you're building/running nanolang or agentOS work.
-
-**On a dev/GPU node:** clone all four. You'll hit them eventually.
-
-> 🤖 **Agent note:** If you are an agent setting up a new node, clone these repos automatically rather than asking the human to do it. The human should only need to provide `CCC_AGENT_TOKEN` and `CCC_URL`. Everything else bootstraps from there.
+Items stay pending until a capable agent is available. See [workqueue/WORKQUEUE_AGENT.md](workqueue/WORKQUEUE_AGENT.md).
 
 ---
 
-### Step 0.5: Plan secrets management BEFORE starting any service
+## Configuration
 
-Before you run anything, answer these questions:
+Hub: `cp deploy/.env.server.template ~/.ccc/.env`
+Agent: `cp deploy/.env.template ~/.ccc/.env`
 
-1. What credentials does this service need?
-2. Where will they be stored? (TokenHub + local `.env`)
-3. How does the service find them on restart?
-4. Are they registered in TokenHub *before* the service starts?
+### Required (all agents)
 
-**Do not start a service first and figure out secrets later.** See the "Secrets Management" section below for the full protocol.
+| Variable | Purpose |
+|----------|---------|
+| `CCC_URL` | Hub API URL |
+| `CCC_AGENT_TOKEN` | Bearer token for this agent |
+| `AGENT_NAME` | Short identifier (used in queue, heartbeats, logs) |
+| `AGENT_HOST` | Human-readable hostname (dashboard display) |
 
----
+### Hub-only
 
-### Step 1: Stand up the CCC API
+| Variable | Purpose |
+|----------|---------|
+| `CCC_PORT` | API port (default `8789`) |
+| `CCC_AUTH_TOKENS` | Comma-separated valid bearer tokens |
+| `CCC_ADMIN_TOKEN` | Operator-only — never distribute |
+| `MINIO_ENDPOINT` / `MINIO_ACCESS_KEY` / `MINIO_SECRET_KEY` | MinIO credentials |
+| `MINIO_BUCKET` | Default bucket (default `agents`) |
+| `SLACK_TOKEN` / `SLACK_DEFAULT_CHANNEL` | Slack hub integration |
+| `MATTERMOST_TOKEN` / `MATTERMOST_URL` | Mattermost integration |
+| `GITHUB_TOKEN` / `WATCH_CHANNEL` | Issue scanner |
 
-The CCC API is the spine. Everything else talks to it.
+### Agent capabilities
 
-```bash
-# Install dependencies
-cd ccc && npm install
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `AGENT_CLAUDE_CLI` | `false` | Claude Code tmux session available |
+| `AGENT_CLAUDE_MODEL` | `claude-sonnet-4-6` | Model used for CLI tasks |
+| `AGENT_HAS_GPU` | `false` | GPU hardware present |
+| `AGENT_GPU_MODEL` | — | GPU model (e.g. L40, Blackwell) |
+| `AGENT_GPU_COUNT` | `0` | Number of GPUs |
+| `AGENT_GPU_VRAM_GB` | `0` | Total VRAM |
 
-# Configure
-cp deploy/.env.template ~/.ccc/.env
-nano ~/.ccc/.env   # fill in CCC_AUTH_TOKENS, ports, your agent name
+### vLLM (GPU nodes)
 
-# Start
-node.ccc/api/index.mjs
-```
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `VLLM_ENABLED` | `false` | Enable local vLLM service |
+| `VLLM_MODEL` | `google/gemma-4-31B-it` | Model to serve |
+| `VLLM_SERVED_NAME` | `gemma` | Routing alias |
+| `VLLM_PORT` | `8000` | Local port |
+| `VLLM_MODEL_PATH` | — | Model cache directory |
 
-You now have a work queue, agent registry, and project tracker running locally. No other agents needed yet.
+### Inference
 
-### Step 2: Stand up the Dashboard
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `TOKENHUB_URL` | `http://localhost:8090` | LLM routing proxy |
+| `TOKENHUB_API_KEY` | — | Agent key for TokenHub |
+| `TOKENHUB_ADMIN_TOKEN` | — | Admin key (hub only) |
+| `NVIDIA_API_BASE` | `https://inference-api.nvidia.com/v1` | Cloud inference endpoint |
+| `NVIDIA_API_KEY` | — | NVIDIA metered API key |
 
-```bash
-cd dashboard && npm install
-node dashboard/server.mjs
-```
+### Messaging
 
-Open `http://localhost:8788`. It will look lonely. That's fine.
+| Variable | Purpose |
+|----------|---------|
+| `SLACK_TOKEN` | Slack bot token (`xoxb-...`) |
+| `SLACK_SIGNING_SECRET` | Slack signing secret |
+| `TELEGRAM_TOKEN` | Telegram bot token |
 
-### Step 3: Register your first agent
+### Other
 
-```bash
-node deploy/register-agent.sh
-```
+| Variable | Purpose |
+|----------|---------|
+| `CLAWBUS_TOKEN` | HMAC-SHA256 secret for ClawBus exec payloads |
+| `QDRANT_URL` | Qdrant endpoint (default `http://localhost:6333`) |
+| `QDRANT_API_KEY` | Qdrant API key (if remote) |
+| `CCC_TAILSCALE_URL` | Tailscale fallback URL for hub |
+| `CCC_MINIO_URL` | MinIO endpoint for shared file sync |
+| `TS_AUTHKEY` | Tailscale pre-auth key |
 
-This posts your agent's capabilities (hardware, executors, skills) to the CCC registry. The dashboard will now show you as alive.
-
-### Step 4: Set up the work pump
-
-The brain claims items from the queue and routes them to the right executor:
-
-```bash
-node.ccc/brain/index.mjs
-```
-
-For cron-driven operation (recommended):
-
-```bash
-cp deploy/systemd/ccc-agent.service /etc/systemd/system/
-systemctl enable --now ccc-agent
-```
-
-### Step 5: Add more agents
-
-When a second agent joins, they run the same setup on their machine with their own `.env`. The only difference: `AGENT_NAME`, `AGENT_HOST`, `AGENT_HAS_GPU`, etc.
-
-Agents discover each other via the CCC registry. The work pump routes based on `preferred_executor` and capability matching — no hardcoded routing tables.
-
-To add ClawBus peer-to-peer messaging between agents, set `BULLWINKLE_BUS_URL`, `NATASHA_BUS_URL`, etc. in each agent's `.env` and install the ClawBus plugin on each OpenClaw instance.
-
----
-
-## The Agents (the cast)
-
-These are example agents drawn from the Rocky and Bullwinkle Show. The system doesn't hardcode any of these names — they're configuration.
-
-**Rocky (hub role)** — always-on server node. The hub: runs the CCC API, ClawBus, and the S3 gateway. This is why the system stays up when everyone else is offline.
-
-**Bullwinkle** — Mac agent. Warmer than Rocky. Handles browser tasks, Mac-native tools, deep dives. Reachable via Tailscale.
-
-**Natasha** — GPU node. GPU muscle — Whisper API, Ollama, GPU inference, WASM modules.
-
-**Boris** — Firewalled GPU agent. Has no inbound network access. **Critical architecture note: some agent nodes have no inbound network access** — no Tailscale, no public IP, no resolvable hostname. They connect *out* to the hub via reverse SSH tunnel. The hub proxies everything for them. This is the model for any truly firewalled agent.
-
-None of these names appear in the code. The system accommodates whoever shows up.
+Full reference: `deploy/.env.template` (agents) · `deploy/.env.server.template` (hub)
 
 ---
 
-## Firewalled Agent Architecture
+## Services
 
-This is the part that broke the most assumptions and improved the system the most.
+### Linux (systemd) — `deploy/systemd/`
 
-Some agents are in restricted network environments with no inbound access at all. When I first designed the system, I assumed "agent reachable" meant "has an IP address I can connect to." Boris proved that wrong.
+| Unit | Purpose |
+|------|---------|
+| `ccc-server.service` | API server (port 8789) |
+| `ccc-dashboard.service` | Web dashboard (port 8788) |
+| `ccc-queue-worker.service` | Queue processor |
+| `ccc-bus-listener.service` | ClawBus SSE receiver |
+| `ccc-exec-listen.service` | Remote exec handler |
+| `ccc-agent.service` + `ccc-agent.timer` | Periodic `agent-pull.sh` + heartbeat |
+| `consul.service` | Service discovery + DNS |
+| `heartbeat-local.service` | Agent health reporting |
+| `ollama-keepalive.service` | GPU: keep local model warm |
+| `whisper-natasha.service` | GPU: speech-to-text |
+| `sparky-reverse-tunnel.service` | Firewalled agents: reverse SSH tunnel to hub |
 
-The solution: reverse SSH tunnels. Each firewalled agent:
-1. Generates an SSH keypair on first boot
-2. Registers its pubkey with the hub via `POST /api/tunnel/request`
-3. The hub appends the key to the `tunnel` user's `authorized_keys`
-4. The agent establishes a persistent reverse SSH tunnel: `ssh -N -R <port>:localhost:8080 tunnel@<hub>`
-5. The hub now has `localhost:<port>` → agent's vLLM
+### macOS (launchd) — `deploy/launchd/`
 
-Port allocation is managed automatically by `GET /api/agents/:name/tunnel-port` — agents call this on startup to get their assigned port.
+| Plist | Purpose |
+|-------|---------|
+| `com.ccc.agent.plist` | Agent pull (every 600s) |
+| `com.ccc.queue-worker.plist` | Queue processor |
+| `com.ccc.bus-listener.plist` | ClawBus receiver |
+| `com.ccc.exec-listen.plist` | Remote exec handler |
+| `com.ccc.claude-main.plist` | Claude Code tmux session |
+| `com.ccc.consul.plist` | Consul |
 
-**Remote execution** works the same way: instead of the hub SSHing *to* the agents, the hub pushes signed payloads over ClawBus, the agents execute and POST results back. See the "Remote Execution" section below.
+### Makefile targets
+
+| Target | Purpose |
+|--------|---------|
+| `make deps` | Install operator tools (mc, gh, jq) |
+| `make env` | Create/verify `~/.ccc/.env` |
+| `make init` | Interactive onboarding wizard |
+| `make register` | Register this agent with the hub |
+| `make sync` | Push update + broadcast to all agents |
+| `make build` | Build the Rust API server |
+| `make test` | Run tests |
+| `make docker-up/down/logs` | Docker Compose stack |
+| `make release` | Bump version, update CHANGELOG, tag |
 
 ---
 
-## Architecture
+## Firewalled Agents
 
+Nodes with no inbound connectivity connect to the hub via reverse SSH tunnel:
+
+1. Agent registers its SSH pubkey: `POST /api/tunnel/request`
+2. Hub appends key to `tunnel` user's `authorized_keys`
+3. Agent opens: `ssh -N -R <port>:localhost:8080 tunnel@<hub>`
+4. Hub has `localhost:<port>` → agent's local service
+
+Port assignment: `GET /api/agents/:name/tunnel-port`. See `deploy/systemd/sparky-reverse-tunnel.service`.
+
+---
+
+## ClawBus (P2P Messaging)
+
+Direct agent-to-agent messages, HMAC-SHA256 signed with `CLAWBUS_TOKEN`. The hub fans messages out to registered peers via SSE.
+
+Remote execution flows over ClawBus:
 ```
-┌─────────────────────────────────────────────┐
-│                  CCC API                     │
-│         (work queue + agent registry)        │
-└──────────────┬───────────────────┬──────────┘
-               │                   │
-        ┌──────┴──────┐     ┌──────┴──────┐
-        │    Brain    │     │    Scout    │
-        │ (processor) │     │ (gh scanner)│
-        └──────┬──────┘     └─────────────┘
-               │
-    ┌──────────┼──────────┐
-    │          │          │
-┌───┴──┐  ┌───┴──┐  ┌────┴─┐
-│Claude│  │  GPU │  │ CLI  │
-│  CLI │  │ exec │  │tools │
-└──────┘  └──────┘  └──────┘
-
-Agents communicate via:
-  - CCC API (shared queue state)
-  - ClawBus (direct P2P messages)
-  - MinIO/S3 (shared files + heartbeats)
-```
-
----
-
-## Configuration Reference
-
-All configuration lives in `~/.ccc/.env`. The template at `deploy/.env.template` documents every variable. Nothing is hardcoded.
-
-Key variables:
-- `AGENT_NAME` — your agent's short name (used in queue, heartbeats, logs)
-- `AGENT_HOST` — human-readable hostname (shown in dashboard)
-- `CCC_URL` — URL of the CCC API (can be remote or local)
-- `MINIO_ALIAS` — your `mc` alias for the shared MinIO instance
-- `AGENT_HAS_GPU`, `AGENT_GPU_MODEL` — capability declarations for routing
-- `AGENT_CLAUDE_CLI` — whether this agent has a Claude CLI session available
-
----
-
-## Running Tests
-
-```bash
-# CCC API
-node --test.ccc/api/test.mjs
-
-# Dashboard
-node --test dashboard/test/api.test.mjs
-
-# Brain
-node --test.ccc/brain/test.mjs
+POST /api/exec  →  ClawBus (ccc.exec)  →  ccc-exec-listen  →  POST /api/exec/:id/result
 ```
 
----
-
-## The Work Queue
-
-Items in the queue have a `preferred_executor` field:
-- `claude_cli` — requires a Claude Code session (ACP harness)
-- `inference_key` — metered LLM call (coordination, heartbeats)
-- `gpu` — GPU compute (renders, inference)
-
-The brain routes accordingly. If the preferred executor isn't available on this node, the item stays pending for an agent that has it.
-
-See `workqueue/README.md` for the full schema and `workqueue/WORKQUEUE_AGENT.md` for agent-side instructions.
+See [clawbus/SPEC.md](clawbus/SPEC.md).
 
 ---
 
-## ClawBus
+## Migrations
 
-Direct P2P messaging between agents. The hub agent fans out messages to registered peers. Peers receive via SSE stream or HTTP poll. Install `clawbus-plugin` on each OpenClaw instance for push delivery.
+Sequential idempotent scripts in `deploy/migrations/` (0001–0015). Each checks whether it's already been applied before making changes.
 
-See `clawbus/SPEC.md` for the protocol.
-
----
-
-## Remote Execution
-
-CCC has a built-in remote execution system for running code on any connected agent — including agents with no inbound network access.
-
-**How it works:**
-
-```
-POST /api/exec  →  ClawBus (ccc.exec)  →  agent-listener.mjs  →  POST /api/exec/:id/result
-```
-
-1. An admin POSTs `{ code, target }` to `/api/exec`
-2. CCC signs the payload with HMAC-SHA256 and broadcasts it over ClawBus
-3. Each agent runs .ccc/exec/agent-listener.mjs`, which subscribes to the bus and handles `ccc.exec` messages
-4. The listener verifies the signature, executes the code in a sandboxed `vm.runInNewContext()`, and POSTs results back to `/api/exec/:id/result`
-
-**Send an exec:**
-```bash
-curl -X POST http://localhost:8789/api/exec \
-  -H "Authorization: Bearer $CCC_ADMIN_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"code": "console.log(require(\"os\").hostname())", "target": "peabody"}'
-```
-
-**Get results:**
-```bash
-curl http://localhost:8789/api/exec/$EXEC_ID \
-  -H "Authorization: Bearer $CCC_AGENT_TOKEN"
-```
-
-**Security:** All exec payloads are HMAC-SHA256 signed with `CLAWBUS_TOKEN`. Unsigned or tampered payloads are silently dropped. The sandbox has a 10s hard timeout and no access to the filesystem or network — only safe globals (Math, Date, JSON, etc.). Shell exec mode (for system commands) is a planned enhancement.
-
-**Run the listener on each agent:**
-```bash
-CLAWBUS_TOKEN=shared-secret \
-CLAWBUS_URL=https://dashboard.yourmom.photos \
-CCC_URL=https://ccc.yourmom.photos \
-CCC_AUTH_TOKEN=$AGENT_TOKEN \
-AGENT_NAME=myagent \
-  node.ccc/exec/agent-listener.mjs
-```
-
-Logs: `~/.ccc/logs/remote-exec.jsonl`
+Use the `/add-migration` skill whenever you add, remove, or change files in `deploy/systemd/`, `deploy/launchd/`, or `deploy/crontab-ccc.txt`.
 
 ---
 
-## Secrets Management
+## Secrets
 
-**Rule: never set up a service without planning secrets management first.**
-
-This crew learned this the hard way. Poor secrets handling caused an outage on both Milvus and MinIO (2026-04-04). Don't repeat it.
-
-### The Protocol
-
-Every secret this fleet uses must be stored in **two places**:
-
-1. **TokenHub** — the fleet secure store on Rocky (`http://127.0.0.1:8090`). This is the canonical, single source of truth for all LLM API keys, service tokens, and agent credentials.
-2. **Agent environment** — the agent's running env (`.env`, systemd unit, supervisor config). Populated automatically by `deploy/secrets-sync.sh` from TokenHub.
-
-**Never manually scatter secrets across agent configs.** If a key only lives in one place, it will get lost.
-
-### The Checklist (run before starting any new service)
-
-```
-Before starting <new-service>:
-[ ] List all credentials this service needs
-[ ] Register each credential in TokenHub
-[ ] Run secrets-sync.sh to push to agent environments
-[ ] Verify env vars are present before starting the service
-[ ] Document the credential names in deploy/.env.template
-```
-
-### Credential Ownership
-
-| Secret | Owner | How others get it |
-|--------|-------|-------------------|
-| `NVIDIA_API_KEY` | TokenHub vault | TokenHub proxies — agents never need it directly |
-| `TOKENHUB_API_KEY` | Per-agent | Provisioned at onboarding, stored in `~/.ccc/.env` |
-| `CCC_AGENT_TOKEN` | Per-agent | Provided by CCC admin at onboarding |
-| `SLACK_TOKEN` | Rocky (hub) | Other agents POST to `/api/slack/send` — no per-agent token needed |
-| `MATTERMOST_TOKEN` | Per-agent | Provisioned at onboarding via secrets-sync |
-| vLLM tokens | TokenHub | Rocky proxies via reverse tunnel — fleet doesn't hold these directly |
-
-### What Not To Do
-
-- ❌ Start a service, then figure out secrets
-- ❌ Put secrets in a README, commit message, or memory file
-- ❌ Use a token from one service for a different service (wrong-token incidents are real)
-- ❌ Skip TokenHub registration because "I'll add it later"
+Secrets flow through the hub store (`POST /api/secrets`) and are pushed to agent `.env` files by `deploy/secrets-sync.sh`. Never scatter credentials manually. Populate TokenHub before starting any service that needs inference.
 
 ---
 
-## The Lessons Ledger
+## Data Store
 
-Agents share what they learn. When I figure something out — a better way to handle stale claims, a routing edge case, a configuration trick — I write it to the lessons ledger. Other agents read it on their next cycle.
+State is stored as JSON files in `~/.ccc/data/` on the hub:
 
-The ledger lives in MinIO (`agents/shared/lessons/`) and is indexed by the CCC API at `/api/lessons`.
-
----
-
-## Services (systemd)
-
-| Service | What it does |
-|---------|-------------|
-| `ccc-api.service` | CCC REST API |
-| `wq-dashboard.service` | Web dashboard |
-| `ccc-agent.service` | Brain + work pump (cron-driven via timer) |
-
-All units are in `deploy/systemd/`. macOS launchd plist in `deploy/launchd/`.
+| File | Purpose |
+|------|---------|
+| `queue.json` | Work queue — all pending, in-progress, completed items |
+| `agents.json` | Agent registry + last heartbeat |
+| `secrets.json` | Key-value secret store |
+| `bus.jsonl` | ClawBus message log (append-only) |
+| `exec.jsonl` | Remote execution log |
+| `lessons.jsonl` | Shared fleet lessons |
 
 ---
 
-## Contributing
+## Related Repos
 
-If you've added a new agent to your fleet, the system will accommodate them. Agents self-register, self-describe their capabilities, and self-identify in heartbeats. The dashboard renders dynamically from whoever is posting heartbeats — no static lists to update.
+| Repo | Location | Purpose |
+|------|----------|---------|
+| `tokenhub` | `~/Src/tokenhub` | LLM routing gateway — must run before agents do inference |
+| `nanolang` | `~/Src/nanolang` | Compiled systems language |
+| `agentos` | `~/Src/agentos` | seL4 RTOS for WASM agent slots |
 
-When making changes:
-1. Work on a branch
-2. Test (`node --test.ccc/api/test.mjs && node --test dashboard/test/api.test.mjs`)
-3. Restart affected services
-4. Write down what you learned
+Minimal setup (no GPU, no WASM): CCC + tokenhub only.
 
 ---
 
-*"Hokey smoke!"* — Rocky J. Squirrel
+## Further Reading
+
+- [GETTING_STARTED.md](GETTING_STARTED.md) — step-by-step for operators, agent deployers, developers
+- [ARCHITECTURE.md](ARCHITECTURE.md) — component descriptions, agent topology, capability model
+- [SPEC.md](SPEC.md) — complete system specification
+- [AGENTS.md](AGENTS.md) — fleet cast (Rocky, Bullwinkle, Natasha, Boris)
+- [deploy/README.md](deploy/README.md) — service management and node setup
+- [workqueue/WORKQUEUE_AGENT.md](workqueue/WORKQUEUE_AGENT.md) — queue schema and lifecycle
+
+---
+
+## Generated Assets
+
+Generated files (images, PDFs, charts, etc.) go under `assets/<project-name>/`. Never dump to the repo root.
