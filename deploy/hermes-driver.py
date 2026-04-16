@@ -165,6 +165,12 @@ def _run_hermes(
     env = {**os.environ}
     if item_id:
         env["CCC_QUEUE_ITEM_ID"] = item_id
+    # Propagate task workspace vars so Claude Code session knows where to work
+    # These are set by queue-worker before calling hermes-driver.
+    # If running hermes-driver standalone, callers should set them manually.
+    for var in ("TASK_ID", "TASK_WORKSPACE_LOCAL", "TASK_WORKSPACE_AGENTFS", "TASK_BRANCH"):
+        if var in os.environ:
+            env[var] = os.environ[var]
     # Disable interactive gateway for batch mode
     env.setdefault("HERMES_PLATFORM", "cli")
     env.setdefault("HERMES_QUIET", "1")
@@ -210,6 +216,16 @@ def run_task(
         if not _claim(item_id):
             _log(f"Claim rejected for {item_id} — skipping")
             return
+
+    # Prepend workspace instructions to query if workspace is set and this is attempt 1
+    workspace_local = os.environ.get("TASK_WORKSPACE_LOCAL", "")
+    if query and workspace_local and session_id is None:
+        query = (
+            f"Your task workspace is: {workspace_local}\n"
+            "Work only within this directory. Do NOT run git commit or git push — "
+            "the queue-worker will handle the single git push on completion.\n\n"
+            + query
+        )
 
     attempt = 0
     current_session = session_id

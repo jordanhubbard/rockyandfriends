@@ -163,11 +163,68 @@ automatically when hermes-agent starts via `agent-pull.sh`. No manual config nee
 automatic polling. The `ccc-agent listen` daemon handles inbound exec dispatch independently
 of the agent runtime.
 
+## Task Workspace (AgentFS workflow)
+
+Every queue-worker task runs with an isolated workspace. These environment variables
+are always set when you are executing a task:
+
+| Variable | Value | Purpose |
+|---|---|---|
+| `TASK_ID` | e.g. `wq-ROC-idea-20260416-abc` | Current task identifier |
+| `TASK_WORKSPACE_LOCAL` | `~/.ccc/task-workspaces/<id>/` | Your working directory |
+| `TASK_WORKSPACE_AGENTFS` | `ccc-hub/agents/tasks/<id>/workspace` | AgentFS mirror (MinIO) |
+| `TASK_BRANCH` | `task/<id>` | Git branch for the single push |
+
+### Rules — enforced, not advisory
+
+1. **Work only inside `$TASK_WORKSPACE_LOCAL`.** All file edits, builds, and test runs
+   must happen within this directory. It is a fresh `git clone` of the task's project.
+
+2. **Never run `git commit` or `git push` yourself.** The queue-worker calls
+   `task-workspace-finalize.sh` after you complete the task, which stages all your
+   changes, commits them, and does exactly one `git push` to `$TASK_BRANCH`.
+   Any commit or push you make during the task will create conflicts or duplicate history.
+
+3. **Never clone repos yourself during task execution.** The workspace is already
+   cloned from the correct repo and branch. If you need a dependency, install it
+   inside the workspace, don't clone another copy.
+
+4. **Signal completion by producing your final summary output.** The queue-worker
+   detects exit 0 as success and triggers finalization. Do not try to call the
+   CCC `/complete` endpoint yourself — the queue-worker handles that too.
+
+5. **The workspace is ephemeral.** It is deleted after finalization. Store all
+   durable output as file changes inside `$TASK_WORKSPACE_LOCAL`.
+
+### Verifying your workspace
+
+```bash
+echo "Task:      $TASK_ID"
+echo "Workspace: $TASK_WORKSPACE_LOCAL"
+echo "AgentFS:   $TASK_WORKSPACE_AGENTFS"
+echo "Branch:    $TASK_BRANCH"
+ls "$TASK_WORKSPACE_LOCAL"
+git -C "$TASK_WORKSPACE_LOCAL" log --oneline -5
+```
+
+### If you need to access AgentFS directly
+
+```bash
+# List workspace contents in MinIO
+mc ls "$TASK_WORKSPACE_AGENTFS/"
+
+# Check task metadata
+MC_ALIAS=$(echo "$TASK_WORKSPACE_AGENTFS" | cut -d/ -f1)
+BUCKET=$(echo "$TASK_WORKSPACE_AGENTFS" | cut -d/ -f2)
+mc cat "${MC_ALIAS}/${BUCKET}/tasks/${TASK_ID}/meta.json" | jq .
+```
+
 ## Pitfalls
 
 - **Wrong token type:** Use `ccc-agent-*` tokens, NOT `wq-*` workqueue tokens. They're different.
 - **ClawBus SSE:** Use `$CCC_URL` directly, not a proxy URL — proxies may return 502 on SSE endpoints.
 - **sessions_spawn / sessions_yield:** These are OpenClaw-specific. In Hermes, use `delegate_tool.py` or spawn subagents via the Hermes delegate API.
+- **git during task:** Do not commit or push. Any changes you make inside `$TASK_WORKSPACE_LOCAL` will be committed by the queue-worker on completion. Committing yourself creates duplicate history on the task branch.
 
 ## Verification
 

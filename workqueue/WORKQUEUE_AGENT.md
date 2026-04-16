@@ -206,22 +206,50 @@ If you can't point to something concrete in the project (an issue, a README sect
 test, observed user behavior), the idea isn't ready. Add a comment with your evidence first,
 then promote.
 
-## Branch Lifecycle & Definition of Done (2026-03-28)
+## Task Workspace & Git Lifecycle (AgentFS workflow)
 
-A task that involves code changes is **not complete** until:
-1. Changes are committed to a branch
-2. Branch is **merged to main** (or a PR is opened and linked)
-3. `/api/item/:id/complete` is called **after** the merge, not before
+The queue-worker manages the full workspace lifecycle. You do not need to handle
+git operations. The enforced flow is:
 
-### Branch naming convention
-- Feature work: `feature/<item-id>-<short-desc>`
-- Fixes: `fix/<item-id>-<short-desc>`
-- Agent-specific: `<agent-name>/<description>`
+```
+queue-worker claims task
+  → task-workspace-init: git clone <repo> → ~/.ccc/task-workspaces/<id>/ → AgentFS mirror
+  → claude / hermes runs inside ~/.ccc/task-workspaces/<id>/  (cwd)
+  → task exits 0
+  → task-workspace-finalize: local → AgentFS sync + git add -A + commit + ONE push to task/<id>
+  → POST /api/item/<id>/complete  (includes git push result)
+  → workspace cleaned up
+```
+
+### What this means for you
+
+**DO:**
+- Work entirely within `$TASK_WORKSPACE_LOCAL` — it is a fresh clone of the project
+- Produce file changes as your primary output
+- Return a clear summary as your final stdout — this becomes the task result
+
+**DO NOT:**
+- Run `git commit`, `git push`, or `git clone` yourself
+- Edit files outside `$TASK_WORKSPACE_LOCAL`
+- Call `/api/item/:id/complete` — the queue-worker does this after finalization
+
+### Branch naming
+
+The queue-worker always pushes to `task/<item-id>`. After review, branches are
+merged to main by Rocky or jkh. Do not create your own branch names.
 
 ### Orphaned branch policy
+
 Rocky runs `scripts/branch-audit.mjs` daily at 09:00 PT:
-- Fully-merged branches (0 commits ahead of main): **auto-deleted**
+- Fully-merged task branches (0 commits ahead of main): **auto-deleted**
 - Branches >72h unmerged with no active queue item: **queue item filed** (needsHuman)
 - Branches >7d unmerged with no activity: **Slack escalation to #rockyandfriends**
 
-Do not leave branches dangling after completing a task.
+### Definition of Done
+
+A task is complete when:
+1. You have produced all required file changes inside `$TASK_WORKSPACE_LOCAL`
+2. Your final stdout is a clear summary of what was done
+3. You exit 0
+
+The queue-worker handles commit, push, and `/complete` automatically.
