@@ -17,7 +17,6 @@ You want to run your own CCC instance on a server or VM you control.
 
 - A Linux server or VM with a public IP (or accessible on your network)
 - SSH access to that machine
-- Node.js 18+ installed on it
 - `git` and `make` installed locally
 
 ### Option A: Native Install
@@ -34,7 +33,7 @@ You want to run your own CCC instance on a server or VM you control.
 #### Step 2: Run the init wizard
 
 ```bash
-make init-ccc
+make init
 ```
 
 This interactive wizard will ask you:
@@ -45,42 +44,28 @@ This interactive wizard will ask you:
 - **Auth tokens** — generate with `openssl rand -hex 32` (you'll share these with agent nodes)
 - **Capabilities** — does this node have a GPU? A Claude Code session?
 - **Optional integrations** — Slack, Telegram, MinIO (all skippable)
-- **Channel selection** — pick which communication channels to enable (see below)
+- **Channel selection** — pick which communication channels to enable
 
 It writes `~/.ccc/.env` with your answers. That file is never committed to git.
 
-> **Channel selection:** The wizard asks which communication channels you want:
-> - **Mattermost** — Fleet chat server.
-> - **Slack** — provide a bot token (`xoxb-...`) and signing secret
-> - **Mattermost** — provide a server URL and bot token
-> - **Telegram** — provide a bot token from @BotFather
->
-> > by editing `~/.ccc/.env` and restarting.
+#### Step 3: Start the services
 
-#### Step 3: Start CCC
-
+Install and start the CCC API server (systemd, Linux):
 ```bash
-make docker-up
+sudo cp deploy/systemd/ccc-server.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now ccc-server
 ```
 
-This starts two containers: `ccc-api` (port 8789) and `dashboard` (port 8788, nginx serving the WASM frontend).
-
-> **Note:** The WASM dashboard (.ccc/dashboard/dist/`) is pre-built and committed to the repo. It is bind-mounted at runtime — not baked into the Docker image. If you're on a fresh fork and the dashboard looks wrong, run the `wasm-build` workflow manually from GitHub Actions to rebuild it for your platform.
+macOS:
+```bash
+cp deploy/launchd/com.ccc.agent.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.ccc.agent.plist
+```
 
 Open `http://your-server-ip:8789/health` — you should see `{"status":"ok"}`.
-Open `http://your-server-ip:8788` for the full dashboard.
 
-#### Step 4: Register project zero (optional)
-
-If you forked this repo in Step 1, register it as your first project:
-```bash
-curl -X POST http://localhost:8789/api/projects \
-  -H "Authorization: Bearer $CCC_AGENT_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"name":"rockyandfriends","repo":"https://github.com/YOUR_USERNAME/rockyandfriends"}'
-```
-
-#### Step 5: Add agents
+#### Step 4: Add agents
 
 Once your CCC hub is running, add agents (other machines) using the [Agent deployer path](#agent-deployer-path) below. Each agent gets a token you generate:
 
@@ -88,7 +73,7 @@ Once your CCC hub is running, add agents (other machines) using the [Agent deplo
 openssl rand -hex 32
 ```
 
-Share that token + your CCC URL with the new agent and have them run `make init-ccc`.
+Share that token + your CCC URL with the new agent and have them run `make init`.
 
 ---
 
@@ -101,15 +86,17 @@ The fastest path from "I have a server" to "CCC is running."
 - Docker and Docker Compose installed
 - A clone of this repo (fork or direct)
 
-#### Step 1: Clone and init
+#### Step 1: Clone and configure
 
 ```bash
 git clone https://github.com/YOUR_USERNAME/rockyandfriends
 cd rockyandfriends
-make init-ccc
+mkdir -p ccc-data
+cp deploy/.env.server.template ccc-data/.env
+nano ccc-data/.env   # fill in CCC_AUTH_TOKENS, CCC_ADMIN_TOKEN, AGENT_NAME
 ```
 
-The wizard runs the same as the native path — it generates `ccc-data/.env` with your config.
+Docker Compose reads config from `./ccc-data/.env` (relative to the repo root).
 
 #### Step 2: Start the stack
 
@@ -117,9 +104,9 @@ The wizard runs the same as the native path — it generates `ccc-data/.env` wit
 make docker-up
 ```
 
-This brings up three containers:
-- **ccc-api** (port 8789) — the coordination API
-- **dashboard** (port 8788) — WASM web UI (nginx + static files)
+This brings up two containers:
+- **ccc-api** (port 8789) — the coordination API (Rust/Axum binary)
+- **dashboard** (port 8788) — WASM web UI (nginx serving pre-built static files from `ccc/dashboard/dist/`)
 
 #### Step 3: Verify
 
@@ -135,22 +122,20 @@ Open `http://your-server-ip:8788` in a browser to see the dashboard.
 ```bash
 make docker-logs    # tail all container logs
 make docker-down    # stop the stack
-make docker-build   # rebuild the image locally
 ```
 
 > **Pre-built images:** The CI publishes multi-arch images (amd64 + arm64) to
-> `ghcr.io/YOUR_USERNAME/ccc:latest` on every push to main. See
-> `.github/workflows/docker-publish.yml` for details.
+> `ghcr.io/jordanhubbard/ccc:latest` on every push to main. See
+> `.github/workflows/docker-publish.yml` for details. `make docker-up` uses the
+> pre-built image by default (`CCC_IMAGE` env var overrides).
 
 ---
 
 ## Agent Deployer Path
 
-Someone is already running an CCC hub and gave you a URL + token. You want to plug a new machine (GPU box, Mac mini, VPS, container) into their fleet.
+Someone is already running a CCC hub and gave you a URL + token. You want to plug a new machine (GPU box, Mac mini, VPS, container) into their fleet.
 
 ### One-command bootstrap
-
-If you have SSH access to the new machine, the fastest path is the bootstrap script:
 
 ```bash
 curl -sSL https://raw.githubusercontent.com/YOUR_OPERATORS_FORK/rockyandfriends/main/deploy/bootstrap.sh | \
@@ -162,23 +147,27 @@ curl -sSL https://raw.githubusercontent.com/YOUR_OPERATORS_FORK/rockyandfriends/
 
 This will:
 - Install hermes-agent (the standard agent runtime)
-- Configure the agent with your CCC hub credentials
-- Seed the workspace with your operator's config
-- Start the agent daemon
+- Clone the CCC workspace to `~/.ccc/workspace`
+- Write `~/.ccc/.env` with your hub credentials and any secrets from the bootstrap API
+- Install hermes skills (ccc-node, agent-skills, superpowers)
+- Register hermes-gateway and ccc-bus-listener with supervisord
+- Post a hardware fingerprint + heartbeat to the hub
+
+Pass `--agent-token=<token>` to skip the bootstrap API call if you already have a known agent token.
 
 ### Manual bootstrap
 
 If you prefer to set things up yourself:
 
-1. Clone the repo (your operator's fork, or the upstream):
+1. Clone the repo:
    ```bash
    git clone https://github.com/YOUR_OPERATORS_FORK/rockyandfriends
-   cd rockyandfriends && npm install
+   cd rockyandfriends
    ```
 
 2. Run the init wizard in **client** mode:
    ```bash
-   make init-ccc
+   make init
    # Choose "2) Client" when asked for your role
    # Paste the CCC URL and your agent token when prompted
    ```
@@ -191,6 +180,11 @@ If you prefer to set things up yourself:
 4. Verify the connection:
    ```bash
    curl $CCC_URL/health
+   ```
+
+5. Start the agent runtime:
+   ```bash
+   hermes gateway
    ```
 
 Your agent will now appear in the CCC dashboard.
@@ -206,29 +200,27 @@ You want to modify CCC itself — add features, fix bugs, extend the protocol.
 ```bash
 git clone https://github.com/YOUR_USERNAME/rockyandfriends
 cd rockyandfriends
-npm install
-make init-ccc   # configure a local dev instance
-make dev        # start API + dashboard
+make init   # configure a local dev instance
+```
+
+The API server is a Rust binary (built from `ccc/dashboard/`). The dashboard is Leptos WASM (pre-built dist committed at `ccc/dashboard/dist/`).
+
+```bash
+make build   # build ccc-server Rust binary
+make test    # run Rust tests
 ```
 
 ### Project layout
 
 | Path | What it is |
 |------|-----------|
-| .ccc/api/` | REST API — work queue, agent registry, project tracker |
-| .ccc/brain/` | Autonomous work processor — claims items, routes to executors |
-| .ccc/scout/` | GitHub scanner — files work items from issues/CI failures/TODOs |
-| `dashboard/` | Web dashboard — live agent status, queue, ClawBus feed |
-| `squirrelbus/` | P2P message bus for direct agent-to-agent messaging |
 | `deploy/` | Setup scripts and systemd/launchd service units |
-| `onboarding/` | Per-agent onboarding docs (generated from templates by `make init-ccc`) |
+| `workqueue/` | Queue schema, executors, claude-worker.mjs |
+| `clawbus/` | P2P message bus protocol + bus-listener |
 | `skills/` | Shared agent skill configs |
-
-### Tests
-
-```bash
-make test
-```
+| `scripts/` | Operator utilities (fleet monitor, Slack ingest, Qdrant tools) |
+| `docs/` | Architecture and design docs |
+| `onboarding/` | Per-agent onboarding docs |
 
 ---
 
@@ -246,33 +238,27 @@ Key variables:
 | `CCC_AGENT_TOKEN` | Bearer token for this agent |
 | `AGENT_HAS_GPU` | `true`/`false` — used for work routing |
 | `AGENT_CLAUDE_CLI` | `true` if this node has a Claude Code tmux session |
-| `TOKENHUB_URL` | (Optional) Tokenhub inference aggregator URL |
-| `TOKENHUB_AGENT_KEY` | (Optional) Tokenhub agent key |
+| `TOKENHUB_URL` | TokenHub inference proxy URL (default `http://localhost:8090`) |
+| `TOKENHUB_API_KEY` | Agent key for TokenHub |
+
+For Docker deployments, config goes in `./ccc-data/.env` relative to the repo root.
 
 ---
 
 ## Frequently Asked Questions
 
-**Q: Do I need Docker?**  
-No. CCC runs natively on any machine with Node.js 18+. Docker is an *option* — see [Docker install](#option-b-docker-install) — but not required. Use whichever path fits your setup.
+**Q: Do I need Docker?**
+No. The native path (systemd or launchd) works on any Linux or macOS machine. Docker is an option for operators who prefer container management.
 
-**Q: Can I use this without Slack or Telegram?**  
-Yes. Connect Mattermost via the dashboard settings.
+**Q: Can I use this without Slack or Telegram?**
+Yes. Leave those tokens blank. The API and dashboard work independently of messaging channels.
 
-**Q: What if my agents can't reach each other directly (firewalls, NAT)?**  
-Use the reverse SSH tunnel pattern. Each agent connects *out* to the CCC hub and forwards a local port. Rocky proxies everything through `localhost:<port>`. See .ccc/docs/remote-exec.md` for the full architecture.
+**Q: What if my agents can't reach each other directly (firewalls, NAT)?**
+Use the reverse SSH tunnel pattern. Each agent connects *out* to the CCC hub and forwards a local port. See the "Firewalled Agents" section in `README.md`.
 
-**Q: My agent is ephemeral (container, spot instance). How do I handle that?**  
-Agents are expected to appear and disappear. The CCC hub tracks heartbeats and marks agents offline after a configurable timeout. Work items marked for an offline agent stay pending until a capable agent comes back. No manual intervention needed.
-
-**Q: How do I add a new project to track?**  
-```bash
-curl -X POST $CCC_URL/api/projects \
-  -H "Authorization: Bearer $CCC_AGENT_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"name":"myproject","repo":"https://github.com/yourname/myproject"}'
-```
+**Q: My agent is ephemeral (container, spot instance). How do I handle that?**
+Agents are expected to appear and disappear. The CCC hub tracks heartbeats and marks agents offline after a configurable timeout. Work items for an offline agent stay pending until a capable agent comes back. No manual intervention needed.
 
 ---
 
-*See `README.md` for the full architecture story. See `deploy/README.md` for service management.*
+*See `README.md` for component specs. See `deploy/README.md` for service management.*

@@ -373,7 +373,7 @@ Type=simple
 User=${USER}
 WorkingDirectory=${WORKSPACE_DIR}
 Environment="ENV_FILE=${ENV_FILE}"
-ExecStart=/usr/bin/env bash -c 'set -a; source ${ENV_FILE}; set +a; exec node.ccc/api/index.mjs'
+ExecStart=/usr/local/bin/ccc-server
 Restart=on-failure
 RestartSec=5
 
@@ -386,7 +386,7 @@ SVCEOF
          sudo systemctl start ccc-api; then
         success "ccc-api.service installed and started"
       else
-        warn "Could not install systemd service — start manually: node.ccc/api/index.mjs"
+        warn "Could not install systemd service — start manually: ccc-server"
       fi
       rm -f /tmp/ccc-api.service
     fi

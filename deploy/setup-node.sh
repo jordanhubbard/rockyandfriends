@@ -146,10 +146,6 @@ else
 fi
 
 # ── Install node dependencies ─────────────────────────────────────────────
-info "Installing dashboard dependencies..."
-cd "$WORKSPACE/dashboard" && npm install --silent
-success "Dependencies installed"
-
 # ── Install coding CLI turbocharger ───────────────────────────────────────
 echo ""
 info "Checking coding CLI turbocharger..."
@@ -433,5 +429,5 @@ echo "  Coding CLI turbocharger (if not already running):"
 echo "  tmux new-session -d -s claude-main"
 echo "  tmux send-keys -t claude-main 'claude --dangerously-skip-permissions' Enter"
 echo ""
-echo "  See README.md § The Turbocharger for full details."
+echo "  See README.md for details."
 echo ""
