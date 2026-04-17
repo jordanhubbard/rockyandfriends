@@ -8,6 +8,7 @@ Wants=network-online.target
 Type=simple
 User=AGENT_USER
 EnvironmentFile=-AGENT_HOME/.ccc/.env
+Environment=PATH=AGENT_HOME/.local/bin:/usr/local/bin:/usr/bin:/bin
 ExecStart=/usr/bin/python3 AGENT_HOME/.ccc/workspace/deploy/queue-worker.py
 Restart=always
 RestartSec=10s
