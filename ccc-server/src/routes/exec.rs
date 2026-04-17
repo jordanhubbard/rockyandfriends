@@ -110,7 +110,7 @@ async fn post_exec(
             "to":      broadcast_to,
             "type":    "acc.exec",
             "subject": format!("acc.exec:{}", exec_id),
-            "body":    envelope.to_string(),
+            "body":    envelope,
         }))
         .send()
         .await
