@@ -1,9 +1,9 @@
-use crate::AppState;
-use aws_sdk_s3::primitives::ByteStream;
-/// /api/fs/* — S3-backed ClawFS API (wq-AGENTFS-001)
+/// /api/fs/* — S3-backed AgentFS API
 ///
 /// MinIO endpoint from MINIO_ENDPOINT env (default http://localhost:9000).
 /// Bucket from MINIO_BUCKET env (default "agents").
+use crate::s3::MinioClient;
+use crate::AppState;
 use axum::{
     extract::{Query, State},
     http::{HeaderMap, StatusCode},
@@ -53,6 +53,10 @@ fn s3_unavailable() -> Response {
         .into_response()
 }
 
+fn client(state: &AppState) -> Option<&Arc<MinioClient>> {
+    state.s3_client.as_ref()
+}
+
 // ── GET /api/fs/read?path=...&agent=... ───────────────────────────────────────
 
 #[derive(Deserialize)]
@@ -63,9 +67,8 @@ struct ReadQuery {
 }
 
 async fn fs_read(State(state): State<Arc<AppState>>, Query(params): Query<ReadQuery>) -> Response {
-    let client = match &state.s3_client {
-        Some(c) => c.clone(),
-        None => return s3_unavailable(),
+    let Some(s3) = client(&state) else {
+        return s3_unavailable();
     };
 
     if params.path.contains("..") {
@@ -83,51 +86,21 @@ async fn fs_read(State(state): State<Arc<AppState>>, Query(params): Query<ReadQu
             .into_response();
     }
 
-    let result = client
-        .get_object()
-        .bucket(&state.s3_bucket)
-        .key(&params.path)
-        .send()
-        .await;
-
-    match result {
-        Ok(output) => {
-            let content_type = output
-                .content_type()
-                .unwrap_or("application/octet-stream")
-                .to_string();
-            match output.body.collect().await {
-                Ok(data) => {
-                    let bytes = data.into_bytes();
-                    (
-                        StatusCode::OK,
-                        [(axum::http::header::CONTENT_TYPE, content_type)],
-                        bytes,
-                    )
-                        .into_response()
-                }
-                Err(e) => (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({"error": e.to_string()})),
-                )
-                    .into_response(),
-            }
+    match s3.get_object(&state.s3_bucket, &params.path).await {
+        Ok((bytes, content_type)) => (
+            StatusCode::OK,
+            [(axum::http::header::CONTENT_TYPE, content_type)],
+            bytes,
+        )
+            .into_response(),
+        Err(e) if MinioClient::is_no_such_key(&e) => {
+            (StatusCode::NOT_FOUND, Json(json!({"error": "Not found"}))).into_response()
         }
-        Err(e) => {
-            let is_not_found = e
-                .as_service_error()
-                .map(|se| se.is_no_such_key())
-                .unwrap_or(false);
-            if is_not_found {
-                (StatusCode::NOT_FOUND, Json(json!({"error": "Not found"}))).into_response()
-            } else {
-                (
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(json!({"error": e.to_string()})),
-                )
-                    .into_response()
-            }
-        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({"error": e.to_string()})),
+        )
+            .into_response(),
     }
 }
 
@@ -147,9 +120,8 @@ async fn fs_write(
     State(state): State<Arc<AppState>>,
     Json(body): Json<WriteBody>,
 ) -> impl IntoResponse {
-    let client = match &state.s3_client {
-        Some(c) => c.clone(),
-        None => return s3_unavailable(),
+    let Some(s3) = client(&state) else {
+        return s3_unavailable();
     };
 
     if let Err(e) = validate_path(&body.path, body.agent.as_deref()) {
@@ -159,18 +131,9 @@ async fn fs_write(
     let _scope = body.scope.as_deref().unwrap_or("private");
     let content_bytes = body.content.into_bytes();
     let size = content_bytes.len();
-    let stream = ByteStream::from(content_bytes);
 
-    let result = client
-        .put_object()
-        .bucket(&state.s3_bucket)
-        .key(&body.path)
-        .body(stream)
-        .send()
-        .await;
-
-    match result {
-        Ok(_) => (
+    match s3.put_object(&state.s3_bucket, &body.path, content_bytes).await {
+        Ok(()) => (
             StatusCode::OK,
             Json(json!({"ok": true, "path": body.path, "size": size})),
         )
@@ -197,38 +160,25 @@ async fn fs_list(
     State(state): State<Arc<AppState>>,
     Query(params): Query<ListQuery>,
 ) -> impl IntoResponse {
-    let client = match &state.s3_client {
-        Some(c) => c.clone(),
-        None => return s3_unavailable(),
+    let Some(s3) = client(&state) else {
+        return s3_unavailable();
     };
 
     let prefix = params.prefix.unwrap_or_default();
 
-    let mut req = client.list_objects_v2().bucket(&state.s3_bucket);
-    if !prefix.is_empty() {
-        req = req.prefix(&prefix);
-    }
-
-    match req.send().await {
-        Ok(output) => {
-            let objects: Vec<serde_json::Value> = output
-                .contents()
+    match s3.list_objects_v2(&state.s3_bucket, &prefix).await {
+        Ok(objects) => {
+            let items: Vec<serde_json::Value> = objects
                 .iter()
                 .map(|obj| {
                     json!({
-                        "key": obj.key().unwrap_or(""),
-                        "size": obj.size().unwrap_or(0),
-                        "lastModified": obj.last_modified()
-                            .map(|dt| dt.to_millis().unwrap_or(0))
-                            .unwrap_or(0),
+                        "key": obj.key,
+                        "size": obj.size,
+                        "lastModified": obj.last_modified,
                     })
                 })
                 .collect();
-            (
-                StatusCode::OK,
-                Json(json!({"ok": true, "objects": objects})),
-            )
-                .into_response()
+            (StatusCode::OK, Json(json!({"ok": true, "objects": items}))).into_response()
         }
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -258,9 +208,8 @@ async fn fs_delete(
             .into_response();
     }
 
-    let client = match &state.s3_client {
-        Some(c) => c.clone(),
-        None => return s3_unavailable(),
+    let Some(s3) = client(&state) else {
+        return s3_unavailable();
     };
 
     if params.path.contains("..") {
@@ -278,14 +227,8 @@ async fn fs_delete(
             .into_response();
     }
 
-    match client
-        .delete_object()
-        .bucket(&state.s3_bucket)
-        .key(&params.path)
-        .send()
-        .await
-    {
-        Ok(_) => (StatusCode::OK, Json(json!({"ok": true}))).into_response(),
+    match s3.delete_object(&state.s3_bucket, &params.path).await {
+        Ok(()) => (StatusCode::OK, Json(json!({"ok": true}))).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(json!({"ok": false, "error": e.to_string()})),
@@ -305,23 +248,17 @@ async fn fs_exists(
     State(state): State<Arc<AppState>>,
     Query(params): Query<ExistsQuery>,
 ) -> StatusCode {
-    let client = match &state.s3_client {
-        Some(c) => c.clone(),
-        None => return StatusCode::SERVICE_UNAVAILABLE,
+    let Some(s3) = client(&state) else {
+        return StatusCode::SERVICE_UNAVAILABLE;
     };
 
     if params.path.contains("..") || params.path.is_empty() {
         return StatusCode::BAD_REQUEST;
     }
 
-    match client
-        .head_object()
-        .bucket(&state.s3_bucket)
-        .key(&params.path)
-        .send()
-        .await
-    {
-        Ok(_) => StatusCode::OK,
-        Err(_) => StatusCode::NOT_FOUND,
+    match s3.head_object(&state.s3_bucket, &params.path).await {
+        Ok(true) => StatusCode::OK,
+        Ok(false) => StatusCode::NOT_FOUND,
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR,
     }
 }

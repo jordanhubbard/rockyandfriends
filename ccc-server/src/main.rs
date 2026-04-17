@@ -8,6 +8,7 @@ pub mod brain;
 pub mod config;
 pub mod db;
 mod routes;
+pub mod s3;
 pub mod state;
 pub mod supervisor;
 
@@ -52,18 +53,8 @@ async fn main() {
         let secret_key = cfg.minio_secret_key.clone();
         match (access_key, secret_key) {
             (Some(ak), Some(sk)) => {
-                use aws_credential_types::Credentials;
-                use aws_sdk_s3::config::Region;
-                let creds = Credentials::new(ak, sk, None, None, "env");
-                let s3_config = aws_sdk_s3::Config::builder()
-                    .credentials_provider(creds)
-                    .region(Region::new("us-east-1"))
-                    .endpoint_url(endpoint)
-                    .force_path_style(true)
-                    .behavior_version(aws_sdk_s3::config::BehaviorVersion::latest())
-                    .build();
                 tracing::info!("S3/MinIO client initialized (bucket={})", s3_bucket);
-                Some(Arc::new(aws_sdk_s3::Client::from_conf(s3_config)))
+                Some(Arc::new(crate::s3::MinioClient::new(&endpoint, &ak, &sk, "us-east-1")))
             }
             _ => {
                 tracing::warn!("MINIO_ACCESS_KEY or MINIO_SECRET_KEY not set — S3/ClawFS disabled");
