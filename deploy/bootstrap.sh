@@ -57,22 +57,22 @@ info "Cleaning up previous install..."
 
 # Back up .ccc/.env before wiping — we restore it if bootstrap fails
 ENV_BACKUP=""
-if [[ -f "$HOME/.ccc/.env" ]]; then
+if [[ -f "$HOME/.acc/.env" ]]; then
   ENV_BACKUP="$(mktemp /tmp/ccc-env-backup.XXXXXX)"
-  cp "$HOME/.ccc/.env" "$ENV_BACKUP"
+  cp "$HOME/.acc/.env" "$ENV_BACKUP"
   info "Backed up existing .env to $ENV_BACKUP"
 fi
 
-rm -rf "$HOME/.ccc" 2>/dev/null || true
+rm -rf "$HOME/.acc" 2>/dev/null || true
 success "Clean slate ready"
 
 # Trap: restore .env backup if we exit unexpectedly before step 7
 _restore_env_on_failure() {
   local code=$?
   if [[ $code -ne 0 && -n "$ENV_BACKUP" && -f "$ENV_BACKUP" ]]; then
-    mkdir -p "$HOME/.ccc"
-    cp "$ENV_BACKUP" "$HOME/.ccc/.env"
-    chmod 600 "$HOME/.ccc/.env"
+    mkdir -p "$HOME/.acc"
+    cp "$ENV_BACKUP" "$HOME/.acc/.env"
+    chmod 600 "$HOME/.acc/.env"
     echo "⚠ Bootstrap failed (exit $code) — restored previous .env from backup" >&2
     rm -f "$ENV_BACKUP"
   fi
@@ -87,8 +87,10 @@ done
 success "Core dependencies present"
 
 # ── JSON helper — ccc-agent preferred, python3 fallback ──────────────────
-_CCC_DIR="${HOME}/.ccc"
-CCC_AGENT="${CCC_AGENT:-$_CCC_DIR/bin/ccc-agent}"
+_ACC_DIR="${HOME}/.acc"
+# Prefer ~/.acc; fall back to ~/.ccc for pre-migration nodes
+if [[ ! -d "$_ACC_DIR" && -d "${HOME}/.ccc" ]]; then _ACC_DIR="${HOME}/.ccc"; fi
+CCC_AGENT="${CCC_AGENT:-$_ACC_DIR/bin/ccc-agent}"
 [ ! -x "$CCC_AGENT" ] && CCC_AGENT="$(command -v ccc-agent 2>/dev/null || echo "")"
 
 _json_get() {
@@ -134,17 +136,17 @@ else
   export PATH="$HOME/.local/bin:$PATH"
   # Fallback: clone from GitHub source if pip failed (package may not be on PyPI)
   if ! command -v hermes &>/dev/null; then
-    HERMES_SRC="$HOME/.ccc/hermes-src"
+    HERMES_SRC="$HOME/.acc/hermes-src"
     if [[ ! -d "$HERMES_SRC/.git" ]]; then
       info "Cloning hermes-agent from source..."
       git clone --depth=1 https://github.com/jordanhubbard/hermes-agent.git "$HERMES_SRC" 2>/dev/null || \
         warn "hermes-agent source clone failed — install manually"
     fi
     if [[ -d "$HERMES_SRC" ]]; then
-      python3 -m venv "$HOME/.ccc/hermes-venv" 2>/dev/null || true
-      "$HOME/.ccc/hermes-venv/bin/pip" install -e "$HERMES_SRC[slack]" 2>/dev/null || \
-        "$HOME/.ccc/hermes-venv/bin/pip" install -e "$HERMES_SRC" 2>/dev/null || true
-      ln -sf "$HOME/.ccc/hermes-venv/bin/hermes" "$HOME/.local/bin/hermes" 2>/dev/null || true
+      python3 -m venv "$HOME/.acc/hermes-venv" 2>/dev/null || true
+      "$HOME/.acc/hermes-venv/bin/pip" install -e "$HERMES_SRC[slack]" 2>/dev/null || \
+        "$HOME/.acc/hermes-venv/bin/pip" install -e "$HERMES_SRC" 2>/dev/null || true
+      ln -sf "$HOME/.acc/hermes-venv/bin/hermes" "$HOME/.local/bin/hermes" 2>/dev/null || true
     fi
   fi
   if command -v hermes &>/dev/null; then
@@ -155,12 +157,12 @@ else
 fi
 
 # ── 3. Clone / update CCC workspace ──────────────────────────────────────
-CCC_WORKSPACE="$HOME/.ccc/workspace"
-info "Setting up CCC workspace at $CCC_WORKSPACE..."
-if [[ -d "$CCC_WORKSPACE/.git" ]]; then
-  git -C "$CCC_WORKSPACE" pull --ff-only || warn "git pull failed"
+ACC_WORKSPACE="$HOME/.acc/workspace"
+info "Setting up ACC workspace at $ACC_WORKSPACE..."
+if [[ -d "$ACC_WORKSPACE/.git" ]]; then
+  git -C "$ACC_WORKSPACE" pull --ff-only || warn "git pull failed"
 else
-  git clone "${CCC_REPO:-https://github.com/jordanhubbard/rockyandfriends.git}" "$CCC_WORKSPACE"
+  git clone "${CCC_REPO:-https://github.com/jordanhubbard/rockyandfriends.git}" "$ACC_WORKSPACE"
 fi
 success "CCC workspace ready"
 
@@ -254,26 +256,26 @@ SSHEOF
     chmod 600 "$SSH_CONF"
   fi
   if [[ -n "$REPO_URL" ]]; then
-    git -C "$CCC_WORKSPACE" remote set-url origin "$REPO_URL"
-    git -C "$CCC_WORKSPACE" fetch origin || warn "git fetch failed — deploy key may not have read access yet"
+    git -C "$ACC_WORKSPACE" remote set-url origin "$REPO_URL"
+    git -C "$ACC_WORKSPACE" fetch origin || warn "git fetch failed — deploy key may not have read access yet"
   fi
   success "Deploy key installed"
 fi
 
-# ── 6. Write ~/.ccc/.env ──────────────────────────────────────────────────
-info "Writing ~/.ccc/.env..."
-mkdir -p "$HOME/.ccc"
-ENV_FILE="$HOME/.ccc/.env"
+# ── 6. Write ~/.acc/.env ──────────────────────────────────────────────────
+info "Writing ~/.acc/.env..."
+mkdir -p "$HOME/.acc"
+ENV_FILE="$HOME/.acc/.env"
 touch "$ENV_FILE"
-for key in AGENT_NAME CCC_AGENT_TOKEN CCC_URL AGENT_HOST NVIDIA_API_KEY NVIDIA_API_BASE \
+for key in AGENT_NAME ACC_AGENT_TOKEN CCC_AGENT_TOKEN ACC_URL CCC_URL AGENT_HOST NVIDIA_API_KEY NVIDIA_API_BASE \
            SLACK_BOT_TOKEN SLACK_APP_TOKEN TELEGRAM_TOKEN TELEGRAM_BOT_TOKEN \
            TOKENHUB_API_KEY TOKENHUB_AGENT_KEY; do
   sed -i "/^${key}=/d" "$ENV_FILE" 2>/dev/null || true
 done
 cat >> "$ENV_FILE" <<ENVEOF
 AGENT_NAME=${AGENT}
-CCC_AGENT_TOKEN=${AGENT_TOKEN}
-CCC_URL=${CCC_URL}
+ACC_AGENT_TOKEN=${AGENT_TOKEN}
+ACC_URL=${CCC_URL}
 AGENT_HOST=$(hostname)
 NVIDIA_API_BASE=https://inference-api.nvidia.com/v1
 NVIDIA_API_KEY=${NVIDIA_KEY}
@@ -295,7 +297,7 @@ chmod 600 "$ENV_FILE"
 # Smoke test: verify critical vars are non-empty
 _env_val() { grep "^${1}=" "$ENV_FILE" 2>/dev/null | cut -d= -f2- | tr -d '"' || true; }
 _SMOKE_OK=true
-for _VAR in AGENT_NAME CCC_AGENT_TOKEN CCC_URL; do
+for _VAR in AGENT_NAME ACC_AGENT_TOKEN ACC_URL; do
   _VAL=$(_env_val "$_VAR")
   if [[ -z "$_VAL" ]]; then
     warn "SMOKE TEST FAIL: ${_VAR} is empty in .env — bootstrap may be incomplete"
@@ -303,9 +305,9 @@ for _VAR in AGENT_NAME CCC_AGENT_TOKEN CCC_URL; do
   fi
 done
 if [[ "$_SMOKE_OK" == true ]]; then
-  success "~/.ccc/.env written and smoke-tested (all critical vars non-empty)"
+  success "~/.acc/.env written and smoke-tested (all critical vars non-empty)"
 else
-  warn "~/.ccc/.env has empty critical vars — check the file before using this agent"
+  warn "~/.acc/.env has empty critical vars — check the file before using this agent"
 fi
 
 # ── 6b. Write full secrets bundle to .env ────────────────────────────────
@@ -342,7 +344,7 @@ fi
 # ── 7. Install agentfs-sync ───────────────────────────────────────────────
 AGENTFS_BIN="/usr/local/bin/agentfs-sync"
 AGENTFS_SVC="/etc/systemd/system/agentfs-sync.service"
-AGENTFS_SVC_SRC="$CCC_WORKSPACE.ccc/agentfs-sync/agentfs-sync.service"
+AGENTFS_SVC_SRC="$ACC_WORKSPACE/.acc/agentfs-sync/agentfs-sync.service"
 
 if [[ ! -f "$AGENTFS_BIN" ]]; then
   if [[ -z "${CCC_MINIO_URL:-}" ]]; then
@@ -363,7 +365,7 @@ fi
 if [[ -f "$AGENTFS_BIN" ]]; then
   if [[ -f "$AGENTFS_SVC_SRC" ]]; then
     info "Installing agentfs-sync systemd service..."
-    mkdir -p "$HOME/.ccc/logs"
+    mkdir -p "$HOME/.acc/logs"
     sed "s/AGENT_USER/$(whoami)/g" "$AGENTFS_SVC_SRC" | sudo tee "$AGENTFS_SVC" > /dev/null
     sudo systemctl daemon-reload
     sudo systemctl enable agentfs-sync
@@ -466,13 +468,13 @@ if command -v hermes &>/dev/null; then
   mkdir -p "$HOME/.hermes/skills"
 
   # CCC fleet skill
-  if [[ -d "$CCC_WORKSPACE/skills/ccc-node" ]]; then
-    cp -r "$CCC_WORKSPACE/skills/ccc-node/" "$HOME/.hermes/skills/ccc-node/"
+  if [[ -d "$ACC_WORKSPACE/skills/ccc-node" ]]; then
+    cp -r "$ACC_WORKSPACE/skills/ccc-node/" "$HOME/.hermes/skills/ccc-node/"
     success "CCC-node skill installed into Hermes"
   fi
 
   # agent-skills engineering workflows — clone directly (no submodule friction)
-  AGENT_SKILLS_CACHE="$HOME/.ccc/agent-skills"
+  AGENT_SKILLS_CACHE="$HOME/.acc/agent-skills"
   if [[ -d "$AGENT_SKILLS_CACHE/.git" ]]; then
     git -C "$AGENT_SKILLS_CACHE" pull --ff-only 2>/dev/null || \
       warn "agent-skills update failed — using cached version"
@@ -494,7 +496,7 @@ if command -v hermes &>/dev/null; then
 
   # superpowers orchestration skills — complements agent-skills with multi-agent
   # coordination, git worktrees, systematic debugging, and two-stage review
-  SUPERPOWERS_CACHE="$HOME/.ccc/superpowers"
+  SUPERPOWERS_CACHE="$HOME/.acc/superpowers"
   if [[ -d "$SUPERPOWERS_CACHE/.git" ]]; then
     git -C "$SUPERPOWERS_CACHE" pull --ff-only 2>/dev/null || \
       warn "superpowers update failed — using cached version"
@@ -523,8 +525,8 @@ if command -v hermes &>/dev/null; then
   info "Writing ~/.hermes/config.yaml..."
   cat > "$HERMES_CONFIG" <<HCEOF
 env:
-  CCC_URL: "${CCC_URL}"
-  CCC_AGENT_TOKEN: "${AGENT_TOKEN}"
+  ACC_URL: "${CCC_URL}"
+  ACC_AGENT_TOKEN: "${AGENT_TOKEN}"
   AGENT_NAME: "${AGENT}"
 HCEOF
   [[ -n "${SLACK_BOT_TOKEN:-}" ]] && echo "  SLACK_BOT_TOKEN: \"${SLACK_BOT_TOKEN}\"" >> "$HERMES_CONFIG"
@@ -568,8 +570,8 @@ HPEOF
   # Try the conf.d drop-in directory first (preferred, idempotent per-file),
   # then fall back to appending to the monolithic conf.
   HERMES_BIN="$(command -v hermes || echo "$HOME/.local/bin/hermes")"
-  HERMES_LOG="$HOME/.ccc/logs/hermes-gateway.log"
-  mkdir -p "$HOME/.ccc/logs"
+  HERMES_LOG="$HOME/.acc/logs/hermes-gateway.log"
+  mkdir -p "$HOME/.acc/logs"
 
   _hermes_supervisor_block() {
     cat <<HCONF
@@ -628,25 +630,25 @@ HCONF
   fi
 fi
 
-# ── 9b. Install ccc-bus-listener (systemd/launchd/supervisord) ───────────────
-# Subscribes to ClawBus SSE stream and triggers agent-pull on rcc.update.
+# ── 9b. Install acc-bus-listener (systemd/launchd/supervisord) ───────────────
+# Subscribes to AgentBus SSE stream and triggers agent-pull on acc.update.
 # Uses install-bus-listener.sh which picks the right process manager.
-info "Installing ccc-bus-listener..."
+info "Installing acc-bus-listener..."
 INSTALL_BUS="${CCC_WORKSPACE}/deploy/install-bus-listener.sh"
 if [[ -x "$INSTALL_BUS" ]]; then
   bash "$INSTALL_BUS" 2>&1 | grep -E "✓|⚠|ERROR|Done|active" | while read -r l; do info "$l"; done || true
-  success "ccc-bus-listener installed"
+  success "acc-bus-listener installed"
 else
-  warn "install-bus-listener.sh not found — ClawBus-triggered sync disabled"
+  warn "install-bus-listener.sh not found — AgentBus-triggered sync disabled"
 fi
 
-# ── 9c. Install ccc-queue-worker (systemd/launchd/supervisord) ───────────────
+# ── 9c. Install acc-queue-worker (systemd/launchd/supervisord) ───────────────
 # Polls /api/queue and autonomously executes pending items via claude/hermes.
-info "Installing ccc-queue-worker..."
+info "Installing acc-queue-worker..."
 INSTALL_QW="${CCC_WORKSPACE}/deploy/install-queue-worker.sh"
 if [[ -x "$INSTALL_QW" ]]; then
   bash "$INSTALL_QW" 2>&1 | grep -E "✓|⚠|ERROR|Done|active" | while read -r l; do info "$l"; done || true
-  success "ccc-queue-worker installed"
+  success "acc-queue-worker installed"
 else
   warn "install-queue-worker.sh not found — queue processing disabled"
 fi
@@ -751,9 +753,9 @@ curl -s -X PATCH "${CCC_URL}/api/agents/${AGENT}" \
 success "Heartbeat + hardware fingerprint posted"
 
 # ── Write onboarding signature ────────────────────────────────────────────
-_AGENT_JSON="$HOME/.ccc/agent.json"
+_AGENT_JSON="$HOME/.acc/agent.json"
 if [ ! -f "$_AGENT_JSON" ]; then
-  _CCC_VERSION=$(cd "${CCC_WORKSPACE:-$HOME/.ccc/workspace}" && git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+  _CCC_VERSION=$(cd "${CCC_WORKSPACE:-$HOME/.acc/workspace}" && git rev-parse --short HEAD 2>/dev/null || echo "unknown")
   if [ -x "$CCC_AGENT" ]; then
     "$CCC_AGENT" agent init "$_AGENT_JSON" \
       --name="${AGENT:-unknown}" \
@@ -793,7 +795,7 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo -e "${GREEN}✅ Bootstrap complete!${NC} ${AGENT^} is alive."
 echo ""
 echo "  CCC workspace:  ${CCC_WORKSPACE}"
-echo "  CCC env:        ${HOME}/.ccc/.env"
+echo "  ACC env:        ${HOME}/.acc/.env"
 echo ""
 echo "  Next: hermes gateway   (starts the agent runtime)"
 echo ""

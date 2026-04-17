@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-queue-worker.py — Persistent CCC queue worker daemon.
+queue-worker.py — Persistent ACC queue worker daemon.
 
 Polls /api/queue every 60s, claims and executes pending items.
 Enforces the AgentFS workspace lifecycle for every task:
@@ -10,7 +10,7 @@ Enforces the AgentFS workspace lifecycle for every task:
 
 Usage (direct):   python3 queue-worker.py
 Supervisord:      command=python3 /home/.../queue-worker.py
-Systemd:          ExecStart=/usr/bin/python3 AGENT_HOME/.ccc/workspace/deploy/queue-worker.py
+Systemd:          ExecStart=/usr/bin/python3 AGENT_HOME/.acc/workspace/deploy/queue-worker.py
 """
 
 from __future__ import annotations
@@ -28,24 +28,26 @@ from pathlib import Path
 
 # ── Configuration ────────────────────────────────────────────────────────────
 
-CCC_DIR = Path(os.environ.get("HOME", "/home")) / ".ccc"
+# Prefer ~/.acc (post-migration); fall back to ~/.ccc (pre-migration nodes)
+_home = Path(os.environ.get("HOME", "/home"))
+ACC_DIR = _home / ".acc" if (_home / ".acc").exists() else _home / ".ccc"
 
-_home_local_bin = str(Path(os.environ.get("HOME", "/home")) / ".local" / "bin")
+_home_local_bin = str(_home / ".local" / "bin")
 if _home_local_bin not in os.environ.get("PATH", ""):
     os.environ["PATH"] = _home_local_bin + ":" + os.environ.get("PATH", "/usr/bin:/bin")
 
-ENV_FILE          = CCC_DIR / ".env"
-LOG_FILE          = CCC_DIR / "logs" / "queue-worker.log"
-QUENCH_FILE       = CCC_DIR / "quench"
-WORKSPACE         = CCC_DIR / "workspace"
-TASK_WORKSPACE_BASE = CCC_DIR / "task-workspaces"
+ENV_FILE          = ACC_DIR / ".env"
+LOG_FILE          = ACC_DIR / "logs" / "queue-worker.log"
+QUENCH_FILE       = ACC_DIR / "quench"
+WORKSPACE         = ACC_DIR / "workspace"
+TASK_WORKSPACE_BASE = ACC_DIR / "task-workspaces"
 
 POLL_INTERVAL_IDLE  = 60        # seconds between queue checks when idle
 POLL_INTERVAL_BUSY  = 5         # seconds between checks right after completing a task
 KEEPALIVE_INTERVAL  = 25 * 60   # 25 min (TTL is 2h for claude_cli)
 CLAUDE_TIMEOUT      = 7200      # 2 hours max per task
 HTTP_TIMEOUT        = 15        # seconds for API calls
-WAKEUP_FILE         = CCC_DIR / "work-signal"    # bus-listener touches this to wake us
+WAKEUP_FILE         = ACC_DIR / "work-signal"    # bus-listener touches this to wake us
 SSE_RECONNECT_DELAY = 5                           # seconds between SSE reconnect attempts
 BEADS_POLL_INTERVAL = 300                         # check bd ready at most every 5 min
 
@@ -77,11 +79,12 @@ def load_env() -> None:
 load_env()
 
 AGENT_NAME      = os.environ.get("AGENT_NAME", "")
-CCC_URL         = os.environ.get("CCC_URL", "").rstrip("/")
-CCC_AGENT_TOKEN = os.environ.get("CCC_AGENT_TOKEN", "")
+# ACC_URL preferred; fall back to CCC_URL for pre-migration nodes
+ACC_URL         = (os.environ.get("ACC_URL") or os.environ.get("CCC_URL", "")).rstrip("/")
+ACC_AGENT_TOKEN = os.environ.get("ACC_AGENT_TOKEN") or os.environ.get("CCC_AGENT_TOKEN", "")
 
-if not AGENT_NAME or not CCC_URL or not CCC_AGENT_TOKEN:
-    log.error("AGENT_NAME, CCC_URL, and CCC_AGENT_TOKEN must be set in ~/.ccc/.env")
+if not AGENT_NAME or not ACC_URL or not ACC_AGENT_TOKEN:
+    log.error("AGENT_NAME, ACC_URL, and ACC_AGENT_TOKEN must be set in ~/.acc/.env")
     sys.exit(1)
 
 
@@ -92,7 +95,7 @@ def _detect_capabilities() -> frozenset[str]:
     Return the set of executor types this agent can handle.
     Checked against task required_executors (hard filter) at claim time.
 
-    Override by setting AGENT_CAPABILITIES=claude_cli,gpu,... in ~/.ccc/.env.
+    Override by setting AGENT_CAPABILITIES=claude_cli,gpu,... in ~/.acc/.env.
     """
     from_env = os.environ.get("AGENT_CAPABILITIES", "")
     if from_env:
@@ -121,9 +124,10 @@ AGENT_CAPABILITIES = _detect_capabilities()
 # ── SSE watcher ───────────────────────────────────────────────────────────────
 
 def _sse_thread() -> None:
-    """Subscribe to ClawBus SSE. Touch WAKEUP_FILE on any work-relevant message."""
+    """Subscribe to AgentBus SSE. Touch WAKEUP_FILE on any work-relevant message."""
     WORK_SIGNAL_TYPES = {
-        "project.arrived", "queue.item.created", "work.available", "rcc.update",
+        "project.arrived", "queue.item.created", "work.available",
+        "acc.update", "rcc.update",  # rcc.update kept for backward compat
     }
     while True:
         try:
@@ -131,8 +135,8 @@ def _sse_thread() -> None:
                 [
                     "curl", "-sSN", "--max-time", "3600",
                     "-H", "Accept: text/event-stream",
-                    "-H", f"Authorization: Bearer {CCC_AGENT_TOKEN}",
-                    f"{CCC_URL}/bus/stream",
+                    "-H", f"Authorization: Bearer {ACC_AGENT_TOKEN}",
+                    f"{ACC_URL}/bus/stream",
                 ],
                 stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
             )
@@ -224,11 +228,11 @@ def close_bead(bead_id: str, cwd: Path, success: bool = True) -> None:
 # ── HTTP helpers ─────────────────────────────────────────────────────────────
 
 def _curl(method: str, path: str, body: dict | None = None) -> dict | None:
-    url = f"{CCC_URL}{path}"
+    url = f"{ACC_URL}{path}"
     cmd = [
         "curl", "-sf", "--max-time", str(HTTP_TIMEOUT),
         "-X", method,
-        "-H", f"Authorization: Bearer {CCC_AGENT_TOKEN}",
+        "-H", f"Authorization: Bearer {ACC_AGENT_TOKEN}",
         "-H", "Content-Type: application/json",
     ]
     if body is not None:
@@ -825,7 +829,7 @@ def select_item(items: list[dict]) -> dict | None:
 # ── Main loop ─────────────────────────────────────────────────────────────────
 
 def main() -> None:
-    log.info(f"Starting queue-worker (agent={AGENT_NAME}, hub={CCC_URL})")
+    log.info(f"Starting queue-worker (agent={AGENT_NAME}, hub={ACC_URL})")
     log.info(f"Capabilities: {sorted(AGENT_CAPABILITIES) or ['(none detected — set AGENT_CAPABILITIES in .env)']}")
     post_heartbeat("queue-worker starting")
     threading.Thread(target=_sse_thread, daemon=True, name="sse-watcher").start()

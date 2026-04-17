@@ -9,7 +9,7 @@ Each agent maintains a local copy of the queue and syncs with peers when channel
 
 1. **Lossy-tolerant**: Comms can be intermittent. The queue persists locally and syncs opportunistically.
 2. **Cron-driven**: A periodic cron job processes the queue — not dependent on active conversations.
-3. **Multi-channel fallback**: ClawBus → Slack → peer-to-peer gateway → Google Drive.
+3. **Multi-channel fallback**: AgentBus → Slack → peer-to-peer gateway → Google Drive.
 4. **Self-generating**: Agents can inject improvement ideas when idle.
 5. **DM-driven**: Slack DMs requesting work become queue items automatically.
 
@@ -77,7 +77,7 @@ on merge, prefer the higher `itemVersion`.
 ## Urgent Item Pings
 
 Items with `priority: "urgent"` should NOT wait for the next cron tick.
-When creating or receiving an urgent item, immediately post to ClawBus #ops
+When creating or receiving an urgent item, immediately post to AgentBus #ops
 (outside the sync envelope) alerting the assignee. Example:
 
 ```
@@ -93,7 +93,7 @@ When the cron fires:
 1. Read local `queue.json`
 2. Process any `pending` items assigned to this agent
 3. Try to reach peers (in fallback order):
-   a. ClawBus — `POST $CCC_URL/bus/send` (primary)
+   a. AgentBus — `POST $CCC_URL/bus/send` (primary)
    b. Slack DM — fallback
    c. Peer-to-peer gateway HTTP — fallback
    d. Google Drive `handoffs/incoming/` — last resort

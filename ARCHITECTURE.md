@@ -1,4 +1,4 @@
-# Claw Command Center — Architecture
+# Agent Control Center — Architecture
 
 ## What We're Building
 
@@ -14,7 +14,7 @@ A distributed AI agent coordination platform designed around the realities of ho
 
 ## Components
 
-### 1. Claw Command Center (CCC) — The Hub
+### 1. Agent Control Center (ACC) — The Hub
 
 A cheap Azure CPU VM. The hub of all coordination.
 
@@ -29,12 +29,12 @@ A cheap Azure CPU VM. The hub of all coordination.
 - Exposes a health endpoint: `GET /health` → `{ok, lastLlmResponseAge, queueDepth, agents}`
 
 **Services running on CCC:**
-- `ccc-api` — REST API (HTTPS only), auth via user tokens
-- `ccc-dashboard` — Web UI (Claw Command Center dashboard)
-- `ccc-brain` — The LLM request queue + retry engine
-- `ccc-bus` — ClawBus message routing (agent ↔ agent via hub)
-- `ccc-storage` — Storage tier abstraction (public Azure Blob / private Azure / local MinIO proxy)
-- `ccc-watchdog` — Monitors agent heartbeats, escalates stale agents to jkh
+- `acc-api` — REST API (HTTPS only), auth via user tokens
+- `acc-dashboard` — Web UI (Agent Control Center dashboard)
+- `acc-brain` — The LLM request queue + retry engine
+- `acc-bus` — AgentBus message routing (agent ↔ agent via hub)
+- `acc-storage` — Storage tier abstraction (public Azure Blob / private Azure / local MinIO proxy)
+- `acc-watchdog` — Monitors agent heartbeats, escalates stale agents to jkh
 
 ---
 
@@ -50,7 +50,7 @@ Anything with a Claude/Codex CLI session in tmux, or any machine running hermes-
 - Work lease: when claiming a work item, lease expires after TTL — another agent can reclaim
 
 **Agent types:**
-- `full` — Full VM, inbound+outbound, can run ClawBus receive endpoint
+- `full` — Full VM, inbound+outbound, can run AgentBus receive endpoint
 - `container` — GPU container, outbound-only, polls CCC for messages
 - `local` — Home PC/desktop, NAT'd, polls CCC
 - `spark` — DGX Spark, treated like `local` unless network allows more
@@ -65,7 +65,7 @@ Anything with a Claude/Codex CLI session in tmux, or any machine running hermes-
 | Private Cloud | Azure Blob Storage | HTTPS + SAS token | In-progress work, agent-to-agent file transfer via cloud |
 | Local/Fast | MinIO (on CCC or agent cluster) | Internal network + key | High-speed inter-agent storage, queue state, logs |
 
-CCC's `ccc-storage` service abstracts all three tiers behind a single API. Agents don't need to know which tier they're talking to.
+CCC's `acc-storage` service abstracts all three tiers behind a single API. Agents don't need to know which tier they're talking to.
 
 ---
 
@@ -103,7 +103,7 @@ CCC doesn't manage the Claude Code session — it delegates to it via claude-wor
 
 ## The Nervous System
 
-CCC's `ccc-brain` is not just a message queue — it's an autonomous loop:
+CCC's `acc-brain` is not just a message queue — it's an autonomous loop:
 
 ```
 while true:
@@ -117,13 +117,13 @@ while true:
        - if retries >= 3: try next model in fallback chain
        - if all models exhausted: mark item as "llm-unavailable", alert watchdog
   6. Check agent heartbeats — escalate stale agents
-  7. Route any pending ClawBus messages
+  7. Route any pending AgentBus messages
   8. Sleep(tick_interval)
 ```
 
 The tick interval is tunable. Default: 30s. Under load: 5s.
 
-State is persisted to disk after every tick. If ccc-brain crashes and restarts, it picks up exactly where it left off.
+State is persisted to disk after every tick. If acc-brain crashes and restarts, it picks up exactly where it left off.
 
 ---
 
@@ -141,10 +141,10 @@ State is persisted to disk after every tick. If ccc-brain crashes and restarts, 
 
 ```
 rocky/
-├──.ccc/                    # Claw Command Center services
+├──.acc/                    # Agent Control Center services
 │   ├── api/                # REST API server
 │   ├── brain/              # LLM queue + retry engine
-│   ├── bus/                # ClawBus routing
+│   ├── bus/                # AgentBus routing
 │   ├── dashboard/          # Web UI (evolving from current dashboard/)
 │   ├── storage/            # Storage tier abstraction
 │   └── watchdog/           # Agent health monitor
@@ -166,7 +166,7 @@ rocky/
 Core infrastructure is operational. The "immediate next steps" from March have shipped:
 
 - ✅ **.ccc/brain/`** — LLM queue + retry engine live; fallback chain: Claude Sonnet → Llama 70B → Nemotron
-- ✅ **.ccc/wasm-dashboard/`** — Full Leptos WASM dashboard with 10 tabs (Kanban, ClawBus, Audit, Profiler, etc.)
+- ✅ **.ccc/wasm-dashboard/`** — Full Leptos WASM dashboard with 10 tabs (Kanban, AgentBus, Audit, Profiler, etc.)
 - ✅ **.ccc/api/routes/`** — Monolithic `index.mjs` split into domain route modules
 - ✅ **nanolang** — Full compiled language with 5 backends, LSP, formatter, playground
 - ✅ **agentOS** — seL4/Microkit RTOS for WASM agent slots (cap broker, OOM killer, snapshot sched, profiler)
@@ -177,7 +177,7 @@ Core infrastructure is operational. The "immediate next steps" from March have s
 1. **.ccc/brain/` edge cases** — All-models-degraded recovery, partial state replay under failure
 2. **agentOS WASM runtime** — Live migration of WASM slots between sparky and Boris
 3. **nanolang stdlib** — Complete stdlib coverage; bench suite vs reference programs
-4. **ClawChat** — Agent communication hub (Leptos WASM SPA, served at /clawchat/)
+4. **AgentChat** — Agent communication hub (Leptos WASM SPA, served at /clawchat/)
 5. **Fleet expansion** — New nodes join via `rocky register`; auto-provision from topology
 
 ---

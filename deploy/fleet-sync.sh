@@ -1,25 +1,25 @@
 #!/usr/bin/env bash
-# fleet-sync.sh — Push current workspace state to all agents via ClawBus.
+# fleet-sync.sh — Push current workspace state to all agents via AgentBus.
 #
 # Run this after committing and pushing changes to GitHub:
 #
-#   git push && bash deploy/fleet-sync.sh --ccc=http://<hub>:8788 --token=<token>
+#   git push && bash deploy/fleet-sync.sh --acc=http://<hub>:8788 --token=<token>
 #
-# If ~/.ccc/.env exists with CCC_URL and CCC_AGENT_TOKEN set, flags are optional.
+# If ~/.acc/.env exists with ACC_URL and ACC_AGENT_TOKEN set, flags are optional.
 #
 # What it does:
-#   1. Mirrors ~/.ccc/workspace → MinIO (agentfs) so it's available via mc
-#   2. Broadcasts rcc.update to ClawBus so all agents run agent-pull.sh NOW
+#   1. Mirrors ~/.acc/workspace → MinIO (agentfs) so it's available via mc
+#   2. Broadcasts acc.update to AgentBus so all agents run agent-pull.sh NOW
 #      instead of waiting up to 10 minutes for the scheduled timer
 #   3. Reports online agents from /bus/presence
 #
 # Flags:
-#   --ccc=URL       Hub URL (overrides CCC_URL from .env)
-#   --token=TOKEN   Agent token (overrides CCC_AGENT_TOKEN from .env)
+#   --acc=URL       Hub URL (overrides ACC_URL from .env)
+#   --token=TOKEN   Agent token (overrides ACC_AGENT_TOKEN from .env)
 #   --dry-run       Show what would happen without doing it
 #   --skip-mirror   Skip the MinIO mirror step (just send the bus message)
 #   --branch=NAME   Specify branch (default: current git branch)
-#   --component=X   Component name in rcc.update body (default: workspace)
+#   --component=X   Component name in acc.update body (default: workspace)
 
 set -euo pipefail
 
@@ -28,52 +28,59 @@ DRY_RUN=false
 SKIP_MIRROR=false
 BRANCH=""
 COMPONENT="workspace"
-CCC_URL_ARG=""
-CCC_TOKEN_ARG=""
+ACC_URL_ARG=""
+ACC_TOKEN_ARG=""
 
 for arg in "$@"; do
   case "$arg" in
-    --ccc=*)          CCC_URL_ARG="${arg#--ccc=}" ;;
-    --token=*)        CCC_TOKEN_ARG="${arg#--token=}" ;;
+    --acc=*)          ACC_URL_ARG="${arg#--acc=}" ;;
+    --ccc=*)          ACC_URL_ARG="${arg#--ccc=}" ;;  # backward compat alias
+    --token=*)        ACC_TOKEN_ARG="${arg#--token=}" ;;
     --dry-run)        DRY_RUN=true ;;
     --skip-mirror)    SKIP_MIRROR=true ;;
     --branch=*)       BRANCH="${arg#--branch=}" ;;
     --component=*)    COMPONENT="${arg#--component=}" ;;
     -h|--help)
-      echo "Usage: fleet-sync.sh [--ccc=URL] [--token=TOKEN] [--dry-run] [--skip-mirror] [--branch=NAME] [--component=NAME]"
+      echo "Usage: fleet-sync.sh [--acc=URL] [--token=TOKEN] [--dry-run] [--skip-mirror] [--branch=NAME] [--component=NAME]"
       exit 0 ;;
   esac
 done
 
 # ── Load env ───────────────────────────────────────────────────────────────────
-CCC_DIR="${HOME}/.ccc"
-ENV_FILE="${CCC_DIR}/.env"
-WORKSPACE="${CCC_DIR}/workspace"
+# Prefer ~/.acc (post-migration), fall back to ~/.ccc (pre-migration)
+if [[ -d "${HOME}/.acc" ]]; then
+  ACC_DIR="${HOME}/.acc"
+else
+  ACC_DIR="${HOME}/.ccc"
+fi
+ENV_FILE="${ACC_DIR}/.env"
+WORKSPACE="${ACC_DIR}/workspace"
 
 # Also try loading from the workspace's own .env-style files
 for _env in "$ENV_FILE" ".env" "${WORKSPACE}/.env"; do
   [[ -f "$_env" ]] && { set -a; source "$_env"; set +a; } || true
 done
 
-CCC_URL="${CCC_URL:-}"
-CCC_AGENT_TOKEN="${CCC_AGENT_TOKEN:-}"
+# ACC_URL preferred; fall back to CCC_URL for pre-migration nodes
+ACC_URL="${ACC_URL:-${CCC_URL:-}}"
+ACC_AGENT_TOKEN="${ACC_AGENT_TOKEN:-${CCC_AGENT_TOKEN:-}}"
 AGENT_NAME="${AGENT_NAME:-jkh}"
-MINIO_ALIAS="${MINIO_ALIAS:-ccc-hub}"
-# ClawFS S3 gateway (port 9100) — externally accessible from any agent or operator machine.
+MINIO_ALIAS="${MINIO_ALIAS:-acc-hub}"
+# AgentFS S3 gateway (port 9100) — externally accessible from any agent or operator machine.
 # MinIO (port 9000) is localhost-only on the hub.
 CLAWFS_BUCKET="${CLAWFS_BUCKET:-clawfs}"
 CLAWFS_REPO_PATH="${CLAWFS_REPO_PATH:-repos/CCC}"
 
 # CLI flags override .env
-[[ -n "$CCC_URL_ARG"   ]] && CCC_URL="$CCC_URL_ARG"
-[[ -n "$CCC_TOKEN_ARG" ]] && CCC_AGENT_TOKEN="$CCC_TOKEN_ARG"
+[[ -n "$ACC_URL_ARG"   ]] && ACC_URL="$ACC_URL_ARG"
+[[ -n "$ACC_TOKEN_ARG" ]] && ACC_AGENT_TOKEN="$ACC_TOKEN_ARG"
 
-if [[ -z "$CCC_URL" ]]; then
-  echo "ERROR: CCC_URL not set. Pass --ccc=<url> or add CCC_URL to ~/.ccc/.env" >&2
+if [[ -z "$ACC_URL" ]]; then
+  echo "ERROR: ACC_URL not set. Pass --acc=<url> or add ACC_URL to ~/.acc/.env" >&2
   exit 1
 fi
 
-CCC_URL="${CCC_URL%/}"
+ACC_URL="${ACC_URL%/}"
 
 # Resolve git repo — prefer the directory containing this script, then WORKSPACE
 SCRIPT_REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd || echo "")"
@@ -100,16 +107,16 @@ warn()    { echo -e "${YELLOW}⚠${NC} $1"; }
 dry()     { echo -e "${YELLOW}[DRY RUN]${NC} $1"; }
 
 echo ""
-echo "🔄 CCC Fleet Sync  (rev=${REV} branch=${BRANCH})"
+echo "🔄 ACC Fleet Sync  (rev=${REV} branch=${BRANCH})"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
 # ── Step 1: MinIO mirror ───────────────────────────────────────────────────────
 if [[ "$SKIP_MIRROR" == false ]]; then
-  info "Mirroring workspace → ClawFS (agentfs)..."
+  info "Mirroring workspace → AgentFS..."
   MIRROR_SRC="${GIT_REPO}/"
-  # ClawFS S3 gateway (port 9100) — externally accessible. Path mirrors the on-disk layout
-  # at /home/jkh/clawfs/repos/CCC on the hub. No --remove: ClawFS may contain built
+  # AgentFS S3 gateway (port 9100) — externally accessible. Path mirrors the on-disk layout
+  # at /home/jkh/clawfs/repos/CCC on the hub. No --remove: AgentFS may contain built
   # artifacts and compiled binaries not tracked in git.
   MIRROR_DST="${MINIO_ALIAS}/${CLAWFS_BUCKET}/${CLAWFS_REPO_PATH}/"
 
@@ -117,19 +124,19 @@ if [[ "$SKIP_MIRROR" == false ]]; then
     # Auto-configure alias from hub secrets if not yet set
     if ! mc ls "${MINIO_ALIAS}" > /dev/null 2>&1; then
       info "mc alias '${MINIO_ALIAS}' not set — fetching credentials from hub..."
-      _hub_base="${CCC_URL%:*}"  # strip port, keep scheme+host
+      _hub_base="${ACC_URL%:*}"  # strip port, keep scheme+host
       _clawfs_url="${_hub_base}:9100"
-      _ak=$(curl -sf -H "Authorization: Bearer ${CCC_AGENT_TOKEN}" \
-        "${CCC_URL}/api/secrets/agentfs%2Faccess_key" 2>/dev/null | \
+      _ak=$(curl -sf -H "Authorization: Bearer ${ACC_AGENT_TOKEN}" \
+        "${ACC_URL}/api/secrets/agentfs%2Faccess_key" 2>/dev/null | \
         python3 -c "import json,sys; print(json.load(sys.stdin).get('value',''))" 2>/dev/null || echo "")
-      _sk=$(curl -sf -H "Authorization: Bearer ${CCC_AGENT_TOKEN}" \
-        "${CCC_URL}/api/secrets/agentfs%2Fsecret_key" 2>/dev/null | \
+      _sk=$(curl -sf -H "Authorization: Bearer ${ACC_AGENT_TOKEN}" \
+        "${ACC_URL}/api/secrets/agentfs%2Fsecret_key" 2>/dev/null | \
         python3 -c "import json,sys; print(json.load(sys.stdin).get('value',''))" 2>/dev/null || echo "")
       if [[ -n "$_ak" && -n "$_sk" ]]; then
         mc alias set "${MINIO_ALIAS}" "${_clawfs_url}" "${_ak}" "${_sk}" > /dev/null 2>&1
         success "mc alias '${MINIO_ALIAS}' configured (${_clawfs_url})"
         # Persist to .env for next run
-        _env_file="${CCC_DIR}/.env"
+        _env_file="${ACC_DIR}/.env"
         if [[ -f "$_env_file" ]]; then
           sed -i.bak "/^MINIO_ALIAS=/d; /^CLAWFS_URL=/d" "$_env_file" 2>/dev/null || true
           printf 'MINIO_ALIAS=%s\nCLAWFS_URL=%s\n' "${MINIO_ALIAS}" "${_clawfs_url}" >> "$_env_file"
@@ -150,21 +157,21 @@ if [[ "$SKIP_MIRROR" == false ]]; then
           --exclude "node_modules/*" \
           --exclude "*.log" \
           "${MIRROR_SRC}" "${MIRROR_DST}" 2>&1 | tail -5
-        success "Workspace mirrored to ClawFS: ${MIRROR_DST}"
+        success "Workspace mirrored to AgentFS: ${MIRROR_DST}"
       fi
     fi
   else
     warn "mc not found — skipping mirror (run: make deps)"
   fi
 else
-  info "ClawFS mirror skipped (--skip-mirror)"
+  info "AgentFS mirror skipped (--skip-mirror)"
 fi
 
-# ── Step 2: Show online agents from ClawBus presence ─────────────────────────
+# ── Step 2: Show online agents from AgentBus presence ─────────────────────────
 info "Checking agent presence..."
 PRESENCE_JSON=$(curl -sf --max-time 10 \
-  -H "Authorization: Bearer ${CCC_AGENT_TOKEN}" \
-  "${CCC_URL}/bus/presence" 2>/dev/null || echo "")
+  -H "Authorization: Bearer ${ACC_AGENT_TOKEN}" \
+  "${ACC_URL}/bus/presence" 2>/dev/null || echo "")
 if [[ -n "$PRESENCE_JSON" ]]; then
   ONLINE_AGENTS=$(python3 -c "
 import json, sys
@@ -180,8 +187,8 @@ else
   warn "Could not reach /bus/presence — hub may be down or unreachable"
 fi
 
-# ── Step 3: Broadcast rcc.update ──────────────────────────────────────────────
-info "Broadcasting rcc.update to all agents..."
+# ── Step 3: Broadcast acc.update ──────────────────────────────────────────────
+info "Broadcasting acc.update to all agents..."
 
 UPDATE_BODY=$(python3 -c "
 import json
@@ -193,28 +200,28 @@ import json
 print(json.dumps({
   'from': '${AGENT_NAME}',
   'to': 'all',
-  'type': 'rcc.update',
+  'type': 'acc.update',
   'subject': 'workspace sync ${REV}',
   'body': '${UPDATE_BODY}'
 }))
 " 2>/dev/null)
 
 if [[ "$DRY_RUN" == true ]]; then
-  dry "Would POST to ${CCC_URL}/bus/send:"
+  dry "Would POST to ${ACC_URL}/bus/send:"
   dry "  $MSG_JSON"
 else
-  if [[ -z "$CCC_AGENT_TOKEN" ]]; then
-    warn "CCC_AGENT_TOKEN not set — bus message will fail if hub requires auth"
+  if [[ -z "$ACC_AGENT_TOKEN" ]]; then
+    warn "ACC_AGENT_TOKEN not set — bus message will fail if hub requires auth"
   fi
   RESP=$(curl -sf --max-time 15 \
-    -X POST "${CCC_URL}/bus/send" \
-    -H "Authorization: Bearer ${CCC_AGENT_TOKEN}" \
+    -X POST "${ACC_URL}/bus/send" \
+    -H "Authorization: Bearer ${ACC_AGENT_TOKEN}" \
     -H "Content-Type: application/json" \
     -d "$MSG_JSON" 2>&1) || RESP=""
 
   if echo "$RESP" | grep -q '"ok":true'; then
     SEQ=$(python3 -c "import json,sys; print(json.loads(sys.argv[1]).get('message',{}).get('seq','?'))" "$RESP" 2>/dev/null || echo "?")
-    success "rcc.update broadcast sent (seq=${SEQ})"
+    success "acc.update broadcast sent (seq=${SEQ})"
   else
     warn "Bus send may have failed. Response: ${RESP:-<empty>}"
     warn "  Agents will still sync on their next 10-minute timer cycle."
@@ -225,9 +232,9 @@ echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo -e "${GREEN}✓ Fleet sync complete${NC}"
 echo ""
-echo "  Agents subscribed to ClawBus will pull immediately."
-echo "  Others will pick it up within 10 minutes via ccc-agent-pull timer."
+echo "  Agents subscribed to AgentBus will pull immediately."
+echo "  Others will pick it up within 10 minutes via acc-agent-pull timer."
 echo ""
-echo "  Workspace available via ClawFS at:"
+echo "  Workspace available via AgentFS at:"
 echo "    mc ls ${MINIO_ALIAS}/${CLAWFS_BUCKET}/${CLAWFS_REPO_PATH}/"
 echo ""

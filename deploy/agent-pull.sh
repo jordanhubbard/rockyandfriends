@@ -1,14 +1,20 @@
 #!/bin/bash
 # agent-pull.sh — Pull latest code and restart services if changed
 # Runs every 10 minutes via cron or launchd
-# Logs to ~/.ccc/logs/pull.log
+# Logs to ~/.acc/logs/pull.log
 
 set -e
 
-CCC_DIR="$HOME/.ccc"
-WORKSPACE="$CCC_DIR/workspace"
-ENV_FILE="$CCC_DIR/.env"
-LOG_FILE="$CCC_DIR/logs/pull.log"
+# Prefer ~/.acc (post-migration), fall back to ~/.ccc (pre-migration)
+if [[ -d "${HOME}/.acc" ]]; then
+  ACC_DIR="$HOME/.acc"
+else
+  ACC_DIR="$HOME/.ccc"
+fi
+
+WORKSPACE="$ACC_DIR/workspace"
+ENV_FILE="$ACC_DIR/.env"
+LOG_FILE="$ACC_DIR/logs/pull.log"
 MAX_LOG_LINES=500
 
 # Load .env if it exists
@@ -19,7 +25,9 @@ if [ -f "$ENV_FILE" ]; then
 fi
 
 AGENT_NAME="${AGENT_NAME:-unknown}"
-CCC_URL="${CCC_URL:-}"
+# ACC_URL preferred; fall back to CCC_URL for pre-migration nodes
+ACC_URL="${ACC_URL:-${CCC_URL:-}}"
+ACC_AGENT_TOKEN="${ACC_AGENT_TOKEN:-${CCC_AGENT_TOKEN:-}}"
 
 log() {
   echo "[$(date -u '+%Y-%m-%dT%H:%M:%SZ')] [$AGENT_NAME] $1" >> "$LOG_FILE" 2>&1
@@ -33,7 +41,7 @@ if [ -f "$LOG_FILE" ]; then
   fi
 fi
 
-mkdir -p "$CCC_DIR/logs"
+mkdir -p "$ACC_DIR/logs"
 log "Pull starting"
 
 # ── Check repo exists ─────────────────────────────────────────────────────
@@ -44,11 +52,11 @@ fi
 
 cd "$WORKSPACE"
 
-# ── Runtime symlinks (queue.json — CCC API is authoritative source) ────────
-CCC_QUEUE="$HOME/.ccc/data/queue.json"
+# ── Runtime symlinks (queue.json — ACC API is authoritative source) ────────
+ACC_QUEUE="$ACC_DIR/data/queue.json"
 WQ_QUEUE="$WORKSPACE/workqueue/queue.json"
-if [ -f "$CCC_QUEUE" ] && [ ! -L "$WQ_QUEUE" ]; then
-  ln -sf "$CCC_QUEUE" "$WQ_QUEUE" 2>/dev/null || true
+if [ -f "$ACC_QUEUE" ] && [ ! -L "$WQ_QUEUE" ]; then
+  ln -sf "$ACC_QUEUE" "$WQ_QUEUE" 2>/dev/null || true
 fi
 
 # ── Git pull ──────────────────────────────────────────────────────────────
@@ -68,13 +76,13 @@ else
 fi
 AFTER=$(git rev-parse HEAD)
 
-CCC_VERSION=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+ACC_VERSION=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 
 if [ "$BEFORE" = "$AFTER" ]; then
   log "No changes"
 else
   log "Updated: $BEFORE -> $AFTER"
-  
+
   # Check what changed
   CHANGED=$(git diff --name-only "$BEFORE" "$AFTER")
   log "Changed files: $(echo "$CHANGED" | tr '\n' ' ')"
@@ -85,15 +93,7 @@ else
     if command -v systemctl &>/dev/null && systemctl is-active --quiet wq-dashboard.service 2>/dev/null; then
       sudo systemctl restart wq-dashboard.service && log "wq-dashboard.service restarted" || log "WARNING: restart failed"
     elif command -v launchctl &>/dev/null; then
-      launchctl kickstart -k gui/$(id -u)/com.ccc.dashboard 2>/dev/null && log "dashboard LaunchAgent restarted" || true
-    fi
-  fi
-
-  # Restart ccc-api if it changed
-  if echo "$CHANGED" | grep -q ".ccc/api/"; then
-    log "CCC API changed — restarting ccc-api.service"
-    if command -v systemctl &>/dev/null && systemctl is-active --quiet ccc-api.service 2>/dev/null; then
-      sudo systemctl restart ccc-api.service && log "ccc-api.service restarted" || log "WARNING: restart failed"
+      launchctl kickstart -k gui/$(id -u)/com.acc.dashboard 2>/dev/null && log "dashboard LaunchAgent restarted" || true
     fi
   fi
 
@@ -104,7 +104,7 @@ else
     if [ -d "$HOME/.npm" ]; then
       chown -R "$(id -u):$(id -g)" "$HOME/.npm" 2>/dev/null || true
     fi
-    # Root deps (better-sqlite3 for exec-listener, etc.)
+    # Root deps
     if echo "$CHANGED" | grep -q "^package.json$\|^package-lock.json$"; then
       cd "$WORKSPACE" && npm install --silent && log "npm install (root) done" || log "WARNING: npm install (root) failed"
     fi
@@ -116,9 +116,9 @@ else
   fi
 fi
 
-# ── Sync secrets from CCC ────────────────────────────────────────────────
+# ── Sync secrets from ACC ─────────────────────────────────────────────────
 # Picks up any rotated secrets without requiring re-bootstrap
-if [ -n "$CCC_URL" ] && [ -n "$CCC_AGENT_TOKEN" ]; then
+if [ -n "$ACC_URL" ] && [ -n "$ACC_AGENT_TOKEN" ]; then
   SECRETS_SYNC="$WORKSPACE/deploy/secrets-sync.sh"
   if [ -f "$SECRETS_SYNC" ]; then
     if bash "$SECRETS_SYNC" >> "$LOG_FILE" 2>&1; then
@@ -136,25 +136,19 @@ if [ -n "$CCC_URL" ] && [ -n "$CCC_AGENT_TOKEN" ]; then
   fi
 fi
 
-# ── Post heartbeat to CCC ─────────────────────────────────────────────────
-if [ -n "$CCC_URL" ] && [ -n "$CCC_AGENT_TOKEN" ]; then
-  HEARTBEAT_PAYLOAD="{\"agent\":\"$AGENT_NAME\",\"host\":\"${AGENT_HOST:-$(hostname)}\",\"ts\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"status\":\"online\",\"pullRev\":\"$AFTER\",\"ccc_version\":\"$CCC_VERSION\"}"
+# ── Post heartbeat to ACC ─────────────────────────────────────────────────
+if [ -n "$ACC_URL" ] && [ -n "$ACC_AGENT_TOKEN" ]; then
+  HEARTBEAT_PAYLOAD="{\"agent\":\"$AGENT_NAME\",\"host\":\"${AGENT_HOST:-$(hostname)}\",\"ts\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"status\":\"online\",\"pullRev\":\"$AFTER\",\"acc_version\":\"$ACC_VERSION\"}"
   HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
-    -X POST "$CCC_URL/api/heartbeat/$AGENT_NAME" \
-    -H "Authorization: Bearer $CCC_AGENT_TOKEN" \
+    -X POST "$ACC_URL/api/heartbeat/$AGENT_NAME" \
+    -H "Authorization: Bearer $ACC_AGENT_TOKEN" \
     -H "Content-Type: application/json" \
     -d "$HEARTBEAT_PAYLOAD" \
     --max-time 10 2>/dev/null)
   if [ "$HTTP_STATUS" = "200" ]; then
-    log "Heartbeat posted to CCC"
+    log "Heartbeat posted to ACC"
   else
     log "WARNING: Heartbeat POST returned HTTP $HTTP_STATUS"
-  fi
-  # Update ~/.ccc/agent.json with latest ccc_version (non-fatal)
-  _AGENT_BIN="${CCC_AGENT:-$CCC_DIR/bin/ccc-agent}"
-  [ ! -x "$_AGENT_BIN" ] && _AGENT_BIN="$(command -v ccc-agent 2>/dev/null || echo "")"
-  if [ -f "$CCC_DIR/agent.json" ] && [ -x "$_AGENT_BIN" ]; then
-    "$_AGENT_BIN" agent upgrade "$CCC_DIR/agent.json" --version="$CCC_VERSION" 2>/dev/null || true
   fi
 fi
 

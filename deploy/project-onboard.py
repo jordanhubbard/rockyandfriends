@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 """
-project-onboard.py — Bootstrap a new project into the CCC fleet.
+project-onboard.py — Bootstrap a new project into the ACC fleet.
 
-Creates a project record, mirrors the git repo to AgentFS (ClawFS),
+Creates a project record, mirrors the git repo to AgentFS,
 generates an initial task set from PLAN.md and/or open beads,
 creates a milestone "sync-to-git" task blocked on all others,
-and broadcasts project.arrived on ClawBus so idle agents can join.
+and broadcasts project.arrived on AgentBus so idle agents can join.
 
 Usage:
     python3 project-onboard.py --repo owner/repo [--name "Name"] [--branch main]
     python3 project-onboard.py --repo owner/repo --local /path/to/existing/clone
 
-Environment (from ~/.ccc/.env):
-    CCC_URL, CCC_AGENT_TOKEN
-    MINIO_ENDPOINT, MINIO_ALIAS (default: ccc-hub), MINIO_BUCKET (default: agents)
+Environment (from ~/.acc/.env):
+    ACC_URL, ACC_AGENT_TOKEN
+    MINIO_ENDPOINT, MINIO_ALIAS (default: acc-hub), MINIO_BUCKET (default: agents)
 """
 from __future__ import annotations
 
@@ -29,8 +29,9 @@ import tempfile
 import time
 from pathlib import Path
 
-CCC_DIR  = Path(os.environ.get("HOME", "/home")) / ".ccc"
-ENV_FILE = CCC_DIR / ".env"
+_home = Path(os.environ.get("HOME", "/home"))
+ACC_DIR  = _home / ".acc" if (_home / ".acc").exists() else _home / ".ccc"
+ENV_FILE = ACC_DIR / ".env"
 
 def _load_env() -> None:
     if ENV_FILE.exists():
@@ -43,10 +44,10 @@ def _load_env() -> None:
 
 _load_env()
 
-CCC_URL         = os.environ.get("CCC_URL", "").rstrip("/")
-CCC_AGENT_TOKEN = os.environ.get("CCC_AGENT_TOKEN", "")
+ACC_URL         = (os.environ.get("ACC_URL") or os.environ.get("CCC_URL", "")).rstrip("/")
+ACC_AGENT_TOKEN = os.environ.get("ACC_AGENT_TOKEN") or os.environ.get("CCC_AGENT_TOKEN", "")
 AGENT_NAME      = os.environ.get("AGENT_NAME", "unknown")
-MINIO_ALIAS     = os.environ.get("MINIO_ALIAS", "ccc-hub")
+MINIO_ALIAS     = os.environ.get("MINIO_ALIAS", "acc-hub")
 MINIO_BUCKET    = os.environ.get("MINIO_BUCKET", "agents")
 HTTP_TIMEOUT    = 15
 
@@ -57,17 +58,17 @@ def _log(msg: str) -> None:
 
 
 def _curl(method: str, path: str, body: dict | None = None) -> dict | None:
-    if not CCC_URL or not CCC_AGENT_TOKEN:
+    if not ACC_URL or not ACC_AGENT_TOKEN:
         return None
     cmd = [
         "curl", "-sf", "--max-time", str(HTTP_TIMEOUT),
         "-X", method,
-        "-H", f"Authorization: Bearer {CCC_AGENT_TOKEN}",
+        "-H", f"Authorization: Bearer {ACC_AGENT_TOKEN}",
         "-H", "Content-Type: application/json",
     ]
     if body is not None:
         cmd += ["-d", json.dumps(body)]
-    cmd.append(f"{CCC_URL}{path}")
+    cmd.append(f"{ACC_URL}{path}")
     try:
         r = subprocess.run(cmd, capture_output=True, text=True, timeout=HTTP_TIMEOUT + 5)
         if r.returncode == 0 and r.stdout.strip():

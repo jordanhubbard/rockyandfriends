@@ -100,7 +100,7 @@ queue items omit them and follow the standard git-clone workspace lifecycle.
      ├── Parse .beads/issues.jsonl → queue items (tagged "beads")
      ├── POST milestone task (dependsOn: all above task IDs, tagged "milestone","sync")
      ├── Write project.json → AgentFS
-     └── Broadcast project.arrived on ClawBus
+     └── Broadcast project.arrived on AgentBus
 
 2. Agents Join
    bus-listener.sh receives project.arrived → touches ~/.ccc/work-signal
@@ -143,7 +143,7 @@ queue items omit them and follow the standard git-clone workspace lifecycle.
 
 ## project.arrived Bus Event
 
-When `project-onboard.py` completes, it broadcasts on ClawBus:
+When `project-onboard.py` completes, it broadcasts on AgentBus:
 
 ```json
 {

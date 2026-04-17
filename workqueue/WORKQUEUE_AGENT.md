@@ -87,7 +87,7 @@ If no keepalive within TTL, server auto-resets to pending on `POST /api/queue/ex
 ## Urgent Items
 
 If you encounter or receive an item with `priority: "urgent"`:
-- **Immediately** post to ClawBus #ops:
+- **Immediately** post to AgentBus #ops:
   `POST $CCC_URL/bus/send` with `{from, to:"all", type:"text", subject:"ops", body:"[URGENT] [title] assigned to [assignee] — check workqueue."}`
 - Process it before any normal-priority items
 - Do NOT wait for the next cron tick if you can act now
@@ -97,11 +97,11 @@ If you encounter or receive an item with `priority: "urgent"`:
 Try channels in this order (stop at first success for each peer):
 
 ### Bullwinkle
-1. **ClawBus** — `POST $CCC_URL/bus/send` with `{subject:"ops", body:"WORKQUEUE_SYNC ..."}` (channel=clawbus)
+1. **AgentBus** — `POST $CCC_URL/bus/send` with `{subject:"ops", body:"WORKQUEUE_SYNC ..."}` (channel=clawbus)
 2. **Peer-to-peer** — `POST $BULLWINKLE_URL/v1/chat/completions` (auth: Bearer token — check MEMORY.md or your .env)
 
 ### Natasha
-1. **ClawBus** — `POST $CCC_URL/bus/send` with `{subject:"ops", body:"WORKQUEUE_SYNC ..."}` (channel=clawbus)
+1. **AgentBus** — `POST $CCC_URL/bus/send` with `{subject:"ops", body:"WORKQUEUE_SYNC ..."}` (channel=clawbus)
 2. **Peer-to-peer** — `POST $PEER_GATEWAY_URL/v1/chat/completions` (auth: `Bearer $PEER_TOKEN`)
 
 ### Sync Message Format

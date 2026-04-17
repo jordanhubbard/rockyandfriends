@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install-queue-worker.sh — Install the CCC queue worker daemon.
+# install-queue-worker.sh — Install the ACC queue worker daemon.
 #
 # The queue worker polls /api/queue and autonomously executes pending items
 # assigned to this agent via `claude -p`. It posts keepalives and results.
@@ -11,7 +11,7 @@
 #   bash deploy/install-queue-worker.sh macos     # force macOS/launchd
 #   bash deploy/install-queue-worker.sh supervisor # supervisord (containers)
 #
-# Requires: ~/.ccc/.env with CCC_URL and CCC_AGENT_TOKEN set.
+# Requires: ~/.acc/.env with ACC_URL and ACC_AGENT_TOKEN set.
 # Requires: `claude` CLI in PATH.
 
 set -euo pipefail
@@ -35,55 +35,64 @@ if [[ -z "$OS" ]]; then
   fi
 fi
 
-echo "Installing ccc-queue-worker via ${OS} (home=${AGENT_HOME}, user=${AGENT_USER})"
+echo "Installing acc-queue-worker via ${OS} (home=${AGENT_HOME}, user=${AGENT_USER})"
 echo "Workspace: ${WORKSPACE}"
 
 # Verify python3 and claude are available
 python3 --version || { echo "ERROR: python3 not found" >&2; exit 1; }
 claude --version 2>/dev/null || echo "WARNING: 'claude' not found in PATH — queue-worker will fail at runtime"
 
+# Detect ACC_DIR — prefer ~/.acc, fall back to ~/.ccc for pre-migration nodes
+if [[ -d "${AGENT_HOME}/.acc" ]]; then
+  ACC_HOME="${AGENT_HOME}/.acc"
+else
+  ACC_HOME="${AGENT_HOME}/.ccc"
+fi
+
 # Verify .env
-ENV_FILE="${AGENT_HOME}/.ccc/.env"
+ENV_FILE="${ACC_HOME}/.env"
 if [[ ! -f "$ENV_FILE" ]]; then
   echo "ERROR: ${ENV_FILE} not found — run bootstrap.sh first." >&2
   exit 1
 fi
 source "$ENV_FILE"
-[[ -z "${CCC_URL:-}" ]] && { echo "ERROR: CCC_URL not set in ${ENV_FILE}" >&2; exit 1; }
-[[ -z "${CCC_AGENT_TOKEN:-}" ]] && { echo "ERROR: CCC_AGENT_TOKEN not set in ${ENV_FILE}" >&2; exit 1; }
+ACC_URL="${ACC_URL:-${CCC_URL:-}}"
+ACC_AGENT_TOKEN="${ACC_AGENT_TOKEN:-${CCC_AGENT_TOKEN:-}}"
+[[ -z "${ACC_URL:-}" ]] && { echo "ERROR: ACC_URL not set in ${ENV_FILE}" >&2; exit 1; }
+[[ -z "${ACC_AGENT_TOKEN:-}" ]] && { echo "ERROR: ACC_AGENT_TOKEN not set in ${ENV_FILE}" >&2; exit 1; }
 
-mkdir -p "${AGENT_HOME}/.ccc/logs"
+mkdir -p "${ACC_HOME}/logs"
 
-WORKER_SCRIPT="${AGENT_HOME}/.ccc/workspace/deploy/queue-worker.py"
+WORKER_SCRIPT="${ACC_HOME}/workspace/deploy/queue-worker.py"
 if [[ ! -f "$WORKER_SCRIPT" ]]; then
   echo "ERROR: queue-worker.py not found at ${WORKER_SCRIPT}" >&2
   exit 1
 fi
 
 if [[ "$OS" == "linux" ]]; then
-  SVC_TEMPLATE="${WORKSPACE}/deploy/systemd/ccc-queue-worker.service"
-  SVC_DST="/etc/systemd/system/ccc-queue-worker.service"
+  SVC_TEMPLATE="${WORKSPACE}/deploy/systemd/acc-queue-worker.service"
+  SVC_DST="/etc/systemd/system/acc-queue-worker.service"
   sed "s|AGENT_USER|${AGENT_USER}|g; s|AGENT_HOME|${AGENT_HOME}|g" "$SVC_TEMPLATE" \
     | sudo tee "$SVC_DST" > /dev/null
   echo "Wrote ${SVC_DST}"
   sudo systemctl daemon-reload
-  sudo systemctl enable ccc-queue-worker
-  sudo systemctl restart ccc-queue-worker
-  systemctl status ccc-queue-worker --no-pager || true
+  sudo systemctl enable acc-queue-worker
+  sudo systemctl restart acc-queue-worker
+  systemctl status acc-queue-worker --no-pager || true
 
 elif [[ "$OS" == "macos" ]]; then
-  PLIST_TEMPLATE="${WORKSPACE}/deploy/launchd/com.ccc.queue-worker.plist"
-  PLIST_DST="${AGENT_HOME}/Library/LaunchAgents/com.ccc.queue-worker.plist"
+  PLIST_TEMPLATE="${WORKSPACE}/deploy/launchd/com.acc.queue-worker.plist"
+  PLIST_DST="${AGENT_HOME}/Library/LaunchAgents/com.acc.queue-worker.plist"
   mkdir -p "${AGENT_HOME}/Library/LaunchAgents"
   sed "s|AGENT_USER|${AGENT_USER}|g; s|AGENT_HOME|${AGENT_HOME}|g" "$PLIST_TEMPLATE" > "$PLIST_DST"
   echo "Wrote ${PLIST_DST}"
   launchctl unload "$PLIST_DST" 2>/dev/null || true
   launchctl load -w "$PLIST_DST"
-  launchctl list | grep ccc.queue-worker || echo "(not yet listed — may take a moment)"
+  launchctl list | grep acc.queue-worker || echo "(not yet listed — may take a moment)"
 
 elif [[ "$OS" == "supervisor" ]]; then
-  CONF_TEMPLATE="${WORKSPACE}/deploy/supervisor/ccc-queue-worker.conf"
-  CONF_DST="/etc/supervisor/conf.d/ccc-queue-worker.conf"
+  CONF_TEMPLATE="${WORKSPACE}/deploy/supervisor/acc-queue-worker.conf"
+  CONF_DST="/etc/supervisor/conf.d/acc-queue-worker.conf"
   sed "s|AGENT_USER|${AGENT_USER}|g; s|AGENT_HOME|${AGENT_HOME}|g" "$CONF_TEMPLATE" \
     | sudo tee "$CONF_DST" > /dev/null
   echo "Wrote ${CONF_DST}"
@@ -92,12 +101,12 @@ elif [[ "$OS" == "supervisor" ]]; then
   # Note: autostart=false — start manually when ready
   echo ""
   echo "Queue worker installed (autostart=false). Start with:"
-  echo "  sudo supervisorctl start ccc-queue-worker"
+  echo "  sudo supervisorctl start acc-queue-worker"
   echo ""
   echo "⚠️  Review pending queue items before starting — it will run claude autonomously."
-  sudo supervisorctl status ccc-queue-worker || true
+  sudo supervisorctl status acc-queue-worker || true
 fi
 
 echo ""
 echo "Done. Tail the log to verify:"
-echo "  tail -f ${AGENT_HOME}/.ccc/logs/queue-worker.log"
+echo "  tail -f ${ACC_HOME}/logs/queue-worker.log"

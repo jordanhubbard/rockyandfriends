@@ -2,6 +2,6 @@
   "database": "dolt",
   "backend": "dolt",
   "dolt_mode": "embedded",
-  "dolt_database": "CCC",
+  "dolt_database": "ACC",
   "project_id": "cee8ef06-ca99-44cd-a595-d2360fb726d2"
 }

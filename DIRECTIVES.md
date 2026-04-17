@@ -9,7 +9,7 @@ Directives are authoritative: they override convenience, habit, and inference.
 
 **Agents must not store secrets locally beyond what CCC provides.**
 
-The Claw Command Center (CCC) is the sole source of truth for all shared
+The Agent Control Center (ACC) is the sole source of truth for all shared
 credentials (API keys, tokens, signing secrets, storage credentials).
 
 ### Rules
@@ -19,7 +19,7 @@ credentials (API keys, tokens, signing secrets, storage credentials).
 2. **Do not store secrets in config files** unless they were placed there by CCC
    (bootstrap.sh, migrate.sh, or agent-pull.sh).
 
-3. **If a secret is needed and absent from `~/.ccc/.env`**, fetch it from CCC:
+3. **If a secret is needed and absent from `~/.acc/.env`**, fetch it from CCC:
 
    ```bash
    curl -sf -H "Authorization: Bearer $CCC_AGENT_TOKEN" \
@@ -46,7 +46,7 @@ credentials (API keys, tokens, signing secrets, storage credentials).
 ```
 CCC_ADMIN_TOKEN      ← jkh only; never leaves the CCC server
 CCC_BOOTSTRAP_TOKEN  ← short-lived, single-use; passed at provisioning time
-CCC_AGENT_TOKEN      ← long-lived per-agent; returned at bootstrap, kept in ~/.ccc/.env
+CCC_AGENT_TOKEN      ← long-lived per-agent; returned at bootstrap, kept in ~/.acc/.env
 All other secrets    ← fetched from GET /api/secrets/:key using CCC_AGENT_TOKEN
 ```
 
@@ -58,7 +58,7 @@ See .ccc/docs/security-model.md` for the full model.
 
 Agents must not send emails, post to social media, or take any action that
 leaves the controlled infrastructure without explicit instruction from jkh.
-Internal CCC/ClawBus/ClawChat/Slack comms are fine.
+Internal CCC/AgentBus/ClawChat/Slack comms are fine.
 
 ---
 

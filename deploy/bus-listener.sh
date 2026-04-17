@@ -1,25 +1,32 @@
 #!/usr/bin/env bash
-# bus-listener.sh — Subscribe to ClawBus SSE stream and react to hub directives.
+# bus-listener.sh — Subscribe to AgentBus SSE stream and react to hub directives.
 #
 # Handles:
-#   rcc.update  → run agent-pull.sh immediately (no waiting for the 10-min timer)
-#   rcc.quench  → pause work for N minutes (writes ~/.ccc/quench until <ts>)
-#   rcc.exec    → execute shell code and post result to /api/exec/{id}/result
+#   acc.update  → run agent-pull.sh immediately (no waiting for the 10-min timer)
+#   acc.quench  → pause work for N minutes (writes ~/.acc/quench until <ts>)
+#   acc.exec    → execute shell code and post result to /api/exec/{id}/result
 #                 (replaces the broken ccc-agent listen binary which has a reqwest
 #                 zero-timeout bug that causes immediate connection close)
+#   rcc.update / rcc.quench / rcc.exec → backward compat during fleet migration
 #
 # Designed to run as a long-lived daemon under supervisord or systemd.
 # Reconnects automatically on disconnect or error.
 #
 # Usage (direct):  bash bus-listener.sh
-# Supervisord:     Registered by bootstrap.sh as [program:ccc-bus-listener]
+# Supervisord:     Registered by bootstrap.sh as [program:acc-bus-listener]
 
 set -euo pipefail
 
-CCC_DIR="${HOME}/.ccc"
-ENV_FILE="${CCC_DIR}/.env"
-LOG_FILE="${CCC_DIR}/logs/bus-listener.log"
-QUENCH_FILE="${CCC_DIR}/quench"
+# Detect ACC_DIR — prefer ~/.acc (post-migration), fall back to ~/.ccc (pre-migration)
+if [[ -d "${HOME}/.acc" ]]; then
+  ACC_DIR="${HOME}/.acc"
+else
+  ACC_DIR="${HOME}/.ccc"
+fi
+
+ENV_FILE="${ACC_DIR}/.env"
+LOG_FILE="${ACC_DIR}/logs/bus-listener.log"
+QUENCH_FILE="${ACC_DIR}/quench"
 
 # ── Load .env ──────────────────────────────────────────────────────────────────
 if [[ -f "$ENV_FILE" ]]; then
@@ -27,20 +34,22 @@ if [[ -f "$ENV_FILE" ]]; then
 fi
 
 AGENT_NAME="${AGENT_NAME:-unknown}"
-CCC_URL="${CCC_URL:-}"
+# ACC_URL preferred; fall back to CCC_URL for pre-migration nodes
+ACC_URL="${ACC_URL:-${CCC_URL:-}}"
+ACC_AGENT_TOKEN="${ACC_AGENT_TOKEN:-${CCC_AGENT_TOKEN:-}}"
 
-if [[ -z "$CCC_URL" ]]; then
-  echo "[bus-listener] ERROR: CCC_URL not set — cannot connect to ClawBus" >&2
+if [[ -z "$ACC_URL" ]]; then
+  echo "[bus-listener] ERROR: ACC_URL not set — cannot connect to AgentBus" >&2
   exit 1
 fi
 
 # Strip trailing slash
-CCC_URL="${CCC_URL%/}"
+ACC_URL="${ACC_URL%/}"
 
 # Resolve the workspace (same logic as agent-pull.sh)
-WORKSPACE="${CCC_DIR}/workspace"
+WORKSPACE="${ACC_DIR}/workspace"
 
-mkdir -p "${CCC_DIR}/logs"
+mkdir -p "${ACC_DIR}/logs"
 
 log() {
   echo "[$(date -u '+%Y-%m-%dT%H:%M:%SZ')] [${AGENT_NAME}] [bus-listener] $1" >> "$LOG_FILE"
@@ -60,12 +69,12 @@ except Exception:
 }
 
 # ── Handlers ──────────────────────────────────────────────────────────────────
-handle_rcc_update() {
+handle_acc_update() {
   local body="$1"
   local component branch
   component=$(_json_field "$body" "component")
   branch=$(_json_field "$body" "branch")
-  log "rcc.update received — component=${component:-workspace} branch=${branch:-main}"
+  log "acc.update received — component=${component:-workspace} branch=${branch:-main}"
 
   PULL_SCRIPT="${WORKSPACE}/deploy/agent-pull.sh"
   if [[ -x "$PULL_SCRIPT" ]]; then
@@ -79,10 +88,10 @@ handle_rcc_update() {
         log "WARNING: git pull failed"
     fi
   fi
-  touch "${CCC_DIR}/work-signal" 2>/dev/null || true
+  touch "${ACC_DIR}/work-signal" 2>/dev/null || true
 }
 
-handle_rcc_exec() {
+handle_acc_exec() {
   local msg_json="$1"  # full message JSON (not just body, because we need seq/from)
   local body exec_id code mode timeout_ms timeout_sec
 
@@ -96,7 +105,7 @@ handle_rcc_exec() {
   [[ "$timeout_sec" -lt 1 ]] && timeout_sec=30
 
   if [[ -z "$exec_id" || -z "$code" ]]; then
-    log "rcc.exec: invalid envelope (missing execId or code) — skipping"
+    log "acc.exec: invalid envelope (missing execId or code) — skipping"
     return
   fi
 
@@ -120,7 +129,7 @@ except Exception:
     return  # Not targeted at us — skip silently
   fi
 
-  log "rcc.exec ${exec_id}: running (mode=${mode:-shell}, timeout=${timeout_sec}s)"
+  log "acc.exec ${exec_id}: running (mode=${mode:-shell}, timeout=${timeout_sec}s)"
 
   # Execute in background so the SSE read loop isn't blocked
   (
@@ -148,21 +157,21 @@ print(json.dumps({
 
     local http_status
     http_status=$(curl -sf -o /dev/null -w '%{http_code}' --max-time 15 \
-      -X POST "${CCC_URL}/api/exec/${exec_id}/result" \
-      -H "Authorization: Bearer ${CCC_AGENT_TOKEN:-}" \
+      -X POST "${ACC_URL}/api/exec/${exec_id}/result" \
+      -H "Authorization: Bearer ${ACC_AGENT_TOKEN:-}" \
       -H "Content-Type: application/json" \
       -d "$result_json" 2>/dev/null || echo "000")
 
     if [[ "$http_status" == "200" ]]; then
-      log "rcc.exec ${exec_id}: result posted (exit=${exit_code})"
+      log "acc.exec ${exec_id}: result posted (exit=${exit_code})"
     else
-      log "rcc.exec ${exec_id}: result POST returned HTTP ${http_status}"
+      log "acc.exec ${exec_id}: result POST returned HTTP ${http_status}"
     fi
   ) &
   disown  # Detach so the subshell doesn't become a zombie
 }
 
-handle_rcc_quench() {
+handle_acc_quench() {
   local body="$1"
   local minutes reason
   minutes=$(_json_field "$body" "minutes")
@@ -173,14 +182,14 @@ handle_rcc_quench() {
 from datetime import datetime, timezone, timedelta
 print((datetime.now(timezone.utc) + timedelta(minutes=$minutes)).strftime('%Y-%m-%dT%H:%M:%SZ'))
 " 2>/dev/null || date -u -d "+${minutes} minutes" '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || echo "")
-  log "rcc.quench: pausing for ${minutes} min until ${until_ts} — ${reason}"
+  log "acc.quench: pausing for ${minutes} min until ${until_ts} — ${reason}"
   echo "$until_ts" > "$QUENCH_FILE"
 }
 
 # ── SSE stream processor ───────────────────────────────────────────────────────
 process_stream() {
-  local stream_url="${CCC_URL}/bus/stream"
-  log "Connecting to SSE stream: $stream_url"
+  local stream_url="${ACC_URL}/bus/stream"
+  log "Connecting to AgentBus SSE stream: $stream_url"
 
   # Accumulate SSE data lines (may span multiple "data:" prefixes for large payloads)
   local data_buf=""
@@ -199,15 +208,20 @@ process_stream() {
       # Only handle messages directed to us or broadcast
       if [[ "$msg_to" == "all" || "$msg_to" == "$AGENT_NAME" ]]; then
         case "$msg_type" in
-          rcc.update) handle_rcc_update "$msg_body" ;;
-          rcc.quench) handle_rcc_quench "$msg_body" ;;
-          rcc.exec)   handle_rcc_exec   "$data_buf" ;;  # pass full msg for targets check
+          # ACC message types (new)
+          acc.update) handle_acc_update "$msg_body" ;;
+          acc.quench) handle_acc_quench "$msg_body" ;;
+          acc.exec)   handle_acc_exec   "$data_buf" ;;
+          # RCC message types (backward compat — kept during fleet migration)
+          rcc.update) handle_acc_update "$msg_body" ;;
+          rcc.quench) handle_acc_quench "$msg_body" ;;
+          rcc.exec)   handle_acc_exec   "$data_buf" ;;
           ping)
             log "ping received from $(_json_field "$data_buf" "from")"
             ;;
           project.arrived|queue.item.created|work.available)
             log "Work signal: $msg_type"
-            touch "${CCC_DIR}/work-signal" 2>/dev/null || true
+            touch "${ACC_DIR}/work-signal" 2>/dev/null || true
             ;;
           heartbeat|text|queue_sync|memo|event|pong|handoff|blob|status-response)
             : # ignore silently
@@ -222,19 +236,19 @@ process_stream() {
     fi
   done < <(curl -sSN --max-time 3600 \
     -H "Accept: text/event-stream" \
-    -H "Authorization: Bearer ${CCC_AGENT_TOKEN:-}" \
+    -H "Authorization: Bearer ${ACC_AGENT_TOKEN:-}" \
     "${stream_url}" 2>>"$LOG_FILE")
 }
 
 # ── Main loop ─────────────────────────────────────────────────────────────────
-log "Starting ClawBus listener (agent=${AGENT_NAME}, hub=${CCC_URL})"
+log "Starting AgentBus listener (agent=${AGENT_NAME}, hub=${ACC_URL})"
 
 RETRY_DELAY=5
 MAX_RETRY_DELAY=120
 
 while true; do
   process_stream
-  log "SSE stream disconnected — reconnecting in ${RETRY_DELAY}s"
+  log "AgentBus SSE stream disconnected — reconnecting in ${RETRY_DELAY}s"
   sleep "$RETRY_DELAY"
   # Exponential backoff, cap at 120s
   RETRY_DELAY=$(( RETRY_DELAY * 2 > MAX_RETRY_DELAY ? MAX_RETRY_DELAY : RETRY_DELAY * 2 ))

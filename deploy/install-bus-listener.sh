@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install-bus-listener.sh — Install and enable the ClawBus SSE listener daemon.
+# install-bus-listener.sh — Install and enable the AgentBus SSE listener daemon.
 #
 # Run this on each agent node after bootstrapping:
 #
@@ -7,7 +7,7 @@
 #   bash deploy/install-bus-listener.sh linux    # force Linux/systemd
 #   bash deploy/install-bus-listener.sh macos    # force macOS/launchd
 #
-# Requires: ~/.ccc/.env with CCC_URL and CCC_AGENT_TOKEN set.
+# Requires: ~/.acc/.env with ACC_URL and ACC_AGENT_TOKEN set.
 
 set -euo pipefail
 
@@ -25,29 +25,38 @@ if [[ -z "$OS" ]]; then
   esac
 fi
 
-echo "Installing ccc-bus-listener on ${OS} (home=${AGENT_HOME}, user=${AGENT_USER})"
+echo "Installing acc-bus-listener on ${OS} (home=${AGENT_HOME}, user=${AGENT_USER})"
 echo "Workspace: ${WORKSPACE}"
 
+# Detect ACC_DIR — prefer ~/.acc, fall back to ~/.ccc for pre-migration nodes
+if [[ -d "${AGENT_HOME}/.acc" ]]; then
+  ACC_HOME="${AGENT_HOME}/.acc"
+else
+  ACC_HOME="${AGENT_HOME}/.ccc"
+fi
+
 # Verify .env exists and has required vars
-ENV_FILE="${AGENT_HOME}/.ccc/.env"
+ENV_FILE="${ACC_HOME}/.env"
 if [[ ! -f "$ENV_FILE" ]]; then
   echo "ERROR: ${ENV_FILE} not found — run bootstrap.sh first." >&2
   exit 1
 fi
 source "$ENV_FILE"
-if [[ -z "${CCC_URL:-}" ]]; then
-  echo "ERROR: CCC_URL not set in ${ENV_FILE}" >&2
+ACC_URL="${ACC_URL:-${CCC_URL:-}}"
+ACC_AGENT_TOKEN="${ACC_AGENT_TOKEN:-${CCC_AGENT_TOKEN:-}}"
+if [[ -z "${ACC_URL:-}" ]]; then
+  echo "ERROR: ACC_URL not set in ${ENV_FILE}" >&2
   exit 1
 fi
-if [[ -z "${CCC_AGENT_TOKEN:-}" ]]; then
-  echo "WARNING: CCC_AGENT_TOKEN not set — bus-listener will connect but hub may reject without auth"
+if [[ -z "${ACC_AGENT_TOKEN:-}" ]]; then
+  echo "WARNING: ACC_AGENT_TOKEN not set — bus-listener will connect but hub may reject without auth"
 fi
 
-mkdir -p "${AGENT_HOME}/.ccc/logs"
+mkdir -p "${ACC_HOME}/logs"
 
 if [[ "$OS" == "linux" ]]; then
-  SVC_TEMPLATE="${WORKSPACE}/deploy/systemd/ccc-bus-listener.service"
-  SVC_DST="/etc/systemd/system/ccc-bus-listener.service"
+  SVC_TEMPLATE="${WORKSPACE}/deploy/systemd/acc-bus-listener.service"
+  SVC_DST="/etc/systemd/system/acc-bus-listener.service"
 
   if [[ ! -f "$SVC_TEMPLATE" ]]; then
     echo "ERROR: service template not found at ${SVC_TEMPLATE}" >&2
@@ -59,14 +68,14 @@ if [[ "$OS" == "linux" ]]; then
   echo "Wrote ${SVC_DST}"
 
   sudo systemctl daemon-reload
-  sudo systemctl enable ccc-bus-listener
-  sudo systemctl restart ccc-bus-listener
+  sudo systemctl enable acc-bus-listener
+  sudo systemctl restart acc-bus-listener
   echo ""
-  systemctl status ccc-bus-listener --no-pager || true
+  systemctl status acc-bus-listener --no-pager || true
 
 elif [[ "$OS" == "macos" ]]; then
-  PLIST_TEMPLATE="${WORKSPACE}/deploy/launchd/com.ccc.bus-listener.plist"
-  PLIST_DST="${AGENT_HOME}/Library/LaunchAgents/com.ccc.bus-listener.plist"
+  PLIST_TEMPLATE="${WORKSPACE}/deploy/launchd/com.acc.bus-listener.plist"
+  PLIST_DST="${AGENT_HOME}/Library/LaunchAgents/com.acc.bus-listener.plist"
 
   if [[ ! -f "$PLIST_TEMPLATE" ]]; then
     echo "ERROR: plist template not found at ${PLIST_TEMPLATE}" >&2
@@ -81,9 +90,9 @@ elif [[ "$OS" == "macos" ]]; then
   launchctl unload "$PLIST_DST" 2>/dev/null || true
   launchctl load -w "$PLIST_DST"
   echo ""
-  launchctl list | grep ccc.bus-listener || echo "(not yet listed — may take a moment)"
+  launchctl list | grep acc.bus-listener || echo "(not yet listed — may take a moment)"
 fi
 
 echo ""
 echo "Done. Tail the log to verify:"
-echo "  tail -f ${AGENT_HOME}/.ccc/logs/bus-listener.log"
+echo "  tail -f ${ACC_HOME}/logs/bus-listener.log"

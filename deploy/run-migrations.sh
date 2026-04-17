@@ -1,11 +1,11 @@
 #!/bin/bash
-# run-migrations.sh — Django-style incremental migrations for CCC agent nodes
+# run-migrations.sh — Django-style incremental migrations for ACC agent nodes
 #
 # Scans deploy/migrations/NNNN_*.sh in sorted order, runs each one that hasn't
-# been applied yet on this node, and records the result in ~/.ccc/migrations.json.
+# been applied yet on this node, and records the result in ~/.acc/migrations.json.
 #
 # Each migration script is sourced with these variables pre-set:
-#   WORKSPACE, CCC_DIR, LOG_DIR, AGENT_NAME, PLATFORM, DRY_RUN
+#   WORKSPACE, ACC_DIR, LOG_DIR, AGENT_NAME, PLATFORM, DRY_RUN
 # and these helper functions:
 #   m_info, m_success, m_warn, m_skip — colored output
 #   on_platform PLATFORM   — returns 0 if current platform matches
@@ -45,14 +45,21 @@ for arg in "$@"; do
 done
 
 # ── Environment ───────────────────────────────────────────────────────────
-CCC_DIR="${CCC_DIR:-$HOME/.ccc}"
-WORKSPACE="${WORKSPACE:-$CCC_DIR/workspace}"
-LOG_DIR="${LOG_DIR:-$CCC_DIR/logs}"
+# Prefer ~/.acc (post-migration), fall back to ~/.ccc (pre-migration)
+if [[ -d "${HOME}/.acc" ]]; then
+  ACC_DIR="${ACC_DIR:-$HOME/.acc}"
+else
+  ACC_DIR="${ACC_DIR:-${CCC_DIR:-$HOME/.ccc}}"
+fi
+# Export as CCC_DIR too for backward compat with older migration scripts
+CCC_DIR="$ACC_DIR"
+WORKSPACE="${WORKSPACE:-$ACC_DIR/workspace}"
+LOG_DIR="${LOG_DIR:-$ACC_DIR/logs}"
 MIGRATIONS_DIR="$WORKSPACE/deploy/migrations"
-MIGRATIONS_JSON="$CCC_DIR/migrations.json"
+MIGRATIONS_JSON="$ACC_DIR/migrations.json"
 
-if [ -f "$CCC_DIR/.env" ]; then
-  set -a; source "$CCC_DIR/.env"; set +a
+if [ -f "$ACC_DIR/.env" ]; then
+  set -a; source "$ACC_DIR/.env"; set +a
 fi
 AGENT_NAME="${AGENT_NAME:-unknown}"
 
@@ -157,12 +164,10 @@ cron_remove() {
 
 export -f on_platform service_exists systemd_teardown systemd_install launchd_teardown launchd_install cron_remove m_info m_success m_warn m_skip
 
-export CCC_DIR WORKSPACE LOG_DIR AGENT_NAME PLATFORM DRY_RUN RED GREEN YELLOW BLUE CYAN NC
+export ACC_DIR CCC_DIR WORKSPACE LOG_DIR AGENT_NAME PLATFORM DRY_RUN RED GREEN YELLOW BLUE CYAN NC
 
-# ── Migration state backend: ccc-agent (preferred) or python3 (bootstrap fallback) ──
-# ccc-agent is built by migration 0011. Before that migration runs, python3 handles
-# state tracking. After 0011, ccc-agent takes over permanently.
-CCC_AGENT="${CCC_AGENT:-$CCC_DIR/bin/ccc-agent}"
+# ── Migration state backend: python3 fallback ─────────────────────────────
+CCC_AGENT="${CCC_AGENT:-$ACC_DIR/bin/ccc-agent}"
 if [ ! -x "$CCC_AGENT" ]; then
   CCC_AGENT="$(command -v ccc-agent 2>/dev/null || echo "")"
 fi
@@ -238,7 +243,7 @@ fi
 # ── List mode ─────────────────────────────────────────────────────────────
 if [ "$LIST_ONLY" = true ]; then
   echo ""
-  echo "CCC Migrations — $AGENT_NAME ($PLATFORM)"
+  echo "ACC Migrations — $AGENT_NAME ($PLATFORM)"
   echo "───────────────────────────────────────────────"
   if [ -x "$CCC_AGENT" ]; then
     "$CCC_AGENT" migrate list "$MIGRATIONS_DIR"
