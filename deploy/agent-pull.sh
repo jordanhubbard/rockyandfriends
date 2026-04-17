@@ -120,6 +120,41 @@ else
     fi
   fi
 
+  # Rebuild acc-agent if its source changed and this node runs it
+  if echo "$CHANGED" | grep -q "^agent/"; then
+    if command -v systemctl &>/dev/null && systemctl is-active --quiet acc-agent.service 2>/dev/null; then
+      log "acc-agent source changed — rebuilding from local disk..."
+      export PATH="${HOME}/.cargo/bin:${PATH}"
+      if command -v cargo &>/dev/null; then
+        # Copy to local disk to avoid FUSE mount I/O issues
+        ACC_BUILD_DIR="/tmp/acc-agent-src"
+        rsync -a --exclude='target/' "${WORKSPACE}/agent/" "${ACC_BUILD_DIR}/" 2>/dev/null || \
+          cp -r "${WORKSPACE}/agent/." "${ACC_BUILD_DIR}/"
+        if CARGO_BUILD_JOBS=1 cargo build --release --manifest-path "${ACC_BUILD_DIR}/Cargo.toml" >> "$LOG_FILE" 2>&1; then
+          # Binary may be at acc-agent/target or top-level target
+          BUILT="${ACC_BUILD_DIR}/target/release/acc-agent"
+          [ ! -f "$BUILT" ] && BUILT="${ACC_BUILD_DIR}/acc-agent/target/release/acc-agent"
+          if [ -f "$BUILT" ]; then
+            INSTALL_DIR="${HOME}/.acc/bin"
+            mkdir -p "$INSTALL_DIR"
+            if install -m 755 "$BUILT" "${INSTALL_DIR}/acc-agent"; then
+              sudo systemctl restart acc-agent.service && log "acc-agent rebuilt and restarted" \
+                || log "WARNING: acc-agent restart failed"
+            else
+              log "WARNING: acc-agent install failed"
+            fi
+          else
+            log "WARNING: acc-agent binary not found after build"
+          fi
+        else
+          log "WARNING: acc-agent cargo build failed"
+        fi
+      else
+        log "WARNING: cargo not found — cannot rebuild acc-agent"
+      fi
+    fi
+  fi
+
   # Reinstall node deps if package.json changed
   if echo "$CHANGED" | grep -q "package.json"; then
     log "package.json changed — running npm install"
