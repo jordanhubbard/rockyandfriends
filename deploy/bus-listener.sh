@@ -171,6 +171,51 @@ print(json.dumps({
   disown  # Detach so the subshell doesn't become a zombie
 }
 
+handle_acc_message() {
+  local msg_json="$1"
+  local body from content subject
+  body=$(_json_field "$msg_json" "body")
+  from=$(_json_field "$msg_json" "from")
+  subject=$(_json_field "$msg_json" "subject")
+  # Content may be in body.content, body.text, or body itself (plain string)
+  content=$(python3 -c "
+import json, sys
+try:
+    msg = json.loads(sys.argv[1])
+    body = msg.get('body', '')
+    if isinstance(body, dict):
+        print(body.get('content') or body.get('text') or json.dumps(body))
+    else:
+        print(body)
+except Exception:
+    pass
+" "$msg_json" 2>/dev/null || true)
+
+  if [[ -z "$content" ]]; then
+    log "text message from ${from} has no content — skipping"
+    return
+  fi
+
+  log "text message from ${from} (subject=${subject:-none}): invoking hermes"
+
+  if ! command -v hermes &>/dev/null; then
+    log "WARNING: hermes not found in PATH — cannot deliver message from ${from}"
+    return
+  fi
+
+  # Run hermes in background so the SSE loop isn't blocked
+  (
+    # Use hermes v0.9+ subcommand style if available, else legacy flags
+    if hermes chat --help &>/dev/null 2>&1; then
+      echo "$content" | hermes chat --max-turns 20 -Q >> "$LOG_FILE" 2>&1
+    else
+      echo "$content" | hermes --max-iterations 20 --quiet >> "$LOG_FILE" 2>&1
+    fi
+    log "hermes completed message from ${from}"
+  ) &
+  disown
+}
+
 handle_acc_quench() {
   local body="$1"
   local minutes reason
@@ -223,7 +268,13 @@ process_stream() {
             log "Work signal: $msg_type"
             touch "${ACC_DIR}/work-signal" 2>/dev/null || true
             ;;
-          heartbeat|text|queue_sync|memo|event|pong|handoff|blob|status-response)
+          text|memo)
+            # Route direct messages to hermes (only if addressed to us, not broadcast)
+            if [[ "$msg_to" == "$AGENT_NAME" ]]; then
+              handle_acc_message "$data_buf"
+            fi
+            ;;
+          heartbeat|queue_sync|event|pong|handoff|blob|status-response)
             : # ignore silently
             ;;
           *)
