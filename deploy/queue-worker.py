@@ -45,6 +45,9 @@ POLL_INTERVAL_BUSY  = 5         # seconds between checks right after completing 
 KEEPALIVE_INTERVAL  = 25 * 60   # 25 min (TTL is 2h for claude_cli)
 CLAUDE_TIMEOUT      = 7200      # 2 hours max per task
 HTTP_TIMEOUT        = 15        # seconds for API calls
+WAKEUP_FILE         = CCC_DIR / "work-signal"    # bus-listener touches this to wake us
+SSE_RECONNECT_DELAY = 5                           # seconds between SSE reconnect attempts
+BEADS_POLL_INTERVAL = 300                         # check bd ready at most every 5 min
 
 
 # ── Logging ──────────────────────────────────────────────────────────────────
@@ -113,6 +116,109 @@ def _detect_capabilities() -> frozenset[str]:
     return frozenset(caps)
 
 AGENT_CAPABILITIES = _detect_capabilities()
+
+
+# ── SSE watcher ───────────────────────────────────────────────────────────────
+
+def _sse_thread() -> None:
+    """Subscribe to ClawBus SSE. Touch WAKEUP_FILE on any work-relevant message."""
+    WORK_SIGNAL_TYPES = {
+        "project.arrived", "queue.item.created", "work.available", "rcc.update",
+    }
+    while True:
+        try:
+            proc = subprocess.Popen(
+                [
+                    "curl", "-sSN", "--max-time", "3600",
+                    "-H", "Accept: text/event-stream",
+                    "-H", f"Authorization: Bearer {CCC_AGENT_TOKEN}",
+                    f"{CCC_URL}/bus/stream",
+                ],
+                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+            )
+            buf = ""
+            for raw in proc.stdout:
+                line = raw.rstrip("\n")
+                if line.startswith("data:"):
+                    buf = line[5:].strip()
+                elif not line and buf:
+                    try:
+                        msg = json.loads(buf)
+                        if msg.get("type") in WORK_SIGNAL_TYPES:
+                            WAKEUP_FILE.touch()
+                    except Exception:
+                        pass
+                    buf = ""
+            proc.wait()
+        except Exception as e:
+            log.debug(f"SSE thread: {e}")
+        time.sleep(SSE_RECONNECT_DELAY)
+
+
+# ── Beads integration ─────────────────────────────────────────────────────────
+
+_BEAD_PRIORITY = {0: "urgent", 1: "high", 2: "normal", 3: "low", 4: "idea"}
+
+
+def _beads_to_item(bead: dict) -> dict:
+    """Wrap a bd-ready bead in the shape select_item() expects."""
+    return {
+        "id":       f"bd-{bead['id']}",
+        "title":    bead.get("title", ""),
+        "status":   "pending",
+        "priority": _BEAD_PRIORITY.get(bead.get("priority", 2), "normal"),
+        "assignee": "",
+        "tags":     [],
+        "required_executors": [],
+        "_bead":    bead,   # raw bead for claim/close calls
+    }
+
+
+def check_beads(cwd: Path | None = None) -> list[dict]:
+    """Return open unblocked beads from the nearest .beads/ directory, normalised as queue items."""
+    if not shutil.which("bd"):
+        return []
+    run_dir = cwd or WORKSPACE
+    if not (run_dir / ".beads").exists():
+        return []
+    try:
+        r = subprocess.run(
+            ["bd", "ready", "--json"],
+            capture_output=True, text=True, timeout=20, cwd=str(run_dir),
+        )
+        if r.returncode != 0 or not r.stdout.strip():
+            return []
+        data = json.loads(r.stdout)
+        issues = data if isinstance(data, list) else data.get("issues", data.get("items", []))
+        return [_beads_to_item(b) for b in issues if isinstance(b, dict)]
+    except Exception as e:
+        log.debug(f"bd ready failed: {e}")
+        return []
+
+
+def claim_bead(bead_id: str, cwd: Path) -> bool:
+    try:
+        r = subprocess.run(
+            ["bd", "update", bead_id, "--status", "in_progress"],
+            capture_output=True, text=True, timeout=20, cwd=str(cwd),
+        )
+        return r.returncode == 0
+    except Exception:
+        return False
+
+
+def close_bead(bead_id: str, cwd: Path, success: bool = True) -> None:
+    try:
+        if success:
+            subprocess.run(["bd", "close", bead_id], cwd=str(cwd),
+                           capture_output=True, timeout=20)
+        else:
+            subprocess.run(
+                ["bd", "update", bead_id, "--status", "open"],
+                cwd=str(cwd), capture_output=True, timeout=20,
+            )
+    except Exception:
+        pass
 
 
 # ── HTTP helpers ─────────────────────────────────────────────────────────────
@@ -259,14 +365,37 @@ def task_workspace_init(item: dict) -> tuple[Path, str]:
 
     workspace_local.mkdir(parents=True, exist_ok=True)
 
-    repo_url = _repo_url_from_item(item)
-    branch   = item.get("branch", "main")
+    project_clawfs = item.get("project_clawfs_path", "").strip()
+    if project_clawfs and shutil.which("mc"):
+        # Project-aware init: mirror shared workspace from AgentFS instead of cloning
+        log.info(f"[{item_id}] Mirroring project workspace from AgentFS: {project_clawfs}")
+        try:
+            r = subprocess.run(
+                ["mc", "mirror", "--overwrite", "--quiet", f"{project_clawfs}/",
+                 f"{workspace_local}/"],
+                capture_output=True, text=True, timeout=300,
+            )
+            if r.returncode == 0:
+                log.info(f"[{item_id}] Project workspace mirrored from AgentFS")
+            else:
+                log.warning(f"[{item_id}] AgentFS mirror failed: {r.stderr.strip()[:200]}"
+                            " — falling back to git clone")
+                project_clawfs = ""  # fall through to git clone
+        except Exception as e:
+            log.warning(f"[{item_id}] AgentFS mirror error: {e} — falling back to git clone")
+            project_clawfs = ""
 
-    if repo_url:
-        log.info(f"[{item_id}] Cloning {repo_url} ({branch}) → {workspace_local}")
-        _git_clone(item_id, repo_url, branch, workspace_local)
+    if not project_clawfs:
+        repo_url = _repo_url_from_item(item)
+        branch   = item.get("branch", "main")
+        if repo_url:
+            log.info(f"[{item_id}] Cloning {repo_url} ({branch}) → {workspace_local}")
+            _git_clone(item_id, repo_url, branch, workspace_local)
+        else:
+            log.info(f"[{item_id}] No repo URL — using empty workspace")
     else:
-        log.info(f"[{item_id}] No repo URL — using empty workspace")
+        repo_url = _repo_url_from_item(item)
+        branch   = item.get("branch", "main")
 
     agentfs_path = _agentfs_workspace_path(item_id)
     if agentfs_path:
@@ -699,6 +828,8 @@ def main() -> None:
     log.info(f"Starting queue-worker (agent={AGENT_NAME}, hub={CCC_URL})")
     log.info(f"Capabilities: {sorted(AGENT_CAPABILITIES) or ['(none detected — set AGENT_CAPABILITIES in .env)']}")
     post_heartbeat("queue-worker starting")
+    threading.Thread(target=_sse_thread, daemon=True, name="sse-watcher").start()
+    log.info("SSE watcher started — reactive wakeup enabled")
     instructions  = load_agent_instructions()
     poll_interval = POLL_INTERVAL_IDLE
 
@@ -710,6 +841,13 @@ def main() -> None:
 
         post_heartbeat("idle")
 
+        if WAKEUP_FILE.exists():
+            try:
+                WAKEUP_FILE.unlink()
+            except Exception:
+                pass
+            log.debug("Woken by bus event — polling now")
+
         try:
             items = get_queue()
         except Exception as e:
@@ -717,24 +855,45 @@ def main() -> None:
             time.sleep(POLL_INTERVAL_IDLE)
             continue
 
-        item = select_item(items)
+        # Merge beads into candidate pool when queue has nothing urgent
+        bead_items = check_beads()
+        if bead_items:
+            log.debug(f"bd ready: {len(bead_items)} open bead(s) in project")
+        all_items = items + bead_items
+
+        item = select_item(all_items)
         if item is None:
             log.debug("No claimable items — sleeping")
-            time.sleep(poll_interval)
+            # Interruptible idle sleep — wakes early on bus event
+            deadline = time.monotonic() + poll_interval
+            while time.monotonic() < deadline:
+                if WAKEUP_FILE.exists():
+                    break
+                time.sleep(1)
             poll_interval = POLL_INTERVAL_IDLE
             continue
 
         item_id  = item["id"]
         title    = item.get("title", "?")
         priority = item.get("priority", "normal")
+        raw_bead = item.get("_bead")   # present only for bead-sourced items
 
         # ── Claim ─────────────────────────────────────────────────────────────
-        if not claim_item(item_id):
-            log.info(f"[{item_id}] Claim rejected — backing off")
-            time.sleep(POLL_INTERVAL_BUSY)
-            continue
-
-        log.info(f"[{item_id}] Claimed [{priority}] {title[:60]}")
+        if raw_bead:
+            # Bead items: claim via bd update, no queue claim needed
+            bead_id  = str(raw_bead.get("id", ""))
+            bead_cwd = WORKSPACE
+            if not claim_bead(bead_id, bead_cwd):
+                log.info(f"[{item_id}] Bead claim rejected — backing off")
+                time.sleep(POLL_INTERVAL_BUSY)
+                continue
+            log.info(f"[{item_id}] Claimed bead [{priority}] {title[:60]}")
+        else:
+            if not claim_item(item_id):
+                log.info(f"[{item_id}] Claim rejected — backing off")
+                time.sleep(POLL_INTERVAL_BUSY)
+                continue
+            log.info(f"[{item_id}] Claimed [{priority}] {title[:60]}")
 
         if priority == "urgent":
             _curl("POST", "/bus/send", {
@@ -743,15 +902,39 @@ def main() -> None:
             })
 
         # ── Init workspace ────────────────────────────────────────────────────
-        workspace_local, workspace_agentfs = task_workspace_init(item)
+        if raw_bead:
+            workspace_local  = WORKSPACE
+            workspace_agentfs = _agentfs_workspace_path(item_id)
+        else:
+            workspace_local, workspace_agentfs = task_workspace_init(item)
         task_env = build_task_env(item_id, workspace_local, workspace_agentfs)
         log.info(f"[{item_id}] Workspace: {workspace_local}"
                  + (f" → AgentFS: {workspace_agentfs}" if workspace_agentfs else ""))
 
-        post_comment(item_id, f"{AGENT_NAME} starting — workspace {workspace_local}")
+        if not raw_bead:
+            post_comment(item_id, f"{AGENT_NAME} starting — workspace {workspace_local}")
 
         # ── Execute ───────────────────────────────────────────────────────────
-        if _hermes_applicable(item):
+        if raw_bead:
+            # Bead execution: build a simple query from title + description
+            bead_query = (
+                f"{raw_bead.get('title', title)}\n\n"
+                f"{raw_bead.get('description', raw_bead.get('body', ''))}"
+            ).strip()
+            if _hermes_applicable(item):
+                log.info(f"[{item_id}] Routing bead to hermes-driver...")
+                # Synthesise a minimal item dict for run_hermes
+                hermes_item = {**item, "title": raw_bead.get("title", title),
+                               "description": bead_query}
+                output, exit_code = run_hermes(
+                    hermes_item, item_id, task_env, workspace_local,
+                )
+                log.info(f"[{item_id}] hermes-driver exited {exit_code} ({len(output)} chars)")
+            else:
+                log.info(f"[{item_id}] Invoking claude for bead...")
+                output, exit_code = run_claude(bead_query, item_id, task_env, workspace_local)
+                log.info(f"[{item_id}] claude exited {exit_code} ({len(output)} chars)")
+        elif _hermes_applicable(item):
             log.info(f"[{item_id}] Routing to hermes-driver...")
             output, exit_code = run_hermes(item, item_id, task_env, workspace_local)
             log.info(f"[{item_id}] hermes-driver exited {exit_code} ({len(output)} chars)")
@@ -762,7 +945,14 @@ def main() -> None:
             log.info(f"[{item_id}] claude exited {exit_code} ({len(output)} chars)")
 
         # ── Finalize ──────────────────────────────────────────────────────────
-        if exit_code == 0:
+        if raw_bead:
+            # Bead finalize: close or reopen via bd
+            close_bead(bead_id, bead_cwd, success=(exit_code == 0))
+            if exit_code == 0:
+                log.info(f"[{item_id}] Bead closed OK")
+            else:
+                log.info(f"[{item_id}] Bead reopened (exit={exit_code})")
+        elif exit_code == 0:
             git_result = task_workspace_finalize(
                 item_id, workspace_local, workspace_agentfs, output,
             )

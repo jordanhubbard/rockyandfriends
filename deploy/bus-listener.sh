@@ -79,6 +79,7 @@ handle_rcc_update() {
         log "WARNING: git pull failed"
     fi
   fi
+  touch "${CCC_DIR}/work-signal" 2>/dev/null || true
 }
 
 handle_rcc_exec() {
@@ -203,6 +204,10 @@ process_stream() {
           rcc.exec)   handle_rcc_exec   "$data_buf" ;;  # pass full msg for targets check
           ping)
             log "ping received from $(_json_field "$data_buf" "from")"
+            ;;
+          project.arrived|queue.item.created|work.available)
+            log "Work signal: $msg_type"
+            touch "${CCC_DIR}/work-signal" 2>/dev/null || true
             ;;
           heartbeat|text|queue_sync|memo|event|pong|handoff|blob|status-response)
             : # ignore silently
