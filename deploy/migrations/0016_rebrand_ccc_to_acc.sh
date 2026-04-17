@@ -10,52 +10,65 @@
 
 set -euo pipefail
 
-# ACC_DIR and CCC_DIR are set by run-migrations.sh; use fallbacks if sourced standalone
-ACC_DIR_VAL="${ACC_DIR:-$HOME/.acc}"
-CCC_DIR_VAL="${CCC_DIR:-$HOME/.ccc}"
+# Always use hardcoded paths — ACC_DIR from run-migrations.sh may be ~/.ccc before migration
+ACC_DEST="$HOME/.acc"
+CCC_SRC="${HOME}/.ccc"
 
 m_info  "Rebrand: CCC → ACC (Agent Control Center)"
 
 # ── Step 1: Copy ~/.ccc → ~/.acc ──────────────────────────────────────────
-if [[ -d "$CCC_DIR_VAL" && ! -d "$ACC_DIR_VAL" ]]; then
-  m_info "Copying ${CCC_DIR_VAL} → ${ACC_DIR_VAL} ..."
-  cp -a "$CCC_DIR_VAL" "$ACC_DIR_VAL"
-  m_success "Created ${ACC_DIR_VAL}"
-elif [[ -d "$ACC_DIR_VAL" ]]; then
-  m_skip "${ACC_DIR_VAL} already exists — skipping copy"
+if [[ -d "$CCC_SRC" && ! -d "$ACC_DEST" ]]; then
+  m_info "Copying ${CCC_SRC} → ${ACC_DEST} ..."
+  cp -a "$CCC_SRC" "$ACC_DEST"
+  m_success "Created ${ACC_DEST}"
+elif [[ -d "$ACC_DEST" ]]; then
+  m_skip "${ACC_DEST} already exists — skipping copy"
 else
-  m_warn "Neither ${CCC_DIR_VAL} nor ${ACC_DIR_VAL} found — this is a fresh node; skipping copy"
+  m_warn "No ~/.ccc found — treating as fresh node; creating ~/.acc"
+  mkdir -p "$ACC_DEST"
 fi
 
 # ── Step 2: Add ACC_* env var aliases to ~/.acc/.env ──────────────────────
-ENV_FILE="${ACC_DIR_VAL}/.env"
+ENV_FILE="${ACC_DEST}/.env"
+if [[ ! -f "$ENV_FILE" && -f "${CCC_SRC}/.env" ]]; then
+  cp "${CCC_SRC}/.env" "$ENV_FILE"
+fi
 if [[ -f "$ENV_FILE" ]]; then
   m_info "Adding ACC_* aliases to ${ENV_FILE} ..."
-  # Map of old → new variable names
-  declare -A VAR_MAP=(
-    [CCC_URL]=ACC_URL
-    [CCC_AGENT_TOKEN]=ACC_AGENT_TOKEN
-    [CCC_AUTH_TOKENS]=ACC_AUTH_TOKENS
-    [CCC_DATA_DIR]=ACC_DATA_DIR
-    [CCC_LOG_LEVEL]=ACC_LOG_LEVEL
-    [CCC_BIND_ADDR]=ACC_BIND_ADDR
-    [CCC_HUB_URL]=ACC_HUB_URL
-    [CCC_MINIO_ALIAS]=ACC_MINIO_ALIAS
-    [CCC_MINIO_BUCKET]=ACC_MINIO_BUCKET
+  # python3 for bash 3.2 compat (no declare -A on macOS default bash)
+  added=$(python3 - "$ENV_FILE" <<'PYEOF'
+import sys, os
+path = sys.argv[1]
+VAR_MAP = {
+  'CCC_URL': 'ACC_URL',
+  'CCC_AGENT_TOKEN': 'ACC_AGENT_TOKEN',
+  'CCC_AUTH_TOKENS': 'ACC_AUTH_TOKENS',
+  'CCC_DATA_DIR': 'ACC_DATA_DIR',
+  'CCC_LOG_LEVEL': 'ACC_LOG_LEVEL',
+  'CCC_BIND_ADDR': 'ACC_BIND_ADDR',
+  'CCC_HUB_URL': 'ACC_HUB_URL',
+  'CCC_MINIO_ALIAS': 'ACC_MINIO_ALIAS',
+  'CCC_MINIO_BUCKET': 'ACC_MINIO_BUCKET',
+}
+with open(path) as f:
+  lines = f.read().splitlines()
+existing = {l.split('=')[0] for l in lines if '=' in l and not l.startswith('#')}
+to_add = []
+for line in lines:
+  if '=' not in line or line.startswith('#'):
+    continue
+  key, _, val = line.partition('=')
+  new_key = VAR_MAP.get(key.strip())
+  if new_key and new_key not in existing:
+    to_add.append(f'{new_key}={val}')
+    existing.add(new_key)
+if to_add:
+  with open(path, 'a') as f:
+    f.write('\n'.join(to_add) + '\n')
+print(len(to_add))
+PYEOF
   )
-
-  added=0
-  while IFS='=' read -r key val; do
-    [[ "$key" =~ ^# ]] && continue
-    [[ -z "$key" ]] && continue
-    new_key="${VAR_MAP[$key]:-}"
-    if [[ -n "$new_key" ]] && ! grep -q "^${new_key}=" "$ENV_FILE" 2>/dev/null; then
-      echo "${new_key}=${val}" >> "$ENV_FILE"
-      ((added++)) || true
-    fi
-  done < "$ENV_FILE"
-
-  if [[ $added -gt 0 ]]; then
+  if [[ "${added:-0}" -gt 0 ]]; then
     m_success "Added ${added} ACC_* aliases to ${ENV_FILE}"
   else
     m_skip "ACC_* aliases already present in ${ENV_FILE}"
@@ -153,8 +166,8 @@ if on_platform macos; then
 fi
 
 # ── Done ──────────────────────────────────────────────────────────────────
-touch "${ACC_DIR_VAL}/.rebrand-complete"
+touch "${ACC_DEST}/.rebrand-complete"
 m_success "CCC → ACC rebrand complete on this node"
 m_info "New services: acc-bus-listener, acc-queue-worker"
-m_info "Config dir: ${ACC_DIR_VAL}"
+m_info "Config dir: ${ACC_DEST}"
 m_info "Old ~/.ccc directory preserved for reference (safe to remove after verifying acc-* services)"
