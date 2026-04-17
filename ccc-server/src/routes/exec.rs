@@ -108,8 +108,8 @@ async fn post_exec(
         .json(&json!({
             "from":    "rocky",
             "to":      broadcast_to,
-            "type":    "ccc.exec",
-            "subject": format!("ccc.exec:{}", exec_id),
+            "type":    "acc.exec",
+            "subject": format!("acc.exec:{}", exec_id),
             "body":    envelope.to_string(),
         }))
         .send()
