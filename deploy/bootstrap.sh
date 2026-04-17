@@ -279,8 +279,9 @@ ACC_URL=${CCC_URL}
 AGENT_HOST=$(hostname)
 NVIDIA_API_BASE=https://inference-api.nvidia.com/v1
 NVIDIA_API_KEY=${NVIDIA_KEY}
-# Claude Code — uses NVIDIA inference as backend (Anthropic-compatible proxy)
-ANTHROPIC_BASE_URL=https://inference-api.nvidia.com
+# Claude Code — routes through local header-stripping proxy (strips anthropic-beta
+# before forwarding to NVIDIA; the raw NVIDIA endpoint rejects those headers)
+ANTHROPIC_BASE_URL=http://localhost:9099
 ANTHROPIC_API_KEY=${NVIDIA_KEY}
 CLAUDE_CODE_DEFAULT_MODEL=azure/anthropic/claude-sonnet-4-6
 # TokenHub — preferred inference router (aggregates local vLLM + NVIDIA NIM)

@@ -69,6 +69,33 @@ if [[ ! -f "$WORKER_SCRIPT" ]]; then
   exit 1
 fi
 
+_install_nvidia_proxy() {
+  local os="$1"
+  local proxy_script="${ACC_HOME}/workspace/deploy/nvidia-proxy.py"
+  if [[ ! -f "$proxy_script" ]]; then
+    echo "WARNING: nvidia-proxy.py not found at ${proxy_script} — skipping proxy install"
+    return
+  fi
+  if [[ "$os" == "linux" ]]; then
+    local tmpl="${WORKSPACE}/deploy/systemd/acc-nvidia-proxy.service"
+    local dst="/etc/systemd/system/acc-nvidia-proxy.service"
+    sed "s|AGENT_USER|${AGENT_USER}|g; s|AGENT_HOME|${AGENT_HOME}|g" "$tmpl" \
+      | sudo tee "$dst" > /dev/null
+    echo "Wrote ${dst}"
+    sudo systemctl daemon-reload
+    sudo systemctl enable acc-nvidia-proxy
+    sudo systemctl restart acc-nvidia-proxy
+  elif [[ "$os" == "macos" ]]; then
+    local tmpl="${WORKSPACE}/deploy/launchd/com.acc.nvidia-proxy.plist"
+    local dst="${AGENT_HOME}/Library/LaunchAgents/com.acc.nvidia-proxy.plist"
+    mkdir -p "${AGENT_HOME}/Library/LaunchAgents"
+    sed "s|AGENT_USER|${AGENT_USER}|g; s|AGENT_HOME|${AGENT_HOME}|g" "$tmpl" > "$dst"
+    echo "Wrote ${dst}"
+    launchctl unload "$dst" 2>/dev/null || true
+    launchctl load -w "$dst"
+  fi
+}
+
 if [[ "$OS" == "linux" ]]; then
   SVC_TEMPLATE="${WORKSPACE}/deploy/systemd/acc-queue-worker.service"
   SVC_DST="/etc/systemd/system/acc-queue-worker.service"
@@ -79,6 +106,7 @@ if [[ "$OS" == "linux" ]]; then
   sudo systemctl enable acc-queue-worker
   sudo systemctl restart acc-queue-worker
   systemctl status acc-queue-worker --no-pager || true
+  _install_nvidia_proxy linux
 
 elif [[ "$OS" == "macos" ]]; then
   PLIST_TEMPLATE="${WORKSPACE}/deploy/launchd/com.acc.queue-worker.plist"
@@ -89,6 +117,7 @@ elif [[ "$OS" == "macos" ]]; then
   launchctl unload "$PLIST_DST" 2>/dev/null || true
   launchctl load -w "$PLIST_DST"
   launchctl list | grep acc.queue-worker || echo "(not yet listed — may take a moment)"
+  _install_nvidia_proxy macos
 
 elif [[ "$OS" == "supervisor" ]]; then
   CONF_TEMPLATE="${WORKSPACE}/deploy/supervisor/acc-queue-worker.conf"
@@ -98,7 +127,6 @@ elif [[ "$OS" == "supervisor" ]]; then
   echo "Wrote ${CONF_DST}"
   sudo supervisorctl reread
   sudo supervisorctl update
-  # Note: autostart=false — start manually when ready
   echo ""
   echo "Queue worker installed (autostart=false). Start with:"
   echo "  sudo supervisorctl start acc-queue-worker"
