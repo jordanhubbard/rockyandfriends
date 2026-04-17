@@ -417,6 +417,22 @@ def _git_push_once(item_id: str, workspace: Path, task_output: str) -> str:
             log.info(f"[{item_id}] {result}")
             return result
 
+        # Rewrite HTTPS GitHub URL → SSH when deploy key is available.
+        # Bootstrap installs the key at ~/.ssh/ccc-deploy-key; HTTPS clones can't
+        # use it, but SSH pushes can.
+        _deploy_key = Path.home() / ".ssh" / "ccc-deploy-key"
+        if (
+            _deploy_key.exists()
+            and "github.com" in remote_url
+            and remote_url.startswith("https://")
+        ):
+            ssh_url = remote_url.replace("https://github.com/", "git@github.com:", 1)
+            subprocess.run(
+                ["git", "remote", "set-url", "origin", ssh_url],
+                cwd=str(workspace), capture_output=True, timeout=5,
+            )
+            log.info(f"[{item_id}] Rewrote remote URL to SSH for push")
+
         push = subprocess.run(
             ["git", "push", "--force-with-lease", "origin", task_branch],
             capture_output=True, text=True, cwd=str(workspace), timeout=120,

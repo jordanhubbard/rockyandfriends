@@ -529,6 +529,38 @@ env:
 HCEOF
   [[ -n "${SLACK_BOT_TOKEN:-}" ]] && echo "  SLACK_BOT_TOKEN: \"${SLACK_BOT_TOKEN}\"" >> "$HERMES_CONFIG"
   [[ -n "${SLACK_APP_TOKEN:-}" ]] && echo "  SLACK_APP_TOKEN: \"${SLACK_APP_TOKEN}\"" >> "$HERMES_CONFIG"
+
+  # Write model + providers sections so hermes sends the API key on every inference call.
+  # Without api_key in the provider block hermes falls back to "no-key-required".
+  if [[ -n "${NVIDIA_KEY:-}" ]]; then
+    cat >> "$HERMES_CONFIG" <<HPEOF
+
+model:
+  default: azure/anthropic/claude-sonnet-4-6
+  provider: nvidia
+  base_url: https://inference-api.nvidia.com/v1/
+  api_key: "${NVIDIA_KEY}"
+
+providers:
+  nvidia:
+    api: https://inference-api.nvidia.com/v1/
+    name: nvidia
+    api_key: "${NVIDIA_KEY}"
+    transport: chat_completions
+
+fallback_providers: []
+
+toolsets:
+- hermes-cli
+
+agent:
+  max_turns: 90
+  gateway_timeout: 0
+  restart_drain_timeout: 60
+HPEOF
+    success "hermes providers.nvidia written with API key"
+  fi
+
   chmod 600 "$HERMES_CONFIG"
   success "~/.hermes/config.yaml written"
 
