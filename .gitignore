@@ -130,3 +130,8 @@ __pycache__/
 skills/agent-skills/
 skills/superpowers/
 ccc/
+
+# Beads / Dolt files (added by bd init)
+.dolt/
+*.db
+.beads-credential-key
