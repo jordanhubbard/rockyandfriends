@@ -105,6 +105,15 @@ def _curl(method: str, path: str, body: dict | None = None) -> dict | None:
         return None
 
 
+def post_heartbeat(note: str = "idle") -> None:
+    """Update agent lastSeen on the hub. Called every poll cycle so online status stays green."""
+    _curl("POST", f"/api/heartbeat/{AGENT_NAME}", {
+        "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        "status": "ok",
+        "note": note,
+    })
+
+
 def get_queue() -> list[dict]:
     data = _curl("GET", "/api/queue")
     return (data or {}).get("items", [])
@@ -646,6 +655,7 @@ def select_item(items: list[dict]) -> dict | None:
 
 def main() -> None:
     log.info(f"Starting queue-worker (agent={AGENT_NAME}, hub={CCC_URL})")
+    post_heartbeat("queue-worker starting")
     instructions  = load_agent_instructions()
     poll_interval = POLL_INTERVAL_IDLE
 
@@ -654,6 +664,8 @@ def main() -> None:
             log.info("Quenched — skipping this cycle")
             time.sleep(POLL_INTERVAL_IDLE)
             continue
+
+        post_heartbeat("idle")
 
         try:
             items = get_queue()
