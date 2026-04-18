@@ -175,7 +175,8 @@ def _parse_beads(repo_dir: Path) -> list[dict]:
 def _post_task(title: str, description: str, project_id: str,
                accfs_path: str, github_repo: str,
                tags: list[str] | None = None,
-               depends_on: list[str] | None = None) -> str | None:
+               depends_on: list[str] | None = None,
+               bead_id: str = "") -> str | None:
     """POST a new queue item. Returns item id or None."""
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     item = {
@@ -192,6 +193,7 @@ def _post_task(title: str, description: str, project_id: str,
         "project_id":             project_id,
         "project_accfs_path":     accfs_path,
         "project":                github_repo,
+        "scout_key":              f"bead:{bead_id}" if bead_id else None,
     }
     if depends_on:
         item["dependsOn"] = depends_on
@@ -279,13 +281,17 @@ def onboard(
                 _log(f"  task: {tid} — {title[:60]}")
 
         for bead in bead_items:
+            bead_desc = (bead.get("description") or bead.get("body") or "").strip()
+            if not bead_desc:
+                bead_desc = f"Bead {bead.get('id')} from {repo}: {bead.get('title','')}"
             tid = _post_task(
                 title=bead.get("title", "untitled bead"),
-                description=f"Bead {bead.get('id')} from {repo}: {bead.get('title','')}",
+                description=bead_desc,
                 project_id=project_id,
                 accfs_path=accfs_ws,
                 github_repo=repo,
                 tags=["beads"],
+                bead_id=str(bead.get("id", "")),
             )
             if tid:
                 task_ids.append(tid)

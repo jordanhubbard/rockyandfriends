@@ -161,28 +161,26 @@ def _sse_thread() -> None:
 
 # ── Beads integration ─────────────────────────────────────────────────────────
 
-_BEAD_PRIORITY = {0: "urgent", 1: "high", 2: "normal", 3: "low", 4: "idea"}
+_BEAD_PRIORITY = {0: "critical", 1: "high", 2: "normal", 3: "low", 4: "idea"}
+
+_last_beads_sync: float = 0.0
 
 
-def _beads_to_item(bead: dict) -> dict:
-    """Wrap a bd-ready bead in the shape select_item() expects."""
-    return {
-        "id":       f"bd-{bead['id']}",
-        "title":    bead.get("title", ""),
-        "status":   "pending",
-        "priority": _BEAD_PRIORITY.get(bead.get("priority", 2), "normal"),
-        "assignee": "",
-        "tags":     [],
-        "required_executors": [],
-        "_bead":    bead,   # raw bead for claim/close calls
-    }
+def _item_bead_id(item: dict) -> str:
+    """Extract bead ID from queue item (stored as scout_key='bead:<id>')."""
+    sk = item.get("scout_key", "")
+    return sk[5:] if isinstance(sk, str) and sk.startswith("bead:") else ""
 
 
-def check_beads(cwd: Path | None = None) -> list[dict]:
-    """Return open unblocked beads from the nearest .beads/ directory, normalised as queue items."""
+def check_beads(current_items: list[dict] | None = None) -> list[dict]:
+    """
+    Push open unblocked beads into the ACC queue as real queue items.
+    Uses scout_key='bead:<id>' for idempotent dedup.
+    Returns list of newly created queue items (empty if nothing new).
+    """
     if not shutil.which("bd"):
         return []
-    run_dir = cwd or WORKSPACE
+    run_dir = WORKSPACE
     if not (run_dir / ".beads").exists():
         return []
     try:
@@ -193,11 +191,65 @@ def check_beads(cwd: Path | None = None) -> list[dict]:
         if r.returncode != 0 or not r.stdout.strip():
             return []
         data = json.loads(r.stdout)
-        issues = data if isinstance(data, list) else data.get("issues", data.get("items", []))
-        return [_beads_to_item(b) for b in issues if isinstance(b, dict)]
+        beads = data if isinstance(data, list) else data.get("issues", data.get("items", []))
     except Exception as e:
         log.debug(f"bd ready failed: {e}")
         return []
+
+    existing_sk: set[str] = {
+        str(i.get("scout_key", ""))
+        for i in (current_items or [])
+        if i.get("scout_key")
+    }
+
+    created: list[dict] = []
+    for bead in beads:
+        if not isinstance(bead, dict):
+            continue
+        bead_id = str(bead.get("id", ""))
+        if not bead_id:
+            continue
+        scout_key = f"bead:{bead_id}"
+        if scout_key in existing_sk:
+            continue
+
+        description = (
+            bead.get("description") or bead.get("body") or ""
+        ).strip() or f"Bead {bead_id}: {bead.get('title', '')}"
+        if len(description) < 20:
+            description = f"Bead {bead_id}: {bead.get('title', '')} — {description}".strip()
+
+        priority = _BEAD_PRIORITY.get(bead.get("priority", 2), "normal")
+        resp = _curl("POST", "/api/queue", {
+            "title":       bead.get("title", f"Bead {bead_id}"),
+            "description": description,
+            "priority":    priority,
+            "source":      "beads",
+            "tags":        ["beads"],
+            "scout_key":   scout_key,
+            "notes":       bead.get("notes", ""),
+        })
+        if resp and resp.get("ok") and resp.get("item"):
+            item = resp["item"]
+            created.append(item)
+            existing_sk.add(scout_key)
+            _bd_set_queue_link(bead_id, item["id"], run_dir)
+            log.info(f"Bead {bead_id} → queue {item['id']} [{priority}] {bead.get('title', '')[:50]}")
+        elif resp and resp.get("duplicate"):
+            log.debug(f"Bead {bead_id} already in queue (scout_key dedup)")
+
+    return created
+
+
+def _bd_set_queue_link(bead_id: str, queue_item_id: str, cwd: Path) -> None:
+    """Store the linked ACC queue item ID in the bead's notes for back-linking."""
+    try:
+        subprocess.run(
+            ["bd", "update", bead_id, "--notes", f"acc_queue_id: {queue_item_id}"],
+            capture_output=True, timeout=10, cwd=str(cwd),
+        )
+    except Exception:
+        pass
 
 
 def claim_bead(bead_id: str, cwd: Path) -> bool:
@@ -223,6 +275,39 @@ def close_bead(bead_id: str, cwd: Path, success: bool = True) -> None:
             )
     except Exception:
         pass
+
+
+def reconcile_beads_with_queue(items: list[dict]) -> None:
+    """
+    ACC→Beads direction: if a pending queue item has bead_id and the bead
+    is already closed externally, complete the queue item to stay in sync.
+    """
+    if not shutil.which("bd"):
+        return
+    run_dir = WORKSPACE
+    if not (run_dir / ".beads").exists():
+        return
+
+    for item in items:
+        bead_id = _item_bead_id(item)
+        if not bead_id:
+            continue
+        if item.get("status") != "pending":
+            continue  # only touch unowned items; in-progress are being worked
+        try:
+            r = subprocess.run(
+                ["bd", "show", bead_id, "--json"],
+                capture_output=True, text=True, timeout=10, cwd=str(run_dir),
+            )
+            if r.returncode != 0:
+                continue
+            bead_data = json.loads(r.stdout)
+            bead_status = bead_data.get("status", "open")
+            if bead_status in ("closed", "done", "completed", "cancelled"):
+                log.info(f"Bead {bead_id} closed externally → completing queue item {item['id']}")
+                post_complete(item["id"], f"Bead {bead_id} closed manually (status: {bead_status})")
+        except Exception as e:
+            log.debug(f"reconcile bead {bead_id}: {e}")
 
 
 # ── HTTP helpers ─────────────────────────────────────────────────────────────
@@ -838,13 +923,18 @@ def main() -> None:
             time.sleep(POLL_INTERVAL_IDLE)
             continue
 
-        # Merge beads into candidate pool when queue has nothing urgent
-        bead_items = check_beads()
-        if bead_items:
-            log.debug(f"bd ready: {len(bead_items)} open bead(s) in project")
-        all_items = items + bead_items
+        # ── Periodic beads sync ───────────────────────────────────────────────
+        # Push open beads into ACC queue; complete queue items for closed beads.
+        global _last_beads_sync
+        if time.time() - _last_beads_sync >= BEADS_POLL_INTERVAL:
+            new_bead_items = check_beads(items)
+            if new_bead_items:
+                items = items + new_bead_items
+                log.info(f"Beads → queue: {len(new_bead_items)} new item(s) created")
+            reconcile_beads_with_queue(items)
+            _last_beads_sync = time.time()
 
-        item = select_item(all_items)
+        item = select_item(items)
         if item is None:
             log.debug("No claimable items — sleeping")
             # Interruptible idle sleep — wakes early on bus event
@@ -859,24 +949,16 @@ def main() -> None:
         item_id  = item["id"]
         title    = item.get("title", "?")
         priority = item.get("priority", "normal")
-        raw_bead = item.get("_bead")   # present only for bead-sourced items
+        bead_id  = _item_bead_id(item)  # non-empty only for bead-sourced items
 
         # ── Claim ─────────────────────────────────────────────────────────────
-        if raw_bead:
-            # Bead items: claim via bd update, no queue claim needed
-            bead_id  = str(raw_bead.get("id", ""))
-            bead_cwd = WORKSPACE
-            if not claim_bead(bead_id, bead_cwd):
-                log.info(f"[{item_id}] Bead claim rejected — backing off")
-                time.sleep(POLL_INTERVAL_BUSY)
-                continue
-            log.info(f"[{item_id}] Claimed bead [{priority}] {title[:60]}")
-        else:
-            if not claim_item(item_id):
-                log.info(f"[{item_id}] Claim rejected — backing off")
-                time.sleep(POLL_INTERVAL_BUSY)
-                continue
-            log.info(f"[{item_id}] Claimed [{priority}] {title[:60]}")
+        if not claim_item(item_id):
+            log.info(f"[{item_id}] Claim rejected — backing off")
+            time.sleep(POLL_INTERVAL_BUSY)
+            continue
+        if bead_id:
+            claim_bead(bead_id, WORKSPACE)  # best-effort; non-fatal if fails
+        log.info(f"[{item_id}] Claimed [{priority}] {title[:60]}")
 
         if priority == "urgent":
             _curl("POST", "/bus/send", {
@@ -885,39 +967,20 @@ def main() -> None:
             })
 
         # ── Init workspace ────────────────────────────────────────────────────
-        if raw_bead:
-            workspace_local   = WORKSPACE
-            workspace_shared  = _accfs_workspace_path(item_id)
+        if bead_id:
+            # Bead tasks run in the main workspace — they're local repo work items
+            workspace_local  = WORKSPACE
+            workspace_shared = _accfs_workspace_path(item_id)
         else:
             workspace_local, workspace_shared = task_workspace_init(item)
         task_env = build_task_env(item_id, workspace_local, workspace_shared)
         log.info(f"[{item_id}] Workspace: {workspace_local}"
                  + (f" → AccFS: {workspace_shared}" if workspace_shared else ""))
 
-        if not raw_bead:
-            post_comment(item_id, f"{AGENT_NAME} starting — workspace {workspace_local}")
+        post_comment(item_id, f"{AGENT_NAME} starting — workspace {workspace_local}")
 
         # ── Execute ───────────────────────────────────────────────────────────
-        if raw_bead:
-            # Bead execution: build a simple query from title + description
-            bead_query = (
-                f"{raw_bead.get('title', title)}\n\n"
-                f"{raw_bead.get('description', raw_bead.get('body', ''))}"
-            ).strip()
-            if _hermes_applicable(item):
-                log.info(f"[{item_id}] Routing bead to hermes-driver...")
-                # Synthesise a minimal item dict for run_hermes
-                hermes_item = {**item, "title": raw_bead.get("title", title),
-                               "description": bead_query}
-                output, exit_code = run_hermes(
-                    hermes_item, item_id, task_env, workspace_local,
-                )
-                log.info(f"[{item_id}] hermes-driver exited {exit_code} ({len(output)} chars)")
-            else:
-                log.info(f"[{item_id}] Invoking claude for bead...")
-                output, exit_code = run_claude(bead_query, item_id, task_env, workspace_local)
-                log.info(f"[{item_id}] claude exited {exit_code} ({len(output)} chars)")
-        elif _hermes_applicable(item):
+        if _hermes_applicable(item):
             log.info(f"[{item_id}] Routing to hermes-driver...")
             output, exit_code = run_hermes(item, item_id, task_env, workspace_local)
             log.info(f"[{item_id}] hermes-driver exited {exit_code} ({len(output)} chars)")
@@ -928,25 +991,25 @@ def main() -> None:
             log.info(f"[{item_id}] claude exited {exit_code} ({len(output)} chars)")
 
         # ── Finalize ──────────────────────────────────────────────────────────
-        if raw_bead:
-            # Bead finalize: close or reopen via bd
-            close_bead(bead_id, bead_cwd, success=(exit_code == 0))
-            if exit_code == 0:
-                log.info(f"[{item_id}] Bead closed OK")
-            else:
-                log.info(f"[{item_id}] Bead reopened (exit={exit_code})")
-        elif exit_code == 0:
-            git_result = task_workspace_finalize(
-                item_id, workspace_local, workspace_shared, output,
-            )
-            full_result = output
-            if git_result:
-                full_result = f"{output}\n\n---\ngit: {git_result}"
-            post_complete(item_id, full_result)
+        if exit_code == 0:
+            if not bead_id:
+                git_result = task_workspace_finalize(
+                    item_id, workspace_local, workspace_shared, output,
+                )
+                if git_result:
+                    output = f"{output}\n\n---\ngit: {git_result}"
+            post_complete(item_id, output)
+            if bead_id:
+                close_bead(bead_id, WORKSPACE, success=True)
+                log.info(f"[{item_id}] Bead {bead_id} closed")
             log.info(f"[{item_id}] Completed OK")
         else:
-            task_workspace_abandon(item_id, workspace_local)
+            if not bead_id:
+                task_workspace_abandon(item_id, workspace_local)
             post_fail(item_id, f"exit_code={exit_code}\n{output[:1000]}")
+            if bead_id:
+                close_bead(bead_id, WORKSPACE, success=False)
+                log.info(f"[{item_id}] Bead {bead_id} reopened (exit={exit_code})")
             log.info(f"[{item_id}] Failed (exit={exit_code})")
 
         poll_interval = POLL_INTERVAL_BUSY
