@@ -6,10 +6,10 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 User=AGENT_USER
-EnvironmentFile=-AGENT_HOME/.ccc/.env
-ExecStart=/bin/bash AGENT_HOME/.ccc/workspace/deploy/agent-pull.sh
-StandardOutput=append:AGENT_HOME/.ccc/logs/pull.log
-StandardError=append:AGENT_HOME/.ccc/logs/pull.log
+EnvironmentFile=-AGENT_HOME/.acc/.env
+ExecStart=/bin/bash AGENT_HOME/.acc/workspace/deploy/agent-pull.sh
+StandardOutput=append:AGENT_HOME/.acc/logs/pull.log
+StandardError=append:AGENT_HOME/.acc/logs/pull.log
 
 [Install]
 WantedBy=multi-user.target

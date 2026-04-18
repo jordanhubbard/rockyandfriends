@@ -65,8 +65,8 @@ pub async fn run(args: &[String]) {
     let state = ProxyState { client, upstream: upstream.clone() };
 
     let app = Router::new()
-        .route("/{*path}", any(proxy_handler))
         .route("/", any(proxy_handler))
+        .route("/*path", any(proxy_handler))
         .with_state(state);
 
     let addr: SocketAddr = format!("127.0.0.1:{port}").parse().unwrap();
