@@ -198,7 +198,7 @@ async fn register_agent(
         .and_then(|t| t.as_str())
         .map(|s| s.to_string());
     let token = existing_token.unwrap_or_else(|| {
-        format!("ccc-agent-{}-{}", name, uuid::Uuid::new_v4().to_string().replace('-', ""))
+        format!("rcc-agent-{}-{}", name, uuid::Uuid::new_v4().to_string().replace('-', ""))
     });
 
     let now = chrono::Utc::now().to_rfc3339();
