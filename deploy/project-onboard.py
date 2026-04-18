@@ -2,7 +2,7 @@
 """
 project-onboard.py — Bootstrap a new project into the ACC fleet.
 
-Creates a project record, mirrors the git repo to AgentFS,
+Creates a project record, syncs the git repo to AccFS shared storage,
 generates an initial task set from PLAN.md and/or open beads,
 creates a milestone "sync-to-git" task blocked on all others,
 and broadcasts project.arrived on AgentBus so idle agents can join.
@@ -13,7 +13,7 @@ Usage:
 
 Environment (from ~/.acc/.env):
     ACC_URL, ACC_AGENT_TOKEN
-    MINIO_ENDPOINT, MINIO_ALIAS (default: acc-hub), MINIO_BUCKET (default: agents)
+    ACC_SHARED_DIR (default: ~/.acc/shared)
 """
 from __future__ import annotations
 
@@ -47,8 +47,7 @@ _load_env()
 ACC_URL         = (os.environ.get("ACC_URL") or os.environ.get("CCC_URL", "")).rstrip("/")
 ACC_AGENT_TOKEN = os.environ.get("ACC_AGENT_TOKEN") or os.environ.get("CCC_AGENT_TOKEN", "")
 AGENT_NAME      = os.environ.get("AGENT_NAME", "unknown")
-MINIO_ALIAS     = os.environ.get("MINIO_ALIAS", "acc-hub")
-MINIO_BUCKET    = os.environ.get("MINIO_BUCKET", "agents")
+ACCFS_SHARED    = Path(os.environ.get("ACC_SHARED_DIR", str(ACC_DIR / "shared")))
 HTTP_TIMEOUT    = 15
 
 
@@ -78,14 +77,15 @@ def _curl(method: str, path: str, body: dict | None = None) -> dict | None:
     return None
 
 
-def _mc(*args: str) -> bool:
-    """Run an mc command. Returns True on success."""
-    if not shutil.which("mc"):
-        _log("WARNING: mc not found — AgentFS operations will be skipped")
-        return False
-    r = subprocess.run(["mc", "--quiet", *args], capture_output=True, text=True, timeout=300)
+def _rsync(src: Path, dst: Path) -> bool:
+    """Rsync src → dst. Returns True on success."""
+    dst.mkdir(parents=True, exist_ok=True)
+    r = subprocess.run(
+        ["rsync", "-a", "--delete", "--quiet", f"{src}/", f"{dst}/"],
+        capture_output=True, text=True, timeout=300,
+    )
     if r.returncode != 0:
-        _log(f"mc {args[0]} failed: {r.stderr.strip()[:200]}")
+        _log(f"rsync failed: {r.stderr.strip()[:200]}")
     return r.returncode == 0
 
 
@@ -98,18 +98,12 @@ def _proj_id(repo: str, branch: str) -> str:
     return f"proj-{h}"
 
 
-def _agentfs_project_path(slug: str) -> str:
-    return f"{MINIO_ALIAS}/{MINIO_BUCKET}/projects/{slug}"
+def _accfs_project_path(slug: str) -> Path:
+    return ACCFS_SHARED / "projects" / slug
 
 
 def _project_exists(slug: str) -> bool:
-    if not shutil.which("mc"):
-        return False
-    r = subprocess.run(
-        ["mc", "ls", f"{_agentfs_project_path(slug)}/project.json"],
-        capture_output=True, text=True, timeout=15,
-    )
-    return r.returncode == 0
+    return (_accfs_project_path(slug) / "project.json").exists()
 
 
 def _clone_repo(repo: str, branch: str, dest: Path) -> str:
@@ -179,25 +173,25 @@ def _parse_beads(repo_dir: Path) -> list[dict]:
 
 
 def _post_task(title: str, description: str, project_id: str,
-               clawfs_path: str, github_repo: str,
+               accfs_path: str, github_repo: str,
                tags: list[str] | None = None,
                depends_on: list[str] | None = None) -> str | None:
     """POST a new queue item. Returns item id or None."""
     now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     item = {
-        "title":            title[:120],
-        "description":      description,
-        "status":           "pending",
-        "priority":         "normal",
-        "assignee":         "all",
-        "source":           AGENT_NAME,
-        "created":          now,
-        "attempts":         0,
-        "maxAttempts":      3,
-        "tags":             (tags or []) + ["project"],
-        "project_id":       project_id,
-        "project_clawfs_path": clawfs_path,
-        "project":          github_repo,
+        "title":                  title[:120],
+        "description":            description,
+        "status":                 "pending",
+        "priority":               "normal",
+        "assignee":               "all",
+        "source":                 AGENT_NAME,
+        "created":                now,
+        "attempts":               0,
+        "maxAttempts":            3,
+        "tags":                   (tags or []) + ["project"],
+        "project_id":             project_id,
+        "project_accfs_path":     accfs_path,
+        "project":                github_repo,
     }
     if depends_on:
         item["dependsOn"] = depends_on
@@ -217,17 +211,17 @@ def onboard(
     local_path: Path | None = None,
     description: str = "",
 ) -> None:
-    slug        = _slug(name or repo.split("/")[-1])
-    project_id  = _proj_id(repo, branch)
-    agentfs     = _agentfs_project_path(slug)
-    clawfs_ws   = f"{agentfs}/workspace"
+    slug       = _slug(name or repo.split("/")[-1])
+    project_id = _proj_id(repo, branch)
+    accfs_dir  = _accfs_project_path(slug)
+    accfs_ws   = str(accfs_dir / "workspace")
 
     _log(f"Onboarding project: {name!r} ({project_id})")
-    _log(f"  repo:    {repo} @ {branch}")
-    _log(f"  agentfs: {clawfs_ws}")
+    _log(f"  repo:   {repo} @ {branch}")
+    _log(f"  accfs:  {accfs_ws}")
 
     if _project_exists(slug):
-        _log(f"Project '{slug}' already exists in AgentFS — re-running task generation only")
+        _log(f"Project '{slug}' already exists in AccFS — re-running task generation only")
 
     # ── Clone or use local copy ───────────────────────────────────────────────
     with tempfile.TemporaryDirectory(prefix="ccc-onboard-") as tmp:
@@ -238,9 +232,12 @@ def onboard(
         else:
             sha = _clone_repo(repo, branch, repo_dir)
 
-        # ── Mirror to AgentFS ─────────────────────────────────────────────────
-        _log(f"Mirroring to AgentFS: {clawfs_ws}")
-        _mc("mirror", "--overwrite", "--quiet", f"{repo_dir}/", clawfs_ws)
+        # ── Sync to AccFS ─────────────────────────────────────────────────────
+        if ACCFS_SHARED.exists():
+            _log(f"Syncing to AccFS: {accfs_ws}")
+            _rsync(repo_dir, accfs_dir / "workspace")
+        else:
+            _log(f"WARNING: AccFS not mounted at {ACCFS_SHARED} — skipping shared sync")
 
         # ── Parse work from repo ──────────────────────────────────────────────
         plan_tasks = _parse_plan(repo_dir / "PLAN.md")
@@ -249,20 +246,20 @@ def onboard(
         # ── Create project record ─────────────────────────────────────────────
         now = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         project = {
-            "id":           project_id,
-            "name":         name or repo.split("/")[-1],
-            "slug":         slug,
-            "description":  description,
-            "status":       "active",
-            "github_repo":  repo,
+            "id":            project_id,
+            "name":          name or repo.split("/")[-1],
+            "slug":          slug,
+            "description":   description,
+            "status":        "active",
+            "github_repo":   repo,
             "github_branch": branch,
-            "github_sha":   sha,
-            "clawfs_path":  clawfs_ws,
-            "created_at":   now,
-            "created_by":   AGENT_NAME,
-            "task_ids":     [],
+            "github_sha":    sha,
+            "accfs_path":    accfs_ws,
+            "created_at":    now,
+            "created_by":    AGENT_NAME,
+            "task_ids":      [],
             "milestone_task_id": None,
-            "tags":         [],
+            "tags":          [],
         }
 
         # ── Post tasks ────────────────────────────────────────────────────────
@@ -273,7 +270,7 @@ def onboard(
                 title=title,
                 description=f"From PLAN.md in {repo}",
                 project_id=project_id,
-                clawfs_path=clawfs_ws,
+                accfs_path=accfs_ws,
                 github_repo=repo,
                 tags=["plan"],
             )
@@ -286,7 +283,7 @@ def onboard(
                 title=bead.get("title", "untitled bead"),
                 description=f"Bead {bead.get('id')} from {repo}: {bead.get('title','')}",
                 project_id=project_id,
-                clawfs_path=clawfs_ws,
+                accfs_path=accfs_ws,
                 github_repo=repo,
                 tags=["beads"],
             )
@@ -298,17 +295,17 @@ def onboard(
         milestone_id = None
         if task_ids:
             milestone_id = _post_task(
-                title=f"[{name}] milestone: reconcile AgentFS → GitHub",
+                title=f"[{name}] milestone: reconcile AccFS → GitHub",
                 description=(
-                    f"Sync completed project work from AgentFS ({clawfs_ws}) "
+                    f"Sync completed project work from AccFS ({accfs_ws}) "
                     f"back to GitHub ({repo} @ {branch}).\n\n"
-                    "1. Review all changes in the AgentFS workspace\n"
+                    "1. Review all changes in the AccFS workspace\n"
                     "2. Run tests / build\n"
                     "3. Commit and push to a release branch\n"
                     "4. Open a PR or tag a release as appropriate"
                 ),
                 project_id=project_id,
-                clawfs_path=clawfs_ws,
+                accfs_path=accfs_ws,
                 github_repo=repo,
                 tags=["milestone", "sync"],
                 depends_on=task_ids,
@@ -318,11 +315,11 @@ def onboard(
         project["task_ids"]          = task_ids
         project["milestone_task_id"] = milestone_id
 
-        # ── Store project record in AgentFS ───────────────────────────────────
-        project_json = Path(tmp) / "project.json"
-        project_json.write_text(json.dumps(project, indent=2))
-        _mc("cp", str(project_json), f"{agentfs}/project.json")
-        _log(f"Project record saved: {agentfs}/project.json")
+        # ── Store project record in AccFS ─────────────────────────────────────
+        if ACCFS_SHARED.exists():
+            accfs_dir.mkdir(parents=True, exist_ok=True)
+            (accfs_dir / "project.json").write_text(json.dumps(project, indent=2))
+            _log(f"Project record saved: {accfs_dir}/project.json")
 
     # ── Broadcast project.arrived ─────────────────────────────────────────────
     _curl("POST", "/bus/send", {
@@ -334,7 +331,7 @@ def onboard(
             "project_id":   project_id,
             "name":         project["name"],
             "slug":         slug,
-            "clawfs_path":  clawfs_ws,
+            "accfs_path":   accfs_ws,
             "github_repo":  repo,
             "task_count":   len(task_ids),
             "milestone_id": milestone_id,

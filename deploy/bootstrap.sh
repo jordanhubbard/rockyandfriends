@@ -342,40 +342,10 @@ PYEOF
   success "Secrets bundle written to .env"
 fi
 
-# ── 7. Install agentfs-sync ───────────────────────────────────────────────
-AGENTFS_BIN="/usr/local/bin/agentfs-sync"
-AGENTFS_SVC="/etc/systemd/system/agentfs-sync.service"
-AGENTFS_SVC_SRC="$ACC_WORKSPACE/.acc/agentfs-sync/agentfs-sync.service"
-
-if [[ ! -f "$AGENTFS_BIN" ]]; then
-  if [[ -z "${CCC_MINIO_URL:-}" ]]; then
-    warn "CCC_MINIO_URL not set — skipping agentfs-sync download (set it in .env if needed)"
-  else
-    info "Downloading agentfs-sync from MinIO..."
-    _AGENTFS_URL="${CCC_MINIO_URL}/agents/shared/bin/agentfs-sync"
-    if curl -sf --max-time 30 -o /tmp/agentfs-sync "$_AGENTFS_URL" 2>/dev/null; then
-      sudo install -m 755 /tmp/agentfs-sync "$AGENTFS_BIN"
-      rm -f /tmp/agentfs-sync
-      success "agentfs-sync installed from MinIO"
-    else
-      warn "agentfs-sync not available at MinIO — run after first build"
-    fi
-  fi
-fi
-
-if [[ -f "$AGENTFS_BIN" ]]; then
-  if [[ -f "$AGENTFS_SVC_SRC" ]]; then
-    info "Installing agentfs-sync systemd service..."
-    mkdir -p "$HOME/.acc/logs"
-    sed "s/AGENT_USER/$(whoami)/g" "$AGENTFS_SVC_SRC" | sudo tee "$AGENTFS_SVC" > /dev/null
-    sudo systemctl daemon-reload
-    sudo systemctl enable agentfs-sync
-    sudo systemctl restart agentfs-sync 2>/dev/null || sudo systemctl start agentfs-sync 2>/dev/null || true
-    success "agentfs-sync service enabled and started"
-  else
-    warn "agentfs-sync service template not found in workspace — skipping service install"
-  fi
-fi
+# ── 7. Mount AccFS (Samba/SMB shared filesystem) ──────────────────────────
+info "Setting up AccFS mount at $HOME/.acc/shared..."
+bash "$ACC_WORKSPACE/deploy/run-migrations.sh" --only=0019 2>&1 \
+  | grep -E "✓|⚠|ERROR|complete|mounted" | while read -r l; do info "$l"; done || true
 
 # ── 8. vLLM (GPU nodes only) ──────────────────────────────────────────────
 GPU_COUNT=0
@@ -654,34 +624,6 @@ else
   warn "install-queue-worker.sh not found — queue processing disabled"
 fi
 
-# ── 9d. Install MinIO client (mc) for AgentFS workspace lifecycle ────────────
-if ! command -v mc &>/dev/null; then
-  info "Installing MinIO client (mc)..."
-  mkdir -p "$HOME/.local/bin"
-  _MC_URL="https://dl.min.io/client/mc/release/linux-amd64/mc"
-  [[ "$(uname -m)" == "arm64" || "$(uname -m)" == "aarch64" ]] && \
-    _MC_URL="https://dl.min.io/client/mc/release/linux-arm64/mc"
-  [[ "$(uname -s)" == "Darwin" ]] && \
-    _MC_URL="https://dl.min.io/client/mc/release/darwin-arm64/mc"
-  if curl -sf --max-time 60 "$_MC_URL" -o "$HOME/.local/bin/mc" 2>/dev/null; then
-    chmod +x "$HOME/.local/bin/mc"
-    success "mc installed at $HOME/.local/bin/mc"
-  else
-    warn "mc download failed — AgentFS workspace sync will be skipped"
-  fi
-else
-  success "mc already installed: $(command -v mc)"
-fi
-
-# Configure mc if MINIO_* vars are available
-if command -v mc &>/dev/null && [[ -n "${MINIO_ENDPOINT:-}" ]]; then
-  mc alias set "${MINIO_ALIAS:-ccc-hub}" "$MINIO_ENDPOINT" \
-    "$MINIO_ACCESS_KEY" "$MINIO_SECRET_KEY" 2>/dev/null \
-    && success "mc alias '${MINIO_ALIAS:-ccc-hub}' configured" \
-    || warn "mc alias configuration failed (non-fatal)"
-elif command -v mc &>/dev/null; then
-  warn "MINIO_ENDPOINT not set — mc installed but AgentFS sync unconfigured"
-fi
 
 # ── 10. Hardware fingerprint + heartbeat ──────────────────────────────────
 info "Collecting hardware fingerprint..."

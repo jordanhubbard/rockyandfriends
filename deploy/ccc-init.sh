@@ -183,9 +183,9 @@ else
 fi
 
 echo ""
-info "ClawFS shared storage — no configuration needed."
-echo "  Memory sync uses the S3 gateway on the hub (port 9100) via clawfs-sync."
-echo "  No FUSE mount, no local JuiceFS installation required."
+info "AccFS shared storage — no configuration needed."
+echo "  AccFS mounts automatically via migration 0019 (Samba/CIFS from Rocky hub)."
+echo "  Run deploy/run-migrations.sh --only=0019 to set up the mount on this node."
 
 # ═══════════════════════════════════════════════════════════════════════════
 # STEP 5 — Communication Channels
@@ -241,10 +241,6 @@ echo ""
 prompt NVIDIA_API_KEY "NVIDIA API key (for LLM inference)" ""
 prompt TOKENHUB_API_KEY "TokenHub client API key (for LLM routing)" ""
 prompt TOKENHUB_ADMIN_TOKEN "TokenHub admin token (for vault secret access)" ""
-prompt MINIO_ENDPOINT "MinIO endpoint (e.g. http://10.0.0.5:9000)" ""
-prompt MINIO_ACCESS_KEY "MinIO access key" ""
-prompt MINIO_SECRET_KEY "MinIO secret key" ""
-MINIO_BUCKET="agents"
 
 # ═══════════════════════════════════════════════════════════════════════════
 # WRITE .env
@@ -289,11 +285,8 @@ TOKENHUB_URL=http://localhost:8090
 TOKENHUB_API_KEY=${TOKENHUB_API_KEY:-}
 TOKENHUB_ADMIN_TOKEN=${TOKENHUB_ADMIN_TOKEN:-}
 
-# ── Storage: MinIO ─────────────────────────────────────────────────────────
-MINIO_ENDPOINT=${MINIO_ENDPOINT}
-MINIO_ACCESS_KEY=${MINIO_ACCESS_KEY}
-MINIO_SECRET_KEY=${MINIO_SECRET_KEY}
-MINIO_BUCKET=${MINIO_BUCKET}
+# ── Storage: AccFS (Samba/SMB — mounted via migration 0019) ───────────────
+# ACC_SHARED_DIR is set automatically by migration 0019 (default: ~/.acc/shared)
 
 # ── Storage: Azure Blob ────────────────────────────────────────────────────
 AZURE_BLOB_PUBLIC_URL=

@@ -3,14 +3,14 @@
 #
 # Enforces the "one push" rule: all changes accumulated during task execution
 # are committed to a task branch and pushed exactly once on completion.
-# Also syncs the final state back to AgentFS before pushing to git.
+# Also syncs the final state back to AccFS shared storage before pushing to git.
 #
 # Usage:
 #   bash deploy/task-workspace-finalize.sh --task-id <id> [--message <msg>]
 #
 # Environment expected (set by task-workspace-init.sh or queue-worker):
 #   TASK_WORKSPACE_LOCAL     — local workspace path
-#   TASK_WORKSPACE_AGENTFS   — AgentFS path (optional)
+#   TASK_WORKSPACE_SHARED    — AccFS shared path (optional)
 #   TASK_BRANCH              — target branch (default: task/<task-id>)
 #   AGENT_NAME               — for git author
 #
@@ -32,10 +32,11 @@ done
 [[ -z "$TASK_ID" ]] && { echo "ERROR: --task-id required" >&2; exit 1; }
 
 # Load env
-[[ -f "$HOME/.ccc/.env" ]] && set -a && source "$HOME/.ccc/.env" && set +a
+ACC_DIR="${HOME}/.acc"; [[ -d "$ACC_DIR" ]] || ACC_DIR="${HOME}/.ccc"
+[[ -f "${ACC_DIR}/.env" ]] && set -a && source "${ACC_DIR}/.env" && set +a
 
-WORKSPACE_LOCAL="${TASK_WORKSPACE_LOCAL:-$HOME/.ccc/task-workspaces/$TASK_ID}"
-WORKSPACE_AGENTFS="${TASK_WORKSPACE_AGENTFS:-}"
+WORKSPACE_LOCAL="${TASK_WORKSPACE_LOCAL:-${ACC_DIR}/task-workspaces/$TASK_ID}"
+WORKSPACE_SHARED="${TASK_WORKSPACE_SHARED:-}"
 TASK_BRANCH="${TASK_BRANCH:-task/$TASK_ID}"
 [[ -z "$COMMIT_MSG" ]] && COMMIT_MSG="task($TASK_ID): complete"
 
@@ -49,12 +50,12 @@ if [[ ! -d "$WORKSPACE_LOCAL" ]]; then
   exit 0
 fi
 
-# ── 1. Final AgentFS sync (local → AgentFS) ───────────────────────────────────
+# ── 1. Final AccFS sync (local → shared) ─────────────────────────────────────
 
-if [[ -n "$WORKSPACE_AGENTFS" ]] && command -v mc &>/dev/null; then
-  echo "→ Syncing to AgentFS: $WORKSPACE_AGENTFS" >&2
-  mc mirror --overwrite --quiet "$WORKSPACE_LOCAL/" "$WORKSPACE_AGENTFS" 2>/dev/null \
-    || echo "⚠ Final AgentFS sync failed (non-fatal)" >&2
+if [[ -n "$WORKSPACE_SHARED" ]] && command -v rsync &>/dev/null; then
+  echo "→ Syncing to AccFS: $WORKSPACE_SHARED" >&2
+  rsync -a --delete --quiet "$WORKSPACE_LOCAL/" "$WORKSPACE_SHARED/" 2>/dev/null \
+    || echo "⚠ Final AccFS sync failed (non-fatal)" >&2
 fi
 
 # ── 2. Git push (ONE push, on completion only) ────────────────────────────────

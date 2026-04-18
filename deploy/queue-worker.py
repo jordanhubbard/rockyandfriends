@@ -349,15 +349,14 @@ def _repo_url_from_item(item: dict) -> str:
     return ""
 
 
-def task_workspace_init(item: dict) -> tuple[Path, str]:
+def task_workspace_init(item: dict) -> "tuple[Path, Path | None]":
     """
     Bootstrap an isolated workspace for this task.
 
     1. Clones the task's git repo (or reuses existing clone) to a local dir.
-    2. Mirrors the local dir to AgentFS (if MinIO is configured).
+    2. Syncs the local dir to AccFS shared storage (if mounted).
 
-    Returns (local_path, agentfs_path).
-    agentfs_path is empty string if MinIO is not available.
+    Returns (local_path, accfs_workspace_path or None).
     """
     item_id = item["id"]
     workspace_local = TASK_WORKSPACE_BASE / item_id
@@ -365,48 +364,24 @@ def task_workspace_init(item: dict) -> tuple[Path, str]:
     # Reuse existing workspace (task resume case)
     if workspace_local.exists() and any(workspace_local.iterdir()):
         log.info(f"[{item_id}] Reusing workspace: {workspace_local}")
-        return workspace_local, _agentfs_workspace_path(item_id)
+        return workspace_local, _accfs_workspace_path(item_id)
 
     workspace_local.mkdir(parents=True, exist_ok=True)
 
-    project_clawfs = item.get("project_clawfs_path", "").strip()
-    if project_clawfs and shutil.which("mc"):
-        # Project-aware init: mirror shared workspace from AgentFS instead of cloning
-        log.info(f"[{item_id}] Mirroring project workspace from AgentFS: {project_clawfs}")
-        try:
-            r = subprocess.run(
-                ["mc", "mirror", "--overwrite", "--quiet", f"{project_clawfs}/",
-                 f"{workspace_local}/"],
-                capture_output=True, text=True, timeout=300,
-            )
-            if r.returncode == 0:
-                log.info(f"[{item_id}] Project workspace mirrored from AgentFS")
-            else:
-                log.warning(f"[{item_id}] AgentFS mirror failed: {r.stderr.strip()[:200]}"
-                            " — falling back to git clone")
-                project_clawfs = ""  # fall through to git clone
-        except Exception as e:
-            log.warning(f"[{item_id}] AgentFS mirror error: {e} — falling back to git clone")
-            project_clawfs = ""
-
-    if not project_clawfs:
-        repo_url = _repo_url_from_item(item)
-        branch   = item.get("branch", "main")
-        if repo_url:
-            log.info(f"[{item_id}] Cloning {repo_url} ({branch}) → {workspace_local}")
-            _git_clone(item_id, repo_url, branch, workspace_local)
-        else:
-            log.info(f"[{item_id}] No repo URL — using empty workspace")
+    repo_url = _repo_url_from_item(item)
+    branch   = item.get("branch", "main")
+    if repo_url:
+        log.info(f"[{item_id}] Cloning {repo_url} ({branch}) → {workspace_local}")
+        _git_clone(item_id, repo_url, branch, workspace_local)
     else:
-        repo_url = _repo_url_from_item(item)
-        branch   = item.get("branch", "main")
+        log.info(f"[{item_id}] No repo URL — using empty workspace")
 
-    agentfs_path = _agentfs_workspace_path(item_id)
-    if agentfs_path:
-        _mc_mirror_push(item_id, workspace_local, agentfs_path)
-        _write_agentfs_meta(item, agentfs_path, repo_url, branch, workspace_local)
+    accfs_path = _accfs_workspace_path(item_id)
+    if accfs_path:
+        _accfs_sync_push(item_id, workspace_local, accfs_path)
+        _write_accfs_meta(item, accfs_path, repo_url, branch, workspace_local)
 
-    return workspace_local, agentfs_path
+    return workspace_local, accfs_path
 
 
 def _git_clone(item_id: str, repo_url: str, branch: str, dest: Path) -> None:
@@ -430,51 +405,58 @@ def _git_clone(item_id: str, repo_url: str, branch: str, dest: Path) -> None:
         log.warning(f"[{item_id}] git clone failed: {e} — task will run with empty workspace")
 
 
-def _agentfs_workspace_path(item_id: str) -> str:
-    """Return the AgentFS path for this task's workspace, or '' if unavailable."""
-    if not shutil.which("mc"):
-        return ""
-    if not os.environ.get("MINIO_ENDPOINT"):
-        return ""
-    mc_alias = os.environ.get("MINIO_ALIAS", "ccc-hub")
-    bucket   = os.environ.get("MINIO_BUCKET", "agents")
-    return f"{mc_alias}/{bucket}/tasks/{item_id}/workspace"
+def _accfs_tasks_path() -> Path | None:
+    """Return the AccFS tasks directory, or None if not mounted."""
+    shared = os.environ.get("ACC_SHARED_DIR", str(ACC_DIR / "shared"))
+    p = Path(shared) / "tasks"
+    if Path(shared).exists():
+        p.mkdir(parents=True, exist_ok=True)
+        return p
+    return None
 
 
-def _mc_mirror_push(item_id: str, local: Path, agentfs: str) -> None:
-    """Mirror local workspace → AgentFS."""
+def _accfs_workspace_path(item_id: str) -> Path | None:
+    """Return the AccFS path for this task's workspace, or None if unavailable."""
+    tasks = _accfs_tasks_path()
+    if tasks is None:
+        return None
+    p = tasks / item_id / "workspace"
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def _accfs_sync_push(item_id: str, local: Path, shared: Path) -> None:
+    """Rsync local workspace → AccFS shared."""
     try:
         r = subprocess.run(
-            ["mc", "mirror", "--overwrite", "--quiet", f"{local}/", agentfs],
+            ["rsync", "-a", "--delete", "--quiet", f"{local}/", f"{shared}/"],
             capture_output=True, text=True, timeout=120,
         )
         if r.returncode == 0:
-            log.info(f"[{item_id}] Workspace → AgentFS: {agentfs}")
+            log.info(f"[{item_id}] Workspace → AccFS: {shared}")
         else:
-            log.warning(f"[{item_id}] AgentFS push failed: {r.stderr.strip()[:200]}")
+            log.warning(f"[{item_id}] AccFS push failed: {r.stderr.strip()[:200]}")
     except Exception as e:
-        log.warning(f"[{item_id}] AgentFS push error: {e}")
+        log.warning(f"[{item_id}] AccFS push error: {e}")
 
 
-def _mc_mirror_pull(item_id: str, agentfs: str, local: Path) -> None:
-    """Pull AgentFS → local workspace (for resumed tasks)."""
-    if not agentfs or not shutil.which("mc"):
+def _accfs_sync_pull(item_id: str, shared: Path, local: Path) -> None:
+    """Rsync AccFS shared → local workspace (for resumed tasks)."""
+    if not shared or not shared.exists():
         return
     try:
         subprocess.run(
-            ["mc", "mirror", "--overwrite", "--quiet", agentfs, f"{local}/"],
+            ["rsync", "-a", "--delete", "--quiet", f"{shared}/", f"{local}/"],
             capture_output=True, text=True, timeout=120,
         )
-        log.info(f"[{item_id}] AgentFS → workspace pulled")
+        log.info(f"[{item_id}] AccFS → workspace pulled")
     except Exception as e:
-        log.warning(f"[{item_id}] AgentFS pull error: {e}")
+        log.warning(f"[{item_id}] AccFS pull error: {e}")
 
 
-def _write_agentfs_meta(
-    item: dict, agentfs: str, repo_url: str, branch: str, workspace: Path,
+def _write_accfs_meta(
+    item: dict, shared: Path, repo_url: str, branch: str, workspace: Path,
 ) -> None:
-    mc_alias = agentfs.split("/")[0]
-    bucket   = agentfs.split("/")[1] if len(agentfs.split("/")) > 1 else "agents"
     try:
         sha = subprocess.run(
             ["git", "rev-parse", "HEAD"],
@@ -492,20 +474,17 @@ def _write_agentfs_meta(
         "agent":        AGENT_NAME,
     })
     try:
-        subprocess.run(
-            ["mc", "pipe", f"{mc_alias}/{bucket}/tasks/{item['id']}/meta.json"],
-            input=meta, capture_output=True, text=True, timeout=15,
-        )
+        (shared.parent / "meta.json").write_text(meta)
     except Exception:
         pass
 
 
 def task_workspace_finalize(
-    item_id: str, workspace_local: Path, workspace_agentfs: str, task_output: str,
+    item_id: str, workspace_local: Path, workspace_shared: "Path | None", task_output: str,
 ) -> str:
     """
     Finalize a successfully completed task workspace:
-    1. Sync local → AgentFS (durable copy).
+    1. Sync local → AccFS shared (durable copy).
     2. Git commit all changes + ONE push to task/<item-id> branch.
     3. Clean up local workspace.
 
@@ -514,9 +493,9 @@ def task_workspace_finalize(
     if not workspace_local.exists():
         return ""
 
-    # Final sync to AgentFS
-    if workspace_agentfs:
-        _mc_mirror_push(item_id, workspace_local, workspace_agentfs)
+    # Final sync to AccFS
+    if workspace_shared:
+        _accfs_sync_push(item_id, workspace_local, workspace_shared)
 
     # Git push — only if workspace is a git repo
     if not (workspace_local / ".git").exists():
@@ -638,24 +617,24 @@ def _cleanup_workspace(item_id: str, workspace: Path) -> None:
 
 
 def task_workspace_abandon(item_id: str, workspace_local: Path) -> None:
-    """Abandon workspace on failure — mirror to AgentFS for debugging, then clean up."""
+    """Abandon workspace on failure — sync to AccFS for debugging, then clean up."""
     if not workspace_local.exists():
         return
-    agentfs = _agentfs_workspace_path(item_id)
-    if agentfs:
-        log.info(f"[{item_id}] Preserving failed workspace in AgentFS: {agentfs}")
-        _mc_mirror_push(item_id, workspace_local, agentfs)
+    shared = _accfs_workspace_path(item_id)
+    if shared:
+        log.info(f"[{item_id}] Preserving failed workspace in AccFS: {shared}")
+        _accfs_sync_push(item_id, workspace_local, shared)
     _cleanup_workspace(item_id, workspace_local)
 
 
-def build_task_env(item_id: str, workspace_local: Path, workspace_agentfs: str) -> dict:
+def build_task_env(item_id: str, workspace_local: Path, workspace_shared: "Path | None") -> dict:
     """Build subprocess environment with task workspace variables."""
     return {
         **os.environ,
-        "TASK_ID":                item_id,
-        "TASK_WORKSPACE_LOCAL":   str(workspace_local),
-        "TASK_WORKSPACE_AGENTFS": workspace_agentfs,
-        "TASK_BRANCH":            f"task/{item_id}",
+        "TASK_ID":               item_id,
+        "TASK_WORKSPACE_LOCAL":  str(workspace_local),
+        "TASK_WORKSPACE_SHARED": str(workspace_shared) if workspace_shared else "",
+        "TASK_BRANCH":           f"task/{item_id}",
     }
 
 
@@ -907,13 +886,13 @@ def main() -> None:
 
         # ── Init workspace ────────────────────────────────────────────────────
         if raw_bead:
-            workspace_local  = WORKSPACE
-            workspace_agentfs = _agentfs_workspace_path(item_id)
+            workspace_local   = WORKSPACE
+            workspace_shared  = _accfs_workspace_path(item_id)
         else:
-            workspace_local, workspace_agentfs = task_workspace_init(item)
-        task_env = build_task_env(item_id, workspace_local, workspace_agentfs)
+            workspace_local, workspace_shared = task_workspace_init(item)
+        task_env = build_task_env(item_id, workspace_local, workspace_shared)
         log.info(f"[{item_id}] Workspace: {workspace_local}"
-                 + (f" → AgentFS: {workspace_agentfs}" if workspace_agentfs else ""))
+                 + (f" → AccFS: {workspace_shared}" if workspace_shared else ""))
 
         if not raw_bead:
             post_comment(item_id, f"{AGENT_NAME} starting — workspace {workspace_local}")
@@ -958,7 +937,7 @@ def main() -> None:
                 log.info(f"[{item_id}] Bead reopened (exit={exit_code})")
         elif exit_code == 0:
             git_result = task_workspace_finalize(
-                item_id, workspace_local, workspace_agentfs, output,
+                item_id, workspace_local, workspace_shared, output,
             )
             full_result = output
             if git_result:

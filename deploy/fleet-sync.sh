@@ -8,10 +8,9 @@
 # If ~/.acc/.env exists with ACC_URL and ACC_AGENT_TOKEN set, flags are optional.
 #
 # What it does:
-#   1. Mirrors ~/.acc/workspace → MinIO (agentfs) so it's available via mc
-#   2. Broadcasts acc.update to AgentBus so all agents run agent-pull.sh NOW
+#   1. Broadcasts acc.update to AgentBus so all agents run agent-pull.sh NOW
 #      instead of waiting up to 10 minutes for the scheduled timer
-#   3. Reports online agents from /bus/presence
+#   2. Reports online agents from /bus/presence
 #
 # Flags:
 #   --acc=URL       Hub URL (overrides ACC_URL from .env)
@@ -25,7 +24,6 @@ set -euo pipefail
 
 # ── Parse args ─────────────────────────────────────────────────────────────────
 DRY_RUN=false
-SKIP_MIRROR=false
 BRANCH=""
 COMPONENT="workspace"
 ACC_URL_ARG=""
@@ -37,11 +35,10 @@ for arg in "$@"; do
     --ccc=*)          ACC_URL_ARG="${arg#--ccc=}" ;;  # backward compat alias
     --token=*)        ACC_TOKEN_ARG="${arg#--token=}" ;;
     --dry-run)        DRY_RUN=true ;;
-    --skip-mirror)    SKIP_MIRROR=true ;;
     --branch=*)       BRANCH="${arg#--branch=}" ;;
     --component=*)    COMPONENT="${arg#--component=}" ;;
     -h|--help)
-      echo "Usage: fleet-sync.sh [--acc=URL] [--token=TOKEN] [--dry-run] [--skip-mirror] [--branch=NAME] [--component=NAME]"
+      echo "Usage: fleet-sync.sh [--acc=URL] [--token=TOKEN] [--dry-run] [--branch=NAME] [--component=NAME]"
       exit 0 ;;
   esac
 done
@@ -65,11 +62,6 @@ done
 ACC_URL="${ACC_URL:-${CCC_URL:-}}"
 ACC_AGENT_TOKEN="${ACC_AGENT_TOKEN:-${CCC_AGENT_TOKEN:-}}"
 AGENT_NAME="${AGENT_NAME:-jkh}"
-MINIO_ALIAS="${MINIO_ALIAS:-acc-hub}"
-# AgentFS S3 gateway (port 9100) — externally accessible from any agent or operator machine.
-# MinIO (port 9000) is localhost-only on the hub.
-CLAWFS_BUCKET="${CLAWFS_BUCKET:-clawfs}"
-CLAWFS_REPO_PATH="${CLAWFS_REPO_PATH:-repos/CCC}"
 
 # CLI flags override .env
 [[ -n "$ACC_URL_ARG"   ]] && ACC_URL="$ACC_URL_ARG"
@@ -111,63 +103,7 @@ echo "🔄 ACC Fleet Sync  (rev=${REV} branch=${BRANCH})"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo ""
 
-# ── Step 1: MinIO mirror ───────────────────────────────────────────────────────
-if [[ "$SKIP_MIRROR" == false ]]; then
-  info "Mirroring workspace → AgentFS..."
-  MIRROR_SRC="${GIT_REPO}/"
-  # AgentFS S3 gateway (port 9100) — externally accessible. Path mirrors the on-disk layout
-  # at /home/jkh/clawfs/repos/CCC on the hub. No --remove: AgentFS may contain built
-  # artifacts and compiled binaries not tracked in git.
-  MIRROR_DST="${MINIO_ALIAS}/${CLAWFS_BUCKET}/${CLAWFS_REPO_PATH}/"
-
-  if command -v mc &>/dev/null; then
-    # Auto-configure alias from hub secrets if not yet set
-    if ! mc ls "${MINIO_ALIAS}" > /dev/null 2>&1; then
-      info "mc alias '${MINIO_ALIAS}' not set — fetching credentials from hub..."
-      _hub_base="${ACC_URL%:*}"  # strip port, keep scheme+host
-      _clawfs_url="${_hub_base}:9100"
-      _ak=$(curl -sf -H "Authorization: Bearer ${ACC_AGENT_TOKEN}" \
-        "${ACC_URL}/api/secrets/agentfs%2Faccess_key" 2>/dev/null | \
-        python3 -c "import json,sys; print(json.load(sys.stdin).get('value',''))" 2>/dev/null || echo "")
-      _sk=$(curl -sf -H "Authorization: Bearer ${ACC_AGENT_TOKEN}" \
-        "${ACC_URL}/api/secrets/agentfs%2Fsecret_key" 2>/dev/null | \
-        python3 -c "import json,sys; print(json.load(sys.stdin).get('value',''))" 2>/dev/null || echo "")
-      if [[ -n "$_ak" && -n "$_sk" ]]; then
-        mc alias set "${MINIO_ALIAS}" "${_clawfs_url}" "${_ak}" "${_sk}" > /dev/null 2>&1
-        success "mc alias '${MINIO_ALIAS}' configured (${_clawfs_url})"
-        # Persist to .env for next run
-        _env_file="${ACC_DIR}/.env"
-        if [[ -f "$_env_file" ]]; then
-          sed -i.bak "/^MINIO_ALIAS=/d; /^CLAWFS_URL=/d" "$_env_file" 2>/dev/null || true
-          printf 'MINIO_ALIAS=%s\nCLAWFS_URL=%s\n' "${MINIO_ALIAS}" "${_clawfs_url}" >> "$_env_file"
-          rm -f "${_env_file}.bak"
-        fi
-      else
-        warn "Could not fetch agentfs credentials from hub — skipping mirror"
-        warn "  Set mc alias manually: mc alias set ${MINIO_ALIAS} http://<hub>:9100 <ak> <sk>"
-      fi
-    fi
-
-    if mc ls "${MINIO_ALIAS}" > /dev/null 2>&1; then
-      if [[ "$DRY_RUN" == true ]]; then
-        dry "Would run: mc mirror --overwrite \"${MIRROR_SRC}\" \"${MIRROR_DST}\""
-      else
-        mc mirror --overwrite \
-          --exclude ".git/*" \
-          --exclude "node_modules/*" \
-          --exclude "*.log" \
-          "${MIRROR_SRC}" "${MIRROR_DST}" 2>&1 | tail -5
-        success "Workspace mirrored to AgentFS: ${MIRROR_DST}"
-      fi
-    fi
-  else
-    warn "mc not found — skipping mirror (run: make deps)"
-  fi
-else
-  info "AgentFS mirror skipped (--skip-mirror)"
-fi
-
-# ── Step 2: Show online agents from AgentBus presence ─────────────────────────
+# ── Step 1: Show online agents from AgentBus presence ─────────────────────────
 info "Checking agent presence..."
 PRESENCE_JSON=$(curl -sf --max-time 10 \
   -H "Authorization: Bearer ${ACC_AGENT_TOKEN}" \
@@ -187,7 +123,7 @@ else
   warn "Could not reach /bus/presence — hub may be down or unreachable"
 fi
 
-# ── Step 3: Broadcast acc.update ──────────────────────────────────────────────
+# ── Step 2: Broadcast acc.update ──────────────────────────────────────────────
 info "Broadcasting acc.update to all agents..."
 
 UPDATE_BODY=$(python3 -c "
@@ -235,6 +171,4 @@ echo ""
 echo "  Agents subscribed to AgentBus will pull immediately."
 echo "  Others will pick it up within 10 minutes via acc-agent-pull timer."
 echo ""
-echo "  Workspace available via AgentFS at:"
-echo "    mc ls ${MINIO_ALIAS}/${CLAWFS_BUCKET}/${CLAWFS_REPO_PATH}/"
 echo ""
