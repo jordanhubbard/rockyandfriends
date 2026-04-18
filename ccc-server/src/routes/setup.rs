@@ -42,14 +42,14 @@ async fn get_config(State(state): State<Arc<AppState>>, headers: HeaderMap) -> i
         return (StatusCode::UNAUTHORIZED, Json(json!({"error":"Unauthorized"}))).into_response();
     }
 
-    let port: u16 = std::env::var("CCC_PORT")
+    let port: u16 = std::env::var("ACC_PORT")
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(8789);
 
     Json(json!({
         "agent_name":         std::env::var("AGENT_NAME").unwrap_or_else(|_| "ccc".to_string()),
-        "public_url":         std::env::var("CCC_HOST_PUBLIC").unwrap_or_default(),
+        "public_url":         std::env::var("ACC_HOST_PUBLIC").unwrap_or_default(),
         "tokenhub_url":       std::env::var("TOKENHUB_URL").unwrap_or_else(|_| "http://127.0.0.1:8090".to_string()),
         "supervisor_enabled": std::env::var("SUPERVISOR_ENABLED").unwrap_or_default() == "true",
         "fs_root":            std::env::var("ACC_FS_ROOT").unwrap_or_else(|_| "/srv/accfs".to_string()),
@@ -86,7 +86,7 @@ async fn put_config(
 
     let allowed = [
         ("agent_name",    "AGENT_NAME"),
-        ("public_url",    "CCC_HOST_PUBLIC"),
+        ("public_url",    "ACC_HOST_PUBLIC"),
         ("tokenhub_url",  "TOKENHUB_URL"),
         ("fs_root",       "ACC_FS_ROOT"),
         ("log_level",     "RUST_LOG"),

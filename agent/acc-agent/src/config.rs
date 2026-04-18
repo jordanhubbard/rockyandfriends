@@ -21,13 +21,11 @@ impl Config {
         load_env_file(&acc_dir.join(".env"));
 
         let acc_url = std::env::var("ACC_URL")
-            .or_else(|_| std::env::var("CCC_URL"))
             .unwrap_or_default()
             .trim_end_matches('/')
             .to_string();
 
         let acc_token = std::env::var("ACC_AGENT_TOKEN")
-            .or_else(|_| std::env::var("CCC_AGENT_TOKEN"))
             .unwrap_or_default();
 
         let agent_name = std::env::var("AGENT_NAME").unwrap_or_default();

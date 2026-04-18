@@ -1,0 +1,17 @@
+[Unit]
+Description=ACC repo sync — pull/commit/push shared ClawFS repo
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=jkh
+Group=jkh
+WorkingDirectory=/home/jkh
+ExecStart=/bin/bash %h/.acc/workspace/deploy/ccc-repo-sync.sh
+EnvironmentFile=-%h/.acc/.env
+StandardOutput=append:%h/.acc/logs/repo-sync.log
+StandardError=append:%h/.acc/logs/repo-sync.log
+
+# Safety: don't let a stuck git command run forever
+TimeoutStartSec=120

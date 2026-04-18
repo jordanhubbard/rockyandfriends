@@ -48,7 +48,7 @@ async fn get_bootstrap(
             "ok": true,
             "ccc_url": format!("http://{}:{}", 
                 std::env::var("PUBLIC_HOST").unwrap_or_else(|_| "127.0.0.1".to_string()),
-                std::env::var("CCC_PORT").unwrap_or_else(|_| "8789".to_string())
+                std::env::var("ACC_PORT").unwrap_or_else(|_| "8789".to_string())
             ),
             "tokenhub_url": std::env::var("TOKENHUB_URL").unwrap_or_else(|_| "http://127.0.0.1:8090".to_string()),
         })).into_response();

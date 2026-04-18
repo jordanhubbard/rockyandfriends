@@ -4,22 +4,28 @@
 <plist version="1.0">
 <dict>
     <key>Label</key>
-    <string>com.ccc.queue-worker</string>
+    <string>com.acc.consul</string>
+
     <key>ProgramArguments</key>
     <array>
-        <string>/bin/bash</string>
-        <string>-c</string>
-        <string>exec "$(PATH=/opt/homebrew/bin:/usr/local/bin:$PATH which python3)" AGENT_HOME/.ccc/workspace/deploy/queue-worker.py</string>
+        <string>AGENT_HOME/.acc/consul/bin/consul</string>
+        <string>agent</string>
+        <string>-config-file=AGENT_HOME/.acc/consul/consul.hcl</string>
     </array>
+
+    <!-- Run at login and keep alive on crash -->
     <key>RunAtLoad</key>
     <true/>
     <key>KeepAlive</key>
     <true/>
+
     <key>StandardOutPath</key>
-    <string>AGENT_HOME/.ccc/logs/queue-worker.log</string>
+    <string>AGENT_HOME/.acc/logs/consul.log</string>
     <key>StandardErrorPath</key>
-    <string>AGENT_HOME/.ccc/logs/queue-worker.log</string>
+    <string>AGENT_HOME/.acc/logs/consul.log</string>
+
+    <!-- Throttle respawn on persistent failure -->
     <key>ThrottleInterval</key>
-    <integer>10</integer>
+    <integer>5</integer>
 </dict>
 </plist>

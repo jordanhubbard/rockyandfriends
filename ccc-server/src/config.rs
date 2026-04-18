@@ -1,8 +1,8 @@
-/// acc-server configuration — loads from ccc.json then falls back to env vars.
+/// acc-server configuration — loads from acc.json then falls back to env vars.
 ///
 /// Priority (highest first):
 ///   1. Environment variables (allow CI/systemd overrides without touching the file)
-///   2. ~/.ccc/ccc.json  (or path in CCC_CONFIG env var)
+///   2. ~/.acc/acc.json  (or path in ACC_CONFIG env var)
 ///   3. Hard-coded defaults
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -75,12 +75,12 @@ pub struct ResolvedConfig {
 // ── Loader ────────────────────────────────────────────────────────────────────
 
 fn config_path() -> PathBuf {
-    if let Ok(p) = std::env::var("CCC_CONFIG") {
+    if let Ok(p) = std::env::var("ACC_CONFIG") {
         return PathBuf::from(p);
     }
-    // ~/.ccc/ccc.json
+    // ~/.acc/acc.json
     let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
-    PathBuf::from(home).join(".ccc").join("ccc.json")
+    PathBuf::from(home).join(".acc").join("acc.json")
 }
 
 fn load_json_config() -> CccConfig {
@@ -129,7 +129,7 @@ fn resolve_str(env_key: &str, json_val: Option<String>, default: &str) -> String
 pub fn load() -> ResolvedConfig {
     let j = load_json_config();
 
-    let data_dir = resolve_str("CCC_DATA_DIR", j.data_dir.clone(), "./data");
+    let data_dir = resolve_str("ACC_DATA_DIR", j.data_dir.clone(), "./data");
 
     let queue_path = resolve_str(
         "QUEUE_PATH",
@@ -157,13 +157,13 @@ pub fn load() -> ResolvedConfig {
         &format!("{}/projects.json", data_dir),
     );
 
-    let port: u16 = evar("CCC_PORT")
+    let port: u16 = evar("ACC_PORT")
         .and_then(|s| s.parse().ok())
         .or(j.port)
         .unwrap_or(8789);
 
     // Auth tokens: env wins, then JSON array, then empty (open dev mode)
-    let auth_tokens: std::collections::HashSet<String> = if let Some(raw) = evar("CCC_AUTH_TOKENS")
+    let auth_tokens: std::collections::HashSet<String> = if let Some(raw) = evar("ACC_AUTH_TOKENS")
     {
         raw.split(',')
             .map(|s| s.trim().to_string())
@@ -196,10 +196,10 @@ pub fn load() -> ResolvedConfig {
     let qdrant_api_key = evar("QDRANT_FLEET_KEY").or(j.qdrant.api_key);
     let tokenhub_url = resolve_str("TOKENHUB_URL", j.tokenhub.url, "http://tokenhub.service.consul:8090");
 
-    let db_path = evar("CCC_DB_PATH");
+    let db_path = evar("ACC_DB_PATH");
 
     let auth_db_path = evar("AUTH_DB_PATH")
-        .unwrap_or_else(|| format!("{}/.ccc/auth.db", home));
+        .unwrap_or_else(|| format!("{}/.acc/auth.db", home));
 
     ResolvedConfig {
         port,

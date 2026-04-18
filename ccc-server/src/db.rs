@@ -1,6 +1,6 @@
 /// SQLite database layer for acc-server.
 ///
-/// Enabled by setting `CCC_DB_PATH` to a `.db` file path.
+/// Enabled by setting `ACC_DB_PATH` to a `.db` file path.
 /// On first start, data is migrated from existing JSON files automatically.
 /// Once migrated, JSON files become stale and are no longer written.
 ///
@@ -356,7 +356,7 @@ pub fn insert_bus_message(conn: &Connection, msg: &Value) -> Result<()> {
     Ok(())
 }
 
-// ── Auth DB (always-on, separate from the optional CCC_DB_PATH database) ─────
+// ── Auth DB (always-on, separate from the optional ACC_DB_PATH database) ─────
 
 /// Open (or create) the auth database at `path`.
 /// Schema: users(id, username, token_hash, created_at, last_seen).

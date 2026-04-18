@@ -11,8 +11,8 @@ WorkingDirectory=AGENT_HOME/Src/CCC
 ExecStart=/usr/local/bin/acc-server
 
 # Core config
-Environment=CCC_PORT=8789
-Environment=CCC_DATA_DIR=AGENT_HOME/.acc/data
+Environment=ACC_PORT=8789
+Environment=ACC_DATA_DIR=AGENT_HOME/.acc/data
 Environment=RUST_LOG=acc_server=info
 
 # Load per-node secrets

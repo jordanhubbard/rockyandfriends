@@ -115,10 +115,10 @@ async fn main() {
         }
     }
 
-    // CORS — configurable via CCC_CORS_ORIGINS env var.
+    // CORS — configurable via ACC_CORS_ORIGINS env var.
     // This server runs on Tailscale (internal network), so Any is the safe default.
-    // For public-facing deployments, set CCC_CORS_ORIGINS=https://yourdomain.com
-    let cors = match std::env::var("CCC_CORS_ORIGINS").ok().as_deref() {
+    // For public-facing deployments, set ACC_CORS_ORIGINS=https://yourdomain.com
+    let cors = match std::env::var("ACC_CORS_ORIGINS").ok().as_deref() {
         Some(origins) if !origins.is_empty() && origins != "*" => {
             let parsed: Vec<axum::http::HeaderValue> = origins
                 .split(',')

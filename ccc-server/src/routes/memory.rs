@@ -15,7 +15,7 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::sync::Arc;
 
-const CCC_MEMORY_COLLECTION: &str = "ccc_memory";
+const ACC_MEMORY_COLLECTION: &str = "acc_memory";
 const DEFAULT_EMBED_MODEL: &str = "azure/openai/text-embedding-3-large";
 const DEFAULT_EMBED_URL: &str = "https://inference-api.nvidia.com/v1";
 
@@ -381,7 +381,7 @@ async fn memory_ingest(
         }
     });
 
-    match qdrant_upsert(CCC_MEMORY_COLLECTION, point).await {
+    match qdrant_upsert(ACC_MEMORY_COLLECTION, point).await {
         Ok(_) => (
             axum::http::StatusCode::OK,
             Json(json!({"ok": true, "id": id_hex})),
@@ -451,7 +451,7 @@ async fn memory_recall(
         .filter(|a| !a.is_empty())
         .map(|agent| json!({ "must": [{ "key": "agent", "match": { "value": agent } }] }));
 
-    let raw = match qdrant_search(CCC_MEMORY_COLLECTION, vector, k, filter).await {
+    let raw = match qdrant_search(ACC_MEMORY_COLLECTION, vector, k, filter).await {
         Ok(r) => r,
         Err(e) if e.contains("doesn't exist") => vec![],
         Err(e) => {
@@ -762,7 +762,7 @@ async fn memory_ingest_bulk(
         return (StatusCode::OK, Json(json!({"ok": true, "ingested": 0}))).into_response();
     }
 
-    match qdrant_upsert_batch(CCC_MEMORY_COLLECTION, points).await {
+    match qdrant_upsert_batch(ACC_MEMORY_COLLECTION, points).await {
         Ok(_) => (StatusCode::OK, Json(json!({"ok": true, "ingested": n}))).into_response(),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -818,7 +818,7 @@ async fn memory_recent(
         Some(json!({ "must": must }))
     };
 
-    let raw = match qdrant_scroll(CCC_MEMORY_COLLECTION, filter, limit).await {
+    let raw = match qdrant_scroll(ACC_MEMORY_COLLECTION, filter, limit).await {
         Ok(r) => r,
         Err(e) if e.contains("doesn't exist") => vec![],
         Err(e) => {
@@ -906,7 +906,7 @@ async fn memory_context(
         .filter(|a| !a.is_empty())
         .map(|agent| json!({ "must": [{ "key": "agent", "match": { "value": agent } }] }));
 
-    let raw = match qdrant_search(CCC_MEMORY_COLLECTION, vector, k, filter).await {
+    let raw = match qdrant_search(ACC_MEMORY_COLLECTION, vector, k, filter).await {
         Ok(r) => r,
         Err(e) if e.contains("doesn't exist") => vec![],
         Err(e) => {

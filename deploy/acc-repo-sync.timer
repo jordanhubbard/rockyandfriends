@@ -1,6 +1,6 @@
 [Unit]
-Description=CCC repo sync timer — runs every 30 minutes
-Requires=ccc-repo-sync.service
+Description=ACC repo sync timer — runs every 30 minutes
+Requires=acc-repo-sync.service
 
 [Timer]
 OnBootSec=5min
