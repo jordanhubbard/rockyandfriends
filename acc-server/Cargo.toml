@@ -7,6 +7,10 @@ edition = "2021"
 name = "acc-server"
 path = "src/main.rs"
 
+[lib]
+name = "acc_server"
+path = "src/lib.rs"
+
 [dependencies]
 axum = { version = "0.7", features = ["macros"] }
 tokio = { version = "1", features = ["full"] }
@@ -27,3 +31,10 @@ chrono = { version = "0.4", features = ["serde"] }
 hex = "0.4"
 rusqlite = { version = "0.31", features = ["bundled"] }
 rand = "0.8"
+
+[dev-dependencies]
+tempfile = "3"
+tower = { version = "0.4", features = ["util"] }
+http-body-util = "0.1"
+axum = { version = "0.7", features = ["macros"] }
+bytes = "1"
