@@ -1,6 +1,7 @@
 mod agent;
 mod bus;
 mod config;
+mod exec_registry;
 mod hermes;
 mod json;
 mod migrate;
