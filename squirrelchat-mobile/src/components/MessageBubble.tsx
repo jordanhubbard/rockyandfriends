@@ -1,11 +1,13 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import AudioPlayback from './AudioPlayback';
 
 interface Message {
   id: string | number;
   content: string;
   author: string;
   ts: string;
+  audioUrl?: string;
 }
 
 interface Props {
@@ -24,6 +26,9 @@ export default function MessageBubble({ message, isOwn }: Props) {
       {!isOwn && <Text style={styles.author}>{message.author}</Text>}
       <View style={[styles.bubble, isOwn ? styles.bubbleOwn : styles.bubbleOther]}>
         <Text style={styles.content}>{message.content}</Text>
+        {message.audioUrl && (
+          <AudioPlayback audioUrl={message.audioUrl} />
+        )}
         <Text style={styles.time}>{time}</Text>
       </View>
     </View>

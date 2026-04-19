@@ -13,10 +13,11 @@ import {
 } from 'react-native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RouteProp } from '@react-navigation/native';
-import { getMessages, postMessage } from '../api/client';
+import { getMessages, postMessage, sendVoiceForSTT, requestTTS } from '../api/client';
 import { getUser } from '../store/auth';
 import wsClient from '../ws/client';
 import MessageBubble from '../components/MessageBubble';
+import VoiceButton from '../components/VoiceButton';
 import { RootStackParamList } from '../../App';
 
 type Props = {
@@ -29,6 +30,7 @@ interface Message {
   content: string;
   author: string;
   ts: string;
+  audioUrl?: string;
 }
 
 export default function MessagesScreen({ navigation, route }: Props) {
@@ -38,6 +40,9 @@ export default function MessagesScreen({ navigation, route }: Props) {
   const [sending, setSending] = useState(false);
   const [draft, setDraft] = useState('');
   const [currentUser, setCurrentUser] = useState<string>('');
+  const [isVoiceMode, setIsVoiceMode] = useState(false);
+  const [voiceTranscript, setVoiceTranscript] = useState('');
+  const [ttsLoading, setTtsLoading] = useState<string | number | null>(null);
   const flatListRef = useRef<FlatList>(null);
 
   // Load initial messages
@@ -98,6 +103,7 @@ export default function MessagesScreen({ navigation, route }: Props) {
     const content = draft.trim();
     if (!content) return;
     setDraft('');
+    setVoiceTranscript('');
     setSending(true);
     try {
       await postMessage(channelId, content);
@@ -112,6 +118,82 @@ export default function MessagesScreen({ navigation, route }: Props) {
     }
   };
 
+  // Voice recording completed — transcribe via STT
+  const handleRecordingComplete = useCallback(
+    async (audioUri: string) => {
+      setIsVoiceMode(true);
+      try {
+        const result = await sendVoiceForSTT(audioUri);
+        if (result?.text) {
+          setVoiceTranscript(result.text);
+          setDraft((prev) => (prev ? `${prev} ${result.text}` : result.text));
+        } else {
+          Alert.alert('Voice', 'Could not transcribe audio. Please try again.');
+        }
+      } catch (err: any) {
+        console.error('STT error:', err);
+        Alert.alert(
+          'Voice Error',
+          err?.message || 'Failed to transcribe voice recording',
+        );
+      } finally {
+        setIsVoiceMode(false);
+      }
+    },
+    [],
+  );
+
+  // TTS: speak an agent message
+  const handleTTS = useCallback(async (message: Message) => {
+    if (ttsLoading) return; // prevent double-tap
+    setTtsLoading(message.id);
+    try {
+      const audioUrl = await requestTTS(message.content);
+
+      // Attach audio URL to the message for inline playback
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === message.id ? { ...m, audioUrl } : m,
+        ),
+      );
+
+      // TODO: Auto-play the audio using expo-av Sound
+      // const { sound } = await Audio.Sound.createAsync({ uri: audioUrl });
+      // await sound.playAsync();
+    } catch (err: any) {
+      console.error('TTS error:', err);
+      Alert.alert('TTS Error', err?.message || 'Failed to generate speech');
+    } finally {
+      setTtsLoading(null);
+    }
+  }, [ttsLoading]);
+
+  const renderMessage = useCallback(
+    ({ item }: { item: Message }) => {
+      const isOwn = item.author === currentUser;
+      return (
+        <View>
+          <MessageBubble message={item} isOwn={isOwn} />
+          {/* Speaker icon on non-own (agent) messages for TTS */}
+          {!isOwn && (
+            <TouchableOpacity
+              style={styles.ttsButton}
+              onPress={() => handleTTS(item)}
+              disabled={ttsLoading === item.id}
+              activeOpacity={0.6}>
+              {ttsLoading === item.id ? (
+                <ActivityIndicator color="#e94560" size="small" />
+              ) : (
+                <Text style={styles.ttsIcon}>🔊</Text>
+              )}
+            </TouchableOpacity>
+          )}
+        </View>
+      );
+    },
+    [currentUser, handleTTS, ttsLoading],
+  );
+
   return (
     <KeyboardAvoidingView
       style={styles.container}
@@ -124,9 +206,7 @@ export default function MessagesScreen({ navigation, route }: Props) {
           ref={flatListRef}
           data={messages}
           keyExtractor={(item) => String(item.id)}
-          renderItem={({ item }) => (
-            <MessageBubble message={item} isOwn={item.author === currentUser} />
-          )}
+          renderItem={renderMessage}
           contentContainerStyle={styles.messageList}
           ListEmptyComponent={
             <Text style={styles.empty}>No messages yet. Say hello!</Text>
@@ -134,17 +214,41 @@ export default function MessagesScreen({ navigation, route }: Props) {
         />
       )}
 
+      {/* Voice transcription indicator */}
+      {isVoiceMode && (
+        <View style={styles.voiceIndicator}>
+          <ActivityIndicator color="#e94560" size="small" />
+          <Text style={styles.voiceIndicatorText}>Transcribing voice...</Text>
+        </View>
+      )}
+
       {/* Composer */}
       <View style={styles.composer}>
         <TextInput
           style={styles.input}
-          placeholder={`Message #${channelName}`}
+          placeholder={
+            voiceTranscript
+              ? 'Voice transcribed — edit or send'
+              : `Message #${channelName}`
+          }
           placeholderTextColor="#888"
           value={draft}
-          onChangeText={setDraft}
+          onChangeText={(text) => {
+            setDraft(text);
+            if (voiceTranscript && text !== voiceTranscript) {
+              setVoiceTranscript('');
+            }
+          }}
           multiline
           maxLength={2000}
         />
+
+        {/* Voice button — between input and send */}
+        <VoiceButton
+          onRecordingComplete={handleRecordingComplete}
+          disabled={sending || isVoiceMode}
+        />
+
         <TouchableOpacity
           style={[styles.sendBtn, (!draft.trim() || sending) && styles.sendBtnDisabled]}
           onPress={handleSend}
@@ -165,6 +269,25 @@ const styles = StyleSheet.create({
   loader: { marginTop: 60 },
   messageList: { paddingVertical: 12, flexGrow: 1 },
   empty: { textAlign: 'center', color: '#888', marginTop: 60, fontSize: 15 },
+
+  // Voice transcription banner
+  voiceIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 6,
+    backgroundColor: 'rgba(233, 69, 96, 0.1)',
+    borderTopWidth: 1,
+    borderTopColor: '#e94560',
+  },
+  voiceIndicatorText: {
+    color: '#e94560',
+    fontSize: 13,
+    marginLeft: 8,
+    fontWeight: '600',
+  },
+
+  // Composer
   composer: {
     flexDirection: 'row',
     alignItems: 'flex-end',
@@ -187,7 +310,7 @@ const styles = StyleSheet.create({
     borderColor: '#0f3460',
   },
   sendBtn: {
-    marginLeft: 10,
+    marginLeft: 8,
     backgroundColor: '#e94560',
     borderRadius: 20,
     paddingHorizontal: 18,
@@ -198,4 +321,16 @@ const styles = StyleSheet.create({
   },
   sendBtnDisabled: { opacity: 0.5 },
   sendText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+
+  // TTS speaker button on agent messages
+  ttsButton: {
+    marginLeft: 52,
+    marginBottom: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    alignSelf: 'flex-start',
+  },
+  ttsIcon: {
+    fontSize: 16,
+  },
 });
