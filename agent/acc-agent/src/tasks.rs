@@ -239,10 +239,11 @@ fn which_claude() -> String {
             return path.to_string();
         }
     }
-    // Check $HOME/.claude/local/claude
     if let Ok(home) = std::env::var("HOME") {
-        let p = format!("{}/.claude/local/claude", home);
-        if std::path::Path::new(&p).exists() { return p; }
+        for rel in &[".local/bin/claude", ".claude/local/claude"] {
+            let p = format!("{home}/{rel}");
+            if std::path::Path::new(&p).exists() { return p; }
+        }
     }
     "claude".to_string() // fallback: hope it's in PATH
 }
