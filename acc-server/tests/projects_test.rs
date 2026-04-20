@@ -12,16 +12,105 @@ async fn create_project(ts: &helpers::TestServer, name: &str) -> serde_json::Val
     helpers::body_json(resp).await["project"].clone()
 }
 
+async fn create_project_with(ts: &helpers::TestServer, body: serde_json::Value) -> serde_json::Value {
+    let resp = helpers::call(&ts.app, helpers::post_json("/api/projects", &body)).await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    helpers::body_json(resp).await["project"].clone()
+}
+
 // ── List ──────────────────────────────────────────────────────────────────────
 
 #[tokio::test]
 async fn test_list_projects_empty() {
     let ts = helpers::TestServer::new().await;
     let resp = helpers::call(&ts.app, helpers::get("/api/projects")).await;
-    // list_projects has no auth gate — returns array directly
     assert_eq!(resp.status(), StatusCode::OK);
     let body = helpers::body_json(resp).await;
-    assert!(body.as_array().is_some());
+    assert_eq!(body["total"], 0);
+    assert!(body["projects"].as_array().unwrap().is_empty());
+}
+
+#[tokio::test]
+async fn test_list_projects_returns_all() {
+    let ts = helpers::TestServer::new().await;
+    create_project(&ts, "Alpha").await;
+    create_project(&ts, "Beta").await;
+    let resp = helpers::call(&ts.app, helpers::get("/api/projects")).await;
+    let body = helpers::body_json(resp).await;
+    assert_eq!(body["total"], 2);
+    assert_eq!(body["projects"].as_array().unwrap().len(), 2);
+}
+
+#[tokio::test]
+async fn test_list_filter_by_status() {
+    let ts = helpers::TestServer::new().await;
+    let p = create_project(&ts, "Active One").await;
+    let id = p["id"].as_str().unwrap();
+    create_project(&ts, "Active Two").await;
+    // Archive one
+    helpers::call(&ts.app, helpers::delete(&format!("/api/projects/{id}"))).await;
+
+    let resp = helpers::call(&ts.app, helpers::get("/api/projects?status=active")).await;
+    let body = helpers::body_json(resp).await;
+    assert_eq!(body["total"], 1);
+    assert_eq!(body["projects"][0]["name"], "Active Two");
+
+    let resp = helpers::call(&ts.app, helpers::get("/api/projects?status=archived")).await;
+    let body = helpers::body_json(resp).await;
+    assert_eq!(body["total"], 1);
+    assert_eq!(body["projects"][0]["name"], "Active One");
+}
+
+#[tokio::test]
+async fn test_list_filter_by_tag() {
+    let ts = helpers::TestServer::new().await;
+    create_project_with(&ts, json!({"name": "Rust project", "tags": ["rust", "backend"]})).await;
+    create_project_with(&ts, json!({"name": "Frontend app", "tags": ["js", "frontend"]})).await;
+
+    let resp = helpers::call(&ts.app, helpers::get("/api/projects?tag=rust")).await;
+    let body = helpers::body_json(resp).await;
+    assert_eq!(body["total"], 1);
+    assert_eq!(body["projects"][0]["name"], "Rust project");
+}
+
+#[tokio::test]
+async fn test_list_search_by_name() {
+    let ts = helpers::TestServer::new().await;
+    create_project(&ts, "Fleet Dashboard").await;
+    create_project(&ts, "Agent Worker").await;
+
+    let resp = helpers::call(&ts.app, helpers::get("/api/projects?q=fleet")).await;
+    let body = helpers::body_json(resp).await;
+    assert_eq!(body["total"], 1);
+    assert_eq!(body["projects"][0]["name"], "Fleet Dashboard");
+}
+
+#[tokio::test]
+async fn test_list_search_case_insensitive() {
+    let ts = helpers::TestServer::new().await;
+    create_project(&ts, "My Project").await;
+
+    let resp = helpers::call(&ts.app, helpers::get("/api/projects?q=MY")).await;
+    let body = helpers::body_json(resp).await;
+    assert_eq!(body["total"], 1);
+}
+
+#[tokio::test]
+async fn test_list_pagination_limit_offset() {
+    let ts = helpers::TestServer::new().await;
+    for i in 0..5 {
+        create_project(&ts, &format!("Project {i}")).await;
+    }
+
+    let resp = helpers::call(&ts.app, helpers::get("/api/projects?limit=2&offset=0")).await;
+    let body = helpers::body_json(resp).await;
+    assert_eq!(body["total"], 5);
+    assert_eq!(body["projects"].as_array().unwrap().len(), 2);
+
+    let resp = helpers::call(&ts.app, helpers::get("/api/projects?limit=2&offset=4")).await;
+    let body = helpers::body_json(resp).await;
+    assert_eq!(body["total"], 5);
+    assert_eq!(body["projects"].as_array().unwrap().len(), 1);
 }
 
 // ── Create ────────────────────────────────────────────────────────────────────
@@ -104,7 +193,7 @@ async fn test_update_project_not_found() {
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }
 
-// ── Delete (archive) ──────────────────────────────────────────────────────────
+// ── Delete (soft archive) ──────────────────────────────────────────────────────
 
 #[tokio::test]
 async fn test_delete_project_archives_it() {
@@ -117,11 +206,49 @@ async fn test_delete_project_archives_it() {
     let body = helpers::body_json(resp).await;
     assert_eq!(body["ok"], true);
     assert_eq!(body["project"]["status"], "archived");
+
+    // Still shows up in unfiltered list
+    let list_resp = helpers::call(&ts.app, helpers::get("/api/projects")).await;
+    let list = helpers::body_json(list_resp).await;
+    assert_eq!(list["total"], 1);
 }
 
 #[tokio::test]
 async fn test_delete_project_not_found() {
     let ts = helpers::TestServer::new().await;
     let resp = helpers::call(&ts.app, helpers::delete("/api/projects/no-such-id")).await;
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+// ── Delete (hard) ─────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_hard_delete_removes_project() {
+    let ts = helpers::TestServer::new().await;
+    let project = create_project(&ts, "Purge Me").await;
+    let id = project["id"].as_str().unwrap();
+
+    let resp = helpers::call(
+        &ts.app,
+        helpers::delete(&format!("/api/projects/{id}?hard=true")),
+    ).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = helpers::body_json(resp).await;
+    assert_eq!(body["ok"], true);
+    assert!(body.get("deleted").is_some());
+
+    // Must be gone from list
+    let list_resp = helpers::call(&ts.app, helpers::get("/api/projects")).await;
+    let list = helpers::body_json(list_resp).await;
+    assert_eq!(list["total"], 0);
+}
+
+#[tokio::test]
+async fn test_hard_delete_not_found() {
+    let ts = helpers::TestServer::new().await;
+    let resp = helpers::call(
+        &ts.app,
+        helpers::delete("/api/projects/no-such-id?hard=true"),
+    ).await;
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
 }

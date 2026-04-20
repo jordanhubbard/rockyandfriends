@@ -55,12 +55,57 @@ async fn write_projects(state: &AppState, projects: Vec<Value>) {
 }
 
 // ── GET /api/projects ─────────────────────────────────────────────────────
+//
+// Query params:
+//   status=<value>   — filter by exact status (e.g. "active", "archived")
+//   tag=<value>      — filter to projects whose tags array contains value
+//   q=<text>         — case-insensitive substring match on name, slug, description
+//   limit=N          — return at most N results (default: all)
+//   offset=N         — skip first N results (for pagination)
 
 async fn list_projects(
     State(state): State<Arc<AppState>>,
+    Query(params): Query<HashMap<String, String>>,
 ) -> impl IntoResponse {
     let projects = read_projects(&state).await;
-    Json(projects)
+
+    let status_filter = params.get("status").map(|s| s.as_str());
+    let tag_filter    = params.get("tag").map(|s| s.to_lowercase());
+    let q             = params.get("q").map(|s| s.to_lowercase());
+    let limit: Option<usize>  = params.get("limit").and_then(|s| s.parse().ok());
+    let offset: usize = params.get("offset").and_then(|s| s.parse().ok()).unwrap_or(0);
+
+    let filtered: Vec<&Value> = projects.iter().filter(|p| {
+        if let Some(st) = status_filter {
+            if p.get("status").and_then(|v| v.as_str()) != Some(st) { return false; }
+        }
+        if let Some(ref tag) = tag_filter {
+            let has_tag = p.get("tags")
+                .and_then(|v| v.as_array())
+                .map(|arr| arr.iter().any(|t| {
+                    t.as_str().map(|s| s.to_lowercase() == *tag).unwrap_or(false)
+                }))
+                .unwrap_or(false);
+            if !has_tag { return false; }
+        }
+        if let Some(ref q) = q {
+            let name  = p.get("name").and_then(|v| v.as_str()).unwrap_or("").to_lowercase();
+            let slug  = p.get("slug").and_then(|v| v.as_str()).unwrap_or("").to_lowercase();
+            let desc  = p.get("description").and_then(|v| v.as_str()).unwrap_or("").to_lowercase();
+            if !name.contains(q.as_str()) && !slug.contains(q.as_str()) && !desc.contains(q.as_str()) {
+                return false;
+            }
+        }
+        true
+    }).collect();
+
+    let total = filtered.len();
+    let page: Vec<Value> = filtered.into_iter().skip(offset)
+        .take(limit.unwrap_or(usize::MAX))
+        .cloned()
+        .collect();
+
+    Json(json!({"projects": page, "total": total, "offset": offset}))
 }
 
 // ── GET /api/projects/:owner/:repo ────────────────────────────────────────
@@ -306,15 +351,20 @@ async fn update_project(
 }
 
 // ── DELETE /api/projects/:id ──────────────────────────────────────────────
+//
+// ?hard=true  — physically remove from storage and delete agentfs_path on disk.
+// Default (no param) — soft-archive: sets status="archived", keeps the record.
 
 async fn delete_project(
     State(state): State<Arc<AppState>>,
     headers: HeaderMap,
     Path(id): Path<String>,
+    Query(params): Query<HashMap<String, String>>,
 ) -> impl IntoResponse {
     if !state.is_authed(&headers) {
         return (axum::http::StatusCode::UNAUTHORIZED, Json(json!({"error":"Unauthorized"}))).into_response();
     }
+    let hard = params.get("hard").map(|v| v == "true").unwrap_or(false);
     let mut projects = read_projects(&state).await;
     let idx = projects.iter().position(|p| {
         p.get("id").and_then(|v| v.as_str()) == Some(&id)
@@ -322,12 +372,22 @@ async fn delete_project(
     match idx {
         None => (axum::http::StatusCode::NOT_FOUND, Json(json!({"error":"Project not found"}))).into_response(),
         Some(i) => {
-            let p = projects[i].as_object_mut().unwrap();
-            p.insert("status".to_string(), json!("archived"));
-            p.insert("updatedAt".to_string(), json!(chrono::Utc::now().to_rfc3339()));
-            let archived = projects[i].clone();
-            write_projects(&state, projects).await;
-            (axum::http::StatusCode::OK, Json(json!({"ok": true, "project": archived}))).into_response()
+            if hard {
+                let removed = projects.remove(i);
+                write_projects(&state, projects).await;
+                // Best-effort cleanup of agentfs workspace directory
+                if let Some(path) = removed.get("agentfs_path").and_then(|v| v.as_str()) {
+                    let _ = tokio::fs::remove_dir_all(path).await;
+                }
+                (axum::http::StatusCode::OK, Json(json!({"ok": true, "deleted": removed}))).into_response()
+            } else {
+                let p = projects[i].as_object_mut().unwrap();
+                p.insert("status".to_string(), json!("archived"));
+                p.insert("updatedAt".to_string(), json!(chrono::Utc::now().to_rfc3339()));
+                let archived = projects[i].clone();
+                write_projects(&state, projects).await;
+                (axum::http::StatusCode::OK, Json(json!({"ok": true, "project": archived}))).into_response()
+            }
         }
     }
 }
