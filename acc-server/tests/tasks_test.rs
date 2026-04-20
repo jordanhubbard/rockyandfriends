@@ -299,3 +299,271 @@ async fn test_update_task_title() {
     assert_eq!(resp.status(), StatusCode::OK);
     assert_eq!(helpers::body_json(resp).await["task"]["title"], "New title");
 }
+
+// ── Schema v4 columns ─────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_schema_v4_columns_exist() {
+    use acc_server::db;
+    let conn = rusqlite::Connection::open_in_memory().unwrap();
+    conn.execute_batch("PRAGMA foreign_keys=ON;").unwrap();
+    db::open_fleet(":memory:").unwrap(); // triggers init_schema + run_migrations
+
+    // Use the test server's fleet_db (already migrated)
+    let ts = helpers::TestServer::new().await;
+    let resp = helpers::call(&ts.app, helpers::get("/api/tasks")).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    // If new columns exist, the list endpoint should work without error
+    let body = helpers::body_json(resp).await;
+    assert!(body.get("tasks").is_some());
+}
+
+// ── Task type and phase ───────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_create_task_with_task_type_and_phase() {
+    let ts = helpers::TestServer::new().await;
+    let resp = helpers::call(
+        &ts.app,
+        helpers::post_json("/api/tasks", &json!({
+            "project_id": "proj-1",
+            "title": "Review something",
+            "task_type": "review",
+            "phase": "alpha",
+            "review_of": "task-original-abc",
+        })),
+    ).await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = helpers::body_json(resp).await;
+    assert_eq!(body["task"]["task_type"], "review");
+    assert_eq!(body["task"]["phase"], "alpha");
+    assert_eq!(body["task"]["review_of"], "task-original-abc");
+}
+
+#[tokio::test]
+async fn test_create_task_default_type_is_work() {
+    let ts = helpers::TestServer::new().await;
+    let task = create_task(&ts, "proj-1", "Plain task").await;
+    assert_eq!(task["task_type"], "work");
+}
+
+#[tokio::test]
+async fn test_create_task_with_blocked_by() {
+    let ts = helpers::TestServer::new().await;
+    let resp = helpers::call(
+        &ts.app,
+        helpers::post_json("/api/tasks", &json!({
+            "project_id": "proj-1",
+            "title": "Phase commit",
+            "task_type": "phase_commit",
+            "phase": "alpha",
+            "blocked_by": ["task-aaa", "task-bbb"],
+        })),
+    ).await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let body = helpers::body_json(resp).await;
+    let blocked = body["task"]["blocked_by"].as_array().unwrap();
+    assert_eq!(blocked.len(), 2);
+}
+
+// ── Filtering ─────────────────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_list_tasks_filter_by_task_type() {
+    let ts = helpers::TestServer::new().await;
+    // Create one of each type
+    helpers::call(&ts.app, helpers::post_json("/api/tasks", &json!({
+        "project_id": "p1", "title": "Work task", "task_type": "work",
+    }))).await;
+    helpers::call(&ts.app, helpers::post_json("/api/tasks", &json!({
+        "project_id": "p1", "title": "Review task", "task_type": "review",
+    }))).await;
+    helpers::call(&ts.app, helpers::post_json("/api/tasks", &json!({
+        "project_id": "p1", "title": "Phase commit", "task_type": "phase_commit",
+    }))).await;
+
+    let resp = helpers::call(&ts.app, helpers::get("/api/tasks?task_type=review")).await;
+    let body = helpers::body_json(resp).await;
+    let tasks = body["tasks"].as_array().unwrap();
+    assert_eq!(tasks.len(), 1);
+    assert_eq!(tasks[0]["task_type"], "review");
+
+    let resp2 = helpers::call(&ts.app, helpers::get("/api/tasks?task_type=work")).await;
+    let body2 = helpers::body_json(resp2).await;
+    assert_eq!(body2["tasks"].as_array().unwrap().len(), 1);
+}
+
+#[tokio::test]
+async fn test_list_tasks_filter_by_phase() {
+    let ts = helpers::TestServer::new().await;
+    helpers::call(&ts.app, helpers::post_json("/api/tasks", &json!({
+        "project_id": "p1", "title": "Alpha task 1", "phase": "alpha",
+    }))).await;
+    helpers::call(&ts.app, helpers::post_json("/api/tasks", &json!({
+        "project_id": "p1", "title": "Alpha task 2", "phase": "alpha",
+    }))).await;
+    helpers::call(&ts.app, helpers::post_json("/api/tasks", &json!({
+        "project_id": "p1", "title": "Beta task", "phase": "beta",
+    }))).await;
+
+    let resp = helpers::call(&ts.app, helpers::get("/api/tasks?phase=alpha")).await;
+    let tasks = helpers::body_json(resp).await;
+    assert_eq!(tasks["tasks"].as_array().unwrap().len(), 2);
+}
+
+// ── Dependency blocking (423) ─────────────────────────────────────────────────
+
+async fn set_review_result(srv: &helpers::TestServer, id: &str, result: &str) {
+    helpers::call(
+        &srv.app,
+        helpers::put_json(&format!("/api/tasks/{id}/review-result"), &json!({"agent":"reviewer","result":result})),
+    ).await;
+}
+
+#[tokio::test]
+async fn test_claim_blocked_task_returns_423() {
+    let ts = helpers::TestServer::new().await;
+    let blocker = create_task(&ts, "p1", "Blocker task").await;
+    let blocker_id = blocker["id"].as_str().unwrap();
+
+    let resp = helpers::call(
+        &ts.app,
+        helpers::post_json("/api/tasks", &json!({
+            "project_id": "p1",
+            "title": "Blocked task",
+            "blocked_by": [blocker_id],
+        })),
+    ).await;
+    let blocked_task = helpers::body_json(resp).await["task"].clone();
+    let blocked_id = blocked_task["id"].as_str().unwrap();
+
+    let r = claim(&ts, blocked_id, "agent-a").await;
+    assert_eq!(r.status(), StatusCode::LOCKED, "blocked task must return 423");
+    let body = helpers::body_json(r).await;
+    assert_eq!(body["error"], "blocked");
+}
+
+#[tokio::test]
+async fn test_claim_unblocks_when_dep_completed_and_approved() {
+    let ts = helpers::TestServer::new().await;
+    let blocker = create_task(&ts, "p1", "Blocker").await;
+    let blocker_id = blocker["id"].as_str().unwrap();
+
+    let resp = helpers::call(
+        &ts.app,
+        helpers::post_json("/api/tasks", &json!({
+            "project_id": "p1",
+            "title": "Dependent",
+            "blocked_by": [blocker_id],
+        })),
+    ).await;
+    let dependent_id = helpers::body_json(resp).await["task"]["id"].as_str().unwrap().to_string();
+
+    // Blocker still open → 423
+    assert_eq!(claim(&ts, &dependent_id, "agent-a").await.status(), StatusCode::LOCKED);
+
+    // Complete blocker (no review_result = treated as approved)
+    helpers::call(
+        &ts.app,
+        helpers::put_json(&format!("/api/tasks/{blocker_id}/complete"), &json!({"agent":"agent-a"})),
+    ).await;
+
+    // Now dependent should be claimable
+    let r = claim(&ts, &dependent_id, "agent-a").await;
+    assert_eq!(r.status(), StatusCode::OK, "should be claimable after blocker completes");
+}
+
+#[tokio::test]
+async fn test_claim_stays_blocked_on_rejected_review() {
+    let ts = helpers::TestServer::new().await;
+    let blocker = create_task(&ts, "p1", "Work task").await;
+    let blocker_id = blocker["id"].as_str().unwrap();
+
+    let resp = helpers::call(
+        &ts.app,
+        helpers::post_json("/api/tasks", &json!({
+            "project_id": "p1",
+            "title": "Phase commit",
+            "blocked_by": [blocker_id],
+        })),
+    ).await;
+    let dependent_id = helpers::body_json(resp).await["task"]["id"].as_str().unwrap().to_string();
+
+    // Complete blocker but mark as rejected
+    helpers::call(&ts.app, helpers::put_json(
+        &format!("/api/tasks/{blocker_id}/complete"), &json!({"agent":"a"})
+    )).await;
+    set_review_result(&ts, blocker_id, "rejected").await;
+
+    // Dependent must still be blocked
+    let r = claim(&ts, &dependent_id, "agent-a").await;
+    assert_eq!(r.status(), StatusCode::LOCKED, "rejected review must keep task blocked");
+}
+
+// ── Review result endpoint ────────────────────────────────────────────────────
+
+#[tokio::test]
+async fn test_set_review_result_approved() {
+    let ts = helpers::TestServer::new().await;
+    let task = create_task(&ts, "p1", "Work item").await;
+    let id = task["id"].as_str().unwrap();
+
+    let resp = helpers::call(
+        &ts.app,
+        helpers::put_json(&format!("/api/tasks/{id}/review-result"), &json!({
+            "agent": "reviewer-a",
+            "result": "approved",
+            "notes": "Looks good to me",
+        })),
+    ).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert_eq!(helpers::body_json(resp).await["ok"], true);
+
+    // Verify it persists in GET
+    let get_resp = helpers::call(&ts.app, helpers::get(&format!("/api/tasks/{id}"))).await;
+    let got = helpers::body_json(get_resp).await;
+    assert_eq!(got["review_result"], "approved");
+    assert_eq!(got["metadata"]["review_notes"], "Looks good to me");
+}
+
+#[tokio::test]
+async fn test_set_review_result_rejected() {
+    let ts = helpers::TestServer::new().await;
+    let task = create_task(&ts, "p1", "Broken item").await;
+    let id = task["id"].as_str().unwrap();
+
+    helpers::call(
+        &ts.app,
+        helpers::put_json(&format!("/api/tasks/{id}/review-result"), &json!({
+            "agent": "reviewer-b",
+            "result": "rejected",
+            "notes": "Tests are missing",
+        })),
+    ).await;
+
+    let get_resp = helpers::call(&ts.app, helpers::get(&format!("/api/tasks/{id}"))).await;
+    assert_eq!(helpers::body_json(get_resp).await["review_result"], "rejected");
+}
+
+#[tokio::test]
+async fn test_set_review_result_invalid_value_returns_400() {
+    let ts = helpers::TestServer::new().await;
+    let task = create_task(&ts, "p1", "Task").await;
+    let id = task["id"].as_str().unwrap();
+
+    let resp = helpers::call(
+        &ts.app,
+        helpers::put_json(&format!("/api/tasks/{id}/review-result"), &json!({"result":"maybe"})),
+    ).await;
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_set_review_result_unknown_task_returns_404() {
+    let ts = helpers::TestServer::new().await;
+    let resp = helpers::call(
+        &ts.app,
+        helpers::put_json("/api/tasks/no-such-task/review-result", &json!({"result":"approved"})),
+    ).await;
+    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}

@@ -7,6 +7,7 @@ pub struct Config {
     pub acc_token: String,
     pub agent_name: String,
     pub agentbus_token: String,
+    pub pair_programming: bool,
 }
 
 impl Config {
@@ -34,6 +35,10 @@ impl Config {
             .or_else(|_| std::env::var("SQUIRRELBUS_TOKEN"))
             .unwrap_or_default();
 
+        let pair_programming = std::env::var("ACC_PAIR_PROGRAMMING")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(true);
+
         if acc_url.is_empty() {
             return Err("ACC_URL not set in environment or ~/.acc/.env".into());
         }
@@ -44,6 +49,7 @@ impl Config {
             acc_token,
             agent_name,
             agentbus_token,
+            pair_programming,
         })
     }
 

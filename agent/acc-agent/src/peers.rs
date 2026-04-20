@@ -50,6 +50,7 @@ mod tests {
             acc_token: "test-tok".to_string(),
             agent_name: name.to_string(),
             agentbus_token: String::new(),
+            pair_programming: false,
         }
     }
 

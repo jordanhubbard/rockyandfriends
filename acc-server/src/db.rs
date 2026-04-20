@@ -10,7 +10,7 @@ use rusqlite::{Connection, Result, params};
 use serde_json::Value;
 use std::path::Path;
 
-const CURRENT_VERSION: i64 = 3;
+const CURRENT_VERSION: i64 = 4;
 
 /// Open a database connection, create schema if needed, run any pending migrations.
 pub fn open(path: &str) -> Result<Connection> {
@@ -93,12 +93,18 @@ fn init_schema(conn: &Connection) -> Result<()> {
             completed_by TEXT,
             created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
             updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
-            metadata TEXT NOT NULL DEFAULT '{}'
+            metadata      TEXT NOT NULL DEFAULT '{}',
+            task_type     TEXT NOT NULL DEFAULT 'work',
+            review_of     TEXT,
+            phase         TEXT,
+            blocked_by    TEXT NOT NULL DEFAULT '[]',
+            review_result TEXT
         );
         CREATE INDEX IF NOT EXISTS idx_fleet_tasks_status   ON fleet_tasks(status, priority, created_at);
         CREATE INDEX IF NOT EXISTS idx_fleet_tasks_project  ON fleet_tasks(project_id);
         CREATE INDEX IF NOT EXISTS idx_fleet_tasks_agent    ON fleet_tasks(claimed_by, status);
         CREATE INDEX IF NOT EXISTS idx_fleet_tasks_expires  ON fleet_tasks(claim_expires_at);
+        CREATE INDEX IF NOT EXISTS idx_fleet_tasks_phase    ON fleet_tasks(project_id, phase, status);
 
         CREATE TABLE IF NOT EXISTS projects (
             id TEXT PRIMARY KEY,
@@ -215,6 +221,24 @@ fn run_migrations(conn: &Connection) -> Result<()> {
             CREATE INDEX IF NOT EXISTS idx_requests_claimed ON requests(claimed_by, status);
         ")?;
         set_schema_version(conn, 3)?;
+    }
+
+    if version < 4 {
+        let col_exists: bool = conn.query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('fleet_tasks') WHERE name='task_type'",
+            [], |r| r.get::<_, i64>(0),
+        ).unwrap_or(0) > 0;
+        if !col_exists {
+            conn.execute_batch("
+                ALTER TABLE fleet_tasks ADD COLUMN task_type TEXT NOT NULL DEFAULT 'work';
+                ALTER TABLE fleet_tasks ADD COLUMN review_of TEXT;
+                ALTER TABLE fleet_tasks ADD COLUMN phase TEXT;
+                ALTER TABLE fleet_tasks ADD COLUMN blocked_by TEXT NOT NULL DEFAULT '[]';
+                ALTER TABLE fleet_tasks ADD COLUMN review_result TEXT;
+                CREATE INDEX IF NOT EXISTS idx_fleet_tasks_phase ON fleet_tasks(project_id, phase, status);
+            ")?;
+        }
+        set_schema_version(conn, 4)?;
     }
 
     if version < 2 {

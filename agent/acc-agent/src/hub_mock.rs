@@ -12,7 +12,7 @@ use axum::{
 };
 use serde_json::{json, Value};
 use std::{collections::HashMap, sync::Arc};
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
 
 // ── State ────────────────────────────────────────────────────────────────────
 
@@ -32,6 +32,12 @@ pub struct HubState {
     pub sse_events: Vec<String>,
     /// Agent names returned by GET /api/agents/names
     pub agent_names: Vec<String>,
+    /// Accumulates bodies from POST /api/tasks — inspectable by tests
+    pub created_tasks: Arc<Mutex<Vec<Value>>>,
+    /// HTTP status code for POST /api/tasks (default 201)
+    pub task_create_status: u16,
+    /// HTTP status code for PUT /api/tasks/:id/review-result (default 200)
+    pub review_result_status: u16,
 }
 
 impl Default for HubState {
@@ -44,6 +50,9 @@ impl Default for HubState {
             request_claim_status: 200,
             sse_events: vec![],
             agent_names: vec![],
+            created_tasks: Arc::new(Mutex::new(vec![])),
+            task_create_status: 201,
+            review_result_status: 200,
         }
     }
 }
@@ -111,10 +120,11 @@ fn build_router(state: S) -> Router {
         .route("/api/item/:id/keepalive",       post(ok))
         .route("/api/item/:id/comment",         post(ok))
         // Fleet task routes
-        .route("/api/tasks",                    get(task_list))
+        .route("/api/tasks",                    get(task_list).post(task_create))
         .route("/api/tasks/:id/claim",          put(task_claim))
         .route("/api/tasks/:id/complete",       put(ok))
         .route("/api/tasks/:id/unclaim",        put(ok))
+        .route("/api/tasks/:id/review-result",  put(task_review_result))
         // User request routes (first-responder)
         .route("/api/requests/:id/claim",       post(request_claim))
         // Exec result (bus worker)
@@ -148,14 +158,35 @@ async fn task_list(
     Query(params): Query<HashMap<String, String>>,
 ) -> Json<Value> {
     let s = st.read().await;
-    let filter = params.get("status").cloned().unwrap_or_default();
-    let matched: Vec<&Value> = if filter.is_empty() {
-        s.tasks.iter().collect()
-    } else {
-        s.tasks.iter().filter(|t| t["status"].as_str() == Some(&filter)).collect()
-    };
+    let status_filter = params.get("status").cloned().unwrap_or_default();
+    let type_filter = params.get("task_type").cloned().unwrap_or_default();
+    let matched: Vec<&Value> = s.tasks.iter().filter(|t| {
+        let status_ok = status_filter.is_empty() || t["status"].as_str() == Some(&status_filter);
+        let type_ok = type_filter.is_empty()
+            || t["task_type"].as_str().unwrap_or("work") == type_filter;
+        status_ok && type_ok
+    }).collect();
     let count = matched.len() as u64;
     Json(json!({"tasks": matched, "count": count}))
+}
+
+async fn task_create(State(st): State<S>, Json(body): Json<Value>) -> impl IntoResponse {
+    let (code, created_tasks) = {
+        let s = st.read().await;
+        (s.task_create_status, s.created_tasks.clone())
+    };
+    let sc = StatusCode::from_u16(code).unwrap_or(StatusCode::CREATED);
+    let id = format!("mock-task-{}", chrono::Utc::now().timestamp_millis());
+    let mut task = body.clone();
+    task["id"] = serde_json::Value::String(id.clone());
+    created_tasks.lock().await.push(task.clone());
+    (sc, Json(json!({"ok": true, "task": task}))).into_response()
+}
+
+async fn task_review_result(State(st): State<S>, Path(_id): Path<String>) -> impl IntoResponse {
+    let code = st.read().await.review_result_status;
+    let sc = StatusCode::from_u16(code).unwrap_or(StatusCode::OK);
+    (sc, Json(json!({"ok": code == 200}))).into_response()
 }
 
 async fn agent_names(State(st): State<S>) -> Json<Value> {

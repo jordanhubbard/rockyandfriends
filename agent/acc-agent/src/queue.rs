@@ -886,6 +886,7 @@ mod tests {
             acc_token: "tok".into(),
             agent_name: "test".into(),
             agentbus_token: String::new(),
+            pair_programming: false,
         };
         assert!(!is_quenched(&cfg));
     }
@@ -899,6 +900,7 @@ mod tests {
             acc_token: "tok".to_string(),
             agent_name: "boris".to_string(),
             agentbus_token: String::new(),
+            pair_programming: false,
         }
     }
 
