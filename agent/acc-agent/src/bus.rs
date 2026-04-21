@@ -492,6 +492,7 @@ mod tests {
             agent_name: "natasha".to_string(),
             agentbus_token: String::new(),
             pair_programming: false,
+            host: String::new(),
         }
     }
 

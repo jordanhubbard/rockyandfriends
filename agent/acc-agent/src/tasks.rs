@@ -638,6 +638,7 @@ mod tests {
             agent_name: "test-agent".to_string(),
             agentbus_token: String::new(),
             pair_programming: true,
+            host: "test-host.local".to_string(),
         }
     }
 

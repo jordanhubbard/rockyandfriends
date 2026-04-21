@@ -1,3 +1,4 @@
+use crate::config::resolve_hostname;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 
@@ -37,7 +38,7 @@ fn cmd_init(args: &[String]) {
 
     let flags = parse_flags(&args[2..]);
     let name = flags.get("name").cloned().unwrap_or_default();
-    let host = flags.get("host").cloned().unwrap_or_default();
+    let host = flags.get("host").cloned().unwrap_or_else(resolve_hostname);
     let version = flags.get("version").cloned().unwrap_or_default();
     let by = flags.get("by").cloned();
 

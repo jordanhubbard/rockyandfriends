@@ -628,6 +628,7 @@ async fn post_heartbeat(cfg: &Config, client: &reqwest::Client, note: &str) {
         "ts": chrono::Utc::now().to_rfc3339(),
         "status": "ok",
         "note": note,
+        "host": cfg.host,
     });
     let _ = client
         .post(format!("{}/api/heartbeat/{}", cfg.acc_url, cfg.agent_name))
@@ -887,6 +888,7 @@ mod tests {
             agent_name: "test".into(),
             agentbus_token: String::new(),
             pair_programming: false,
+            host: String::new(),
         };
         assert!(!is_quenched(&cfg));
     }
@@ -901,6 +903,7 @@ mod tests {
             agent_name: "boris".to_string(),
             agentbus_token: String::new(),
             pair_programming: false,
+            host: String::new(),
         }
     }
 

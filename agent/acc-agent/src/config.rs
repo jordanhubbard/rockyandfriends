@@ -8,6 +8,38 @@ pub struct Config {
     pub agent_name: String,
     pub agentbus_token: String,
     pub pair_programming: bool,
+    /// Fully-qualified hostname for this agent (self-healing registry updates).
+    pub host: String,
+}
+
+/// Returns the FQDN for this machine.
+/// On macOS, bare hostnames (no dot) are served via mDNS as `<name>.local`.
+pub fn resolve_hostname() -> String {
+    // `hostname -f` gives FQDN on Linux; on macOS it usually echoes short name
+    let fqdn_attempt = std::process::Command::new("hostname")
+        .arg("-f")
+        .output()
+        .ok()
+        .filter(|o| o.status.success())
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_default();
+
+    if !fqdn_attempt.is_empty() && fqdn_attempt.contains('.') {
+        return fqdn_attempt;
+    }
+
+    let short = std::process::Command::new("hostname")
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_else(|_| "unknown".into());
+
+    // macOS: bare hostname is resolvable via Bonjour mDNS as <name>.local
+    #[cfg(target_os = "macos")]
+    if !short.is_empty() && !short.contains('.') {
+        return format!("{}.local", short);
+    }
+
+    if short.is_empty() { "unknown".into() } else { short }
 }
 
 impl Config {
@@ -39,6 +71,8 @@ impl Config {
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
             .unwrap_or(true);
 
+        let host = resolve_hostname();
+
         if acc_url.is_empty() {
             return Err("ACC_URL not set in environment or ~/.acc/.env".into());
         }
@@ -50,6 +84,7 @@ impl Config {
             agent_name,
             agentbus_token,
             pair_programming,
+            host,
         })
     }
 

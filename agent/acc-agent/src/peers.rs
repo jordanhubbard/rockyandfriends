@@ -51,6 +51,7 @@ mod tests {
             agent_name: name.to_string(),
             agentbus_token: String::new(),
             pair_programming: false,
+            host: String::new(),
         }
     }
 
