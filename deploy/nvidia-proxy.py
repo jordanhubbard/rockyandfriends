@@ -68,6 +68,62 @@ def _collect_tool_result_ids(msg: dict) -> set[str]:
     }
 
 
+def _normalize_openai_tool_calls(messages: list[dict]) -> int:
+    """
+    Convert assistant messages that carry OpenAI-format ``tool_calls`` arrays
+    into Anthropic-native ``content`` arrays with ``tool_use`` blocks.
+
+    This is the root cause of the "Unable to convert openai tool calls" HTTP 500
+    from NVIDIA LiteLLM: a conversation history can contain Anthropic ``tooluse_*``
+    IDs wrapped in the OpenAI ``{type:"function", function:{name, arguments}}``
+    envelope, which LiteLLM cannot reconcile.
+
+    OpenAI shape:
+        {"role": "assistant", "content": null,
+         "tool_calls": [{"id": "tooluse_xxx", "type": "function",
+                         "function": {"name": "...", "arguments": "{...}"}}]}
+
+    Anthropic shape:
+        {"role": "assistant",
+         "content": [{"type": "tool_use", "id": "tooluse_xxx",
+                      "name": "...", "input": {...}}]}
+    """
+    converted = 0
+    for msg in messages:
+        if msg.get("role") != "assistant":
+            continue
+        tool_calls = msg.get("tool_calls")
+        if not isinstance(tool_calls, list) or not tool_calls:
+            continue
+
+        content_blocks = []
+        # Preserve any existing text content
+        existing = msg.get("content")
+        if isinstance(existing, str) and existing:
+            content_blocks.append({"type": "text", "text": existing})
+
+        for tc in tool_calls:
+            fn_obj = tc.get("function") or {}
+            tc_id   = tc.get("id", "")
+            tc_name = fn_obj.get("name", "")
+            args_str = fn_obj.get("arguments", "{}")
+            try:
+                tc_input = json.loads(args_str)
+            except (json.JSONDecodeError, ValueError):
+                tc_input = {}
+            content_blocks.append({
+                "type":  "tool_use",
+                "id":    tc_id,
+                "name":  tc_name,
+                "input": tc_input,
+            })
+
+        msg.pop("tool_calls", None)
+        msg["content"] = content_blocks
+        converted += 1
+    return converted
+
+
 def _inject_missing_tool_results(messages: list[dict]) -> int:
     """
     Walk the messages array and inject synthetic tool_result user messages for
@@ -127,14 +183,23 @@ def _sanitize_body(path: str, body: bytes | None) -> bytes | None:
     if not isinstance(messages, list):
         return body
 
+    normalized = _normalize_openai_tool_calls(messages)
+    if normalized > 0:
+        print(
+            f"[nvidia-proxy] normalized {normalized} OpenAI-format tool_calls → Anthropic tool_use",
+            flush=True,
+        )
+
     fixed = _inject_missing_tool_results(messages)
-    if fixed == 0:
+    if fixed > 0:
+        print(
+            f"[nvidia-proxy] injected {fixed} synthetic tool_result(s) for orphaned tool_use blocks",
+            flush=True,
+        )
+
+    if normalized == 0 and fixed == 0:
         return body
 
-    print(
-        f"[nvidia-proxy] sanitized {fixed} orphaned tool_use block(s) — injected synthetic tool_result(s)",
-        flush=True,
-    )
     return json.dumps(payload).encode()
 
 
