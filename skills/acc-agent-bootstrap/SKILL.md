@@ -1,11 +1,11 @@
 ---
 name: acc-agent-bootstrap
 description: Verify and install hermes on an ACC agent node. Use when onboarding a new agent, confirming hermes is operational, or diagnosing why an agent isn't executing tasks.
-version: 1.0.0
+version: 1.1.0
 platforms: [linux, macos]
 metadata:
   hermes:
-    tags: [acc, hermes, bootstrap, install]
+    tags: [acc, hermes, bootstrap, install, agentfs]
     category: infrastructure
 ---
 
@@ -134,7 +134,55 @@ binary needs to be rebuilt (run `agent-pull.sh` which triggers a Cargo build if
 
 ---
 
-## Step 6 — Run a smoke test
+## Step 6 — Verify AgentFS mount
+
+AgentFS is a Samba (CIFS) share served from Rocky (`100.89.199.14`), share name
+`accfs`, exporting `/srv/accfs/shared`. Every agent should have it mounted.
+
+**Expected mount point and visible content:**
+
+| Agent | Mount point | Sees |
+|---|---|---|
+| rocky | `/srv/accfs/shared` (local) | `Sim-Next/` etc. |
+| natasha | `~/.acc/shared` (CIFS) | `Sim-Next/` etc. |
+| ollama | `~/.acc/shared` (CIFS) | `Sim-Next/` etc. |
+| bullwinkle | `~/.acc/shared` (CIFS, macOS) | `Sim-Next/` etc. |
+| boris | `~/.acc/shared` (Kubernetes PVC needed) | not yet mounted |
+
+**Check the mount is live (not stale):**
+
+```bash
+ssh -o StrictHostKeyChecking=no USER@HOST '
+  mount | grep accfs && echo "mounted" || echo "NOT MOUNTED"
+  ls ~/.acc/shared/ 2>/dev/null || echo "stale or empty"
+'
+```
+
+**If the mount is stale** (e.g. after samba server reconfiguration):
+
+Linux (systemd):
+```bash
+sudo systemctl restart home-jkh-.acc-shared.mount   # system-level — requires sudo
+```
+
+macOS (launchd):
+```bash
+launchctl unload ~/Library/LaunchAgents/com.acc.accfs-mount.plist
+diskutil unmount force ~/.acc/shared
+launchctl load ~/Library/LaunchAgents/com.acc.accfs-mount.plist
+```
+
+**Important macOS note**: `ls ~/.acc/shared/` from an SSH session returns
+`Operation not permitted` due to macOS TCC security. This does NOT mean the
+mount is broken. Verify via `mount | grep accfs` and `stat ~/.acc/shared/`.
+Agent processes launched via launchd have full access.
+
+**If the mount is missing entirely** (new agent): see `acc-service-setup` skill
+for the systemd mount unit template, or `acc-deploy-agentfs` for the setup script.
+
+---
+
+## Step 7 — Run a smoke test
 
 ```bash
 ssh -o StrictHostKeyChecking=no USER@HOST '
@@ -148,13 +196,13 @@ ssh -o StrictHostKeyChecking=no USER@HOST '
 
 ## Quick reference: per-agent known paths
 
-| Agent | Init | hermes path |
-|---|---|---|
-| rocky | systemd (system) | `~/.local/bin/hermes` |
-| natasha | systemd (user) | `~/.local/bin/hermes` |
-| bullwinkle | launchd (macOS) | `~/.local/bin/hermes` |
-| ollama | systemd (system) | `~/.local/bin/hermes` |
-| boris | supervisord | `~/.local/bin/hermes` (symlink to venv) |
+| Agent | Init | hermes path | AgentFS |
+|---|---|---|---|
+| rocky | systemd (system) | `~/.local/bin/hermes` | `/srv/accfs/shared` (local) |
+| natasha | systemd (user) | `~/.local/bin/hermes` | `~/.acc/shared` (CIFS) |
+| bullwinkle | launchd (macOS) | `~/.local/bin/hermes` | `~/.acc/shared` (CIFS) |
+| ollama | systemd (system) | `~/.local/bin/hermes` | `~/.acc/shared` (CIFS) |
+| boris | supervisord (K8s) | `~/.local/bin/hermes` | `~/.acc/shared` (PVC needed) |
 
 Always verify against the live agent — these can drift.
 
@@ -164,3 +212,6 @@ Always verify against the live agent — these can drift.
 - **`bad interpreter: python3.11`**: The venv Python was removed or upgraded. Rebuild the venv with the current system Python (`python3 --version` to check).
 - **hermes found in `~/Src` but not in `~/.local/bin`**: It's a dev install, not the production one. Create the `~/.local/bin/hermes` symlink.
 - **`ANTHROPIC_BASE_URL` not set**: Hermes calls will go to the public Anthropic API (wrong billing, wrong routing). Always set this to the local Tokenhub proxy.
+- **AgentFS stale after samba reconfiguration**: Unmount and remount. Do NOT just retry `ls` — the mount handle is broken and must be refreshed.
+- **AgentFS `ls` fails on macOS over SSH**: macOS TCC blocks SSH from listing CIFS mounts. The mount is live if `mount | grep accfs` shows it. Check with `stat` instead of `ls`.
+- **Boris (Kubernetes) can't mount CIFS**: Containers lack `CAP_SYS_ADMIN`. AgentFS must be provided as a Kubernetes PersistentVolumeClaim at pod spec level.

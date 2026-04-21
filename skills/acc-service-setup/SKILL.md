@@ -281,6 +281,100 @@ curl -sf -H "Authorization: Bearer $ACC_AGENT_TOKEN" \
   "${ACC_URL}/api/agents/$AGENT_NAME" | python3 -m json.tool | grep -E "online|lastSeen"
 ```
 
+---
+
+## AgentFS mount unit (Linux systemd)
+
+AgentFS is a CIFS share from Rocky (`100.89.199.14`, share `accfs`) that exports
+`/srv/accfs/shared`. Agents mount it at `~/.acc/shared`.
+
+**The unit file name must exactly match the mount path** (systemd derives it from
+the path via `systemd-escape --path`). For `/home/jkh/.acc/shared`:
+
+```
+/etc/systemd/system/home-jkh-.acc-shared.mount
+```
+
+```ini
+[Unit]
+Description=ACC shared filesystem (Rocky Samba/SMB)
+After=network-online.target
+Wants=network-online.target
+
+[Mount]
+What=//100.89.199.14/accfs
+Where=/home/USER/.acc/shared
+Type=cifs
+Options=credentials=/etc/samba/smbcredentials,uid=UID,gid=GID,file_mode=0664,dir_mode=0775,_netdev,vers=3.0,nofail
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Replace `USER`, `UID`, `GID` with the agent user's values. Get them with `id`.
+
+**Credentials file** (`/etc/samba/smbcredentials`, root-owned, chmod 600):
+```
+username=jkh
+password=<samba password from Rocky>
+```
+
+**Restart the mount** (required after any samba reconfiguration on Rocky):
+```bash
+sudo systemctl restart home-jkh-.acc-shared.mount
+```
+
+**This requires passwordless sudo.** If the agent doesn't have it, the mount
+cannot be restarted non-interactively. Grant it via `/etc/sudoers.d/acc-mount`:
+```
+jkh ALL=(root) NOPASSWD: /bin/systemctl start home-jkh-.acc-shared.mount, /bin/systemctl stop home-jkh-.acc-shared.mount, /bin/systemctl restart home-jkh-.acc-shared.mount
+```
+
+**Verify the mount is live (not stale):**
+```bash
+mount | grep accfs && ls ~/.acc/shared/ || echo "stale or not mounted"
+```
+
+---
+
+## AgentFS mount (macOS launchd)
+
+On macOS, mount via `mount_smbfs` + a `RunAtLoad` LaunchAgent:
+
+```bash
+cat > ~/Library/LaunchAgents/com.acc.accfs-mount.plist << 'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>             <string>com.acc.accfs-mount</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-c</string>
+        <string>mkdir -p /Users/USER/.acc/shared &amp;&amp; /sbin/mount_smbfs //jkh:PASSWORD@100.89.199.14/accfs /Users/USER/.acc/shared 2>> /Users/USER/.acc/logs/accfs-mount.log || true</string>
+    </array>
+    <key>RunAtLoad</key>   <true/>
+    <key>KeepAlive</key>   <false/>
+</dict>
+</plist>
+EOF
+launchctl load ~/Library/LaunchAgents/com.acc.accfs-mount.plist
+```
+
+**To remount after Rocky samba reconfiguration:**
+```bash
+launchctl unload ~/Library/LaunchAgents/com.acc.accfs-mount.plist
+diskutil unmount force ~/.acc/shared
+launchctl load ~/Library/LaunchAgents/com.acc.accfs-mount.plist
+```
+
+**macOS TCC note**: `ls ~/.acc/shared/` from SSH returns `Operation not permitted`.
+This is macOS security — NOT a mount failure. Verify with `mount | grep accfs`
+and `stat ~/.acc/shared/`. Processes launched via launchd have full access.
+
+---
+
 ## Common mistakes
 
 - **`User=` in user-mode systemd**: Invalid directive in `~/.config/systemd/user/` — remove it entirely.
@@ -288,3 +382,6 @@ curl -sf -H "Authorization: Bearer $ACC_AGENT_TOKEN" \
 - **`acc-agent listen`**: Not a valid subcommand. Use `acc-agent bus` and `acc-agent queue` as separate programs.
 - **Missing `loginctl enable-linger`**: User units stop when the user session ends. Always run this on user-mode installs.
 - **`environment=` in supervisord not loading `.env`**: Supervisord `environment=` is a comma-separated list of `KEY="val"` pairs, not a shell source. The `.env` file must be explicitly parsed or the vars inlined.
+- **Stale CIFS mount after samba reconfiguration**: `ls` fails with `Stale file handle`. Must unmount and remount — retrying `ls` will not fix it. Requires sudo on Linux.
+- **Mount unit name wrong**: The systemd mount unit filename must be the escaped version of the mount path. Use `systemd-escape --path /home/jkh/.acc/shared` to get the correct name.
+- **CIFS mount in a Kubernetes container**: Containers lack `CAP_SYS_ADMIN`. Cannot mount CIFS from inside a pod. AgentFS must be provided as a Kubernetes PVC at pod spec level.

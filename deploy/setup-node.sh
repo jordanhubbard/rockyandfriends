@@ -383,6 +383,143 @@ else
   fi
 fi
 
+# ── AgentFS mount ────────────────────────────────────────────────────────
+# AgentFS is served from Rocky (100.89.199.14) as a Samba share named 'accfs'.
+# The share exports /srv/accfs/shared. Agents mount it at ~/.acc/shared.
+#
+# Credentials are stored in /etc/samba/smbcredentials (root-owned, 600).
+# If ACC_SMB_PASSWORD is set in the environment, it will be used; otherwise
+# the setup prints instructions for manual credential configuration.
+AGENTFS_HOST="${AGENTFS_HOST:-100.89.199.14}"
+AGENTFS_SHARE="accfs"
+AGENTFS_USER="${AGENTFS_USER:-jkh}"
+AGENTFS_MOUNT="${AGENTFS_MOUNT:-$HOME/.acc/shared}"
+AGENTFS_CREDS="/etc/samba/smbcredentials"
+
+info "Checking AgentFS mount..."
+
+_agentfs_mounted() {
+  mount | grep -q "${AGENTFS_HOST}/${AGENTFS_SHARE}" 2>/dev/null
+}
+
+_agentfs_healthy() {
+  _agentfs_mounted && ls "$AGENTFS_MOUNT" >/dev/null 2>&1
+}
+
+if _agentfs_healthy; then
+  success "AgentFS already mounted and healthy at $AGENTFS_MOUNT"
+else
+  mkdir -p "$AGENTFS_MOUNT"
+
+  if [[ "$PLATFORM" == "linux" ]]; then
+    # Write credentials file if password is known
+    if [[ -n "${ACC_SMB_PASSWORD:-}" ]]; then
+      if sudo -n true 2>/dev/null; then
+        sudo bash -c "cat > $AGENTFS_CREDS << EOF
+username=$AGENTFS_USER
+password=$ACC_SMB_PASSWORD
+EOF
+chmod 600 $AGENTFS_CREDS"
+      fi
+    fi
+
+    if [ ! -f "$AGENTFS_CREDS" ]; then
+      warn "AgentFS credentials not found at $AGENTFS_CREDS"
+      echo ""
+      echo "  ┌──────────────────────────────────────────────────────────────────┐"
+      echo "  │  Create /etc/samba/smbcredentials (root-owned, chmod 600):       │"
+      echo "  │    username=jkh                                                   │"
+      echo "  │    password=<ACC Samba password from Rocky>                       │"
+      echo "  │  Then re-run setup-node.sh or install the mount unit manually.   │"
+      echo "  └──────────────────────────────────────────────────────────────────┘"
+      echo ""
+    else
+      # Install systemd mount unit
+      if command -v systemctl &>/dev/null; then
+        _uid=$(id -u)
+        _gid=$(id -g)
+        _unit_name=$(systemd-escape --path "$AGENTFS_MOUNT").mount
+        _unit_file="/etc/systemd/system/${_unit_name}"
+
+        if [ ! -f "$_unit_file" ] && sudo -n true 2>/dev/null; then
+          sudo bash -c "cat > $_unit_file << EOF
+[Unit]
+Description=ACC shared filesystem (Rocky Samba/SMB)
+After=network-online.target
+Wants=network-online.target
+
+[Mount]
+What=//${AGENTFS_HOST}/${AGENTFS_SHARE}
+Where=${AGENTFS_MOUNT}
+Type=cifs
+Options=credentials=${AGENTFS_CREDS},uid=${_uid},gid=${_gid},file_mode=0664,dir_mode=0775,_netdev,vers=3.0,nofail
+
+[Install]
+WantedBy=multi-user.target
+EOF"
+          sudo systemctl daemon-reload
+          sudo systemctl enable --now "$_unit_name" && \
+            success "AgentFS mount unit installed and started" || \
+            warn "AgentFS mount unit install failed"
+        elif [ -f "$_unit_file" ]; then
+          # Unit exists; ensure it's mounted
+          sudo -n systemctl start "$_unit_name" 2>/dev/null && \
+            success "AgentFS mount started" || true
+        fi
+      fi
+
+      # Verify
+      if _agentfs_healthy; then
+        success "AgentFS mounted at $AGENTFS_MOUNT: $(ls $AGENTFS_MOUNT | tr '\n' ' ')"
+      else
+        warn "AgentFS mount attempted but not healthy — check /etc/samba/smbcredentials and network"
+      fi
+    fi
+
+  elif [[ "$PLATFORM" == "macos" ]]; then
+    # macOS: use mount_smbfs + LaunchAgent for persistence
+    _plist="$HOME/Library/LaunchAgents/com.acc.accfs-mount.plist"
+    if [ ! -f "$_plist" ]; then
+      _pw_fragment=""
+      if [[ -n "${ACC_SMB_PASSWORD:-}" ]]; then
+        _pw_fragment="${AGENTFS_USER}:${ACC_SMB_PASSWORD}@"
+      else
+        _pw_fragment="${AGENTFS_USER}@"
+      fi
+      cat > "$_plist" << EOF
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>             <string>com.acc.accfs-mount</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-c</string>
+        <string>mkdir -p ${AGENTFS_MOUNT} &amp;&amp; /sbin/mount_smbfs //${_pw_fragment}${AGENTFS_HOST}/${AGENTFS_SHARE} ${AGENTFS_MOUNT} 2&gt;&gt; $HOME/.acc/logs/accfs-mount.log || true</string>
+    </array>
+    <key>RunAtLoad</key>   <true/>
+    <key>KeepAlive</key>   <false/>
+    <key>StandardOutPath</key> <string>$HOME/.acc/logs/accfs-mount.log</string>
+    <key>StandardErrorPath</key> <string>$HOME/.acc/logs/accfs-mount.log</string>
+</dict>
+</plist>
+EOF
+      launchctl load "$_plist" 2>/dev/null
+      sleep 2
+      success "AgentFS LaunchAgent installed"
+    else
+      success "AgentFS LaunchAgent already present"
+    fi
+    # Verify (note: ls may fail from SSH due to macOS TCC; use mount + stat)
+    if _agentfs_mounted; then
+      success "AgentFS mounted at $AGENTFS_MOUNT (macOS TCC may block ls from SSH — normal)"
+    else
+      warn "AgentFS not mounted — check ~/Library/LaunchAgents/com.acc.accfs-mount.plist and logs"
+    fi
+  fi
+fi
+
 # ── vLLM (local GPU model serving) ──────────────────────────────────────
 if command -v nvidia-smi &>/dev/null; then
   GPU_INFO=$(nvidia-smi --query-gpu=name,memory.total --format=csv,noheader 2>/dev/null | head -1)
