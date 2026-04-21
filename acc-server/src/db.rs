@@ -10,7 +10,7 @@ use rusqlite::{Connection, Result, params};
 use serde_json::Value;
 use std::path::Path;
 
-const CURRENT_VERSION: i64 = 4;
+const CURRENT_VERSION: i64 = 5;
 
 /// Open a database connection, create schema if needed, run any pending migrations.
 pub fn open(path: &str) -> Result<Connection> {
@@ -267,6 +267,27 @@ fn run_migrations(conn: &Connection) -> Result<()> {
             "CREATE INDEX IF NOT EXISTS idx_fleet_tasks_phase ON fleet_tasks(project_id, phase, status);"
         )?;
         set_schema_version(conn, 4)?;
+    }
+
+    if version < 5 {
+        // v4 migration had a bug: if task_type already existed it skipped blocked_by/review_result.
+        // v5 adds them individually with existence checks so it's always safe to run.
+        for (col, def) in &[
+            ("blocked_by",    "TEXT NOT NULL DEFAULT '[]'"),
+            ("review_result", "TEXT"),
+        ] {
+            let exists: bool = conn.query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('fleet_tasks') WHERE name=?1",
+                rusqlite::params![col],
+                |r| r.get::<_, i64>(0),
+            ).unwrap_or(0) > 0;
+            if !exists {
+                conn.execute_batch(&format!(
+                    "ALTER TABLE fleet_tasks ADD COLUMN {} {};", col, def
+                ))?;
+            }
+        }
+        set_schema_version(conn, 5)?;
     }
 
     set_schema_version(conn, CURRENT_VERSION)?;
