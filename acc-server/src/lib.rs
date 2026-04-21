@@ -43,6 +43,7 @@ pub fn build_app(state: Arc<AppState>) -> Router {
         .merge(routes::models::router())
         .merge(routes::auth::router())
         .merge(routes::requests::router())
+        .merge(routes::soul::router())
         .layer(cors)
         .with_state(state)
 }
@@ -106,6 +107,7 @@ pub mod testing {
             start_time: std::time::SystemTime::now(),
             fs_root:  dir.join("fs").to_string_lossy().into_owned(),
             supervisor: None,
+            soul_store: tokio::sync::RwLock::new(std::collections::HashMap::new()),
         })
     }
 

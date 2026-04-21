@@ -62,6 +62,7 @@ pub async fn make_state(tmp: &TempDir) -> Arc<AppState> {
         start_time: std::time::SystemTime::now(),
         fs_root:  dir.join("fs").to_string_lossy().into_owned(),
         supervisor: None,
+        soul_store: tokio::sync::RwLock::new(std::collections::HashMap::new()),
     })
 }
 

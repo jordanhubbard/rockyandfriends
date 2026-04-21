@@ -84,6 +84,7 @@ async fn main() {
         start_time: std::time::SystemTime::now(),
         fs_root,
         supervisor: supervisor_handle,
+        soul_store: tokio::sync::RwLock::new(std::collections::HashMap::new()),
     });
 
     state::load_all(&app_state).await;

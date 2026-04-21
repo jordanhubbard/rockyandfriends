@@ -23,6 +23,7 @@ pub mod conversations;
 pub mod metrics;
 pub mod models;
 pub mod requests;
+pub mod soul;
 
 use axum::{
     http::StatusCode,

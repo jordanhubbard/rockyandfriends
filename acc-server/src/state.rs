@@ -2,7 +2,7 @@ use crate::brain::BrainQueue;
 use crate::supervisor::SupervisorHandle;
 use rusqlite::Connection;
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::AtomicU64;
 use std::sync::Arc;
 use tokio::sync::{broadcast, RwLock};
@@ -39,6 +39,9 @@ pub struct AppState {
     pub start_time: std::time::SystemTime,
     pub fs_root: String,
     pub supervisor: Option<Arc<SupervisorHandle>>,
+    /// Cached soul packages keyed by agent name.
+    /// Populated when an agent responds to a soul.export bus event.
+    pub soul_store: RwLock<HashMap<String, serde_json::Value>>,
 }
 
 impl AppState {

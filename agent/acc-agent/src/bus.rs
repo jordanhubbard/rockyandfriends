@@ -147,6 +147,9 @@ async fn dispatch(cfg: &Config, client: &Client, event: &str) {
         "acc.quench" => handle_quench(cfg, &msg),
         "acc.exec" => handle_exec(cfg, client, &msg).await,
         "user.request" => handle_user_request(cfg, client, &msg).await,
+        "soul.export" => handle_soul_export(cfg, client).await,
+        "soul.import" => handle_soul_import(cfg, &msg).await,
+        "soul.decommission" => handle_soul_decommission(cfg, &msg),
         "ping" => {
             let from = msg.from.as_deref().unwrap_or("?");
             log(cfg, &format!("ping from {from}"));
@@ -397,6 +400,174 @@ async fn run_shell(code: &str, timeout_secs: u64) -> (String, i32) {
         Ok(Err(e)) => (format!("exec error: {e}"), 1),
         Err(_) => (format!("[timed out after {timeout_secs}s]"), 124),
     }
+}
+
+// ── Soul handlers ─────────────────────────────────────────────────────────────
+
+/// Package ~/.hermes/ and ~/.acc/ into a tar.gz, hex-encode it, POST to server.
+async fn handle_soul_export(cfg: &Config, client: &Client) {
+    log(cfg, "soul.export: packaging agent soul");
+
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".into());
+    let tar_path = format!("/tmp/acc-soul-{}.tar.gz", cfg.agent_name);
+
+    // Build tar excluding large runtime dirs
+    let tar_out = tokio::process::Command::new("tar")
+        .args([
+            "-czf", &tar_path,
+            "-C", &home,
+            "--exclude=.acc/workspace",
+            "--exclude=.acc/logs",
+            "--exclude=.acc/bin",
+            "--exclude=.acc/task-workspaces",
+            "--exclude=.ccc/workspace",
+            "--exclude=.ccc/logs",
+            "--exclude=.ccc/bin",
+        ])
+        .arg(".hermes")
+        .arg(if std::path::Path::new(&format!("{home}/.acc")).exists() { ".acc" } else { ".ccc" })
+        .output()
+        .await;
+
+    match tar_out {
+        Ok(o) if !o.status.success() => {
+            log(cfg, &format!("soul.export: tar failed: {}", String::from_utf8_lossy(&o.stderr)));
+            return;
+        }
+        Err(e) => {
+            log(cfg, &format!("soul.export: tar error: {e}"));
+            return;
+        }
+        _ => {}
+    }
+
+    let data = match tokio::fs::read(&tar_path).await {
+        Ok(d) => d,
+        Err(e) => { log(cfg, &format!("soul.export: read failed: {e}")); return; }
+    };
+    let _ = tokio::fs::remove_file(&tar_path).await;
+
+    let tar_hex = hex::encode(&data);
+    let exported_at = chrono::Utc::now().to_rfc3339();
+    let payload = serde_json::json!({
+        "agent": cfg.agent_name,
+        "host": cfg.host,
+        "tar_gz_hex": tar_hex,
+        "exported_at": exported_at,
+        "size_bytes": data.len(),
+    });
+
+    let url = format!("{}/api/agents/{}/soul/data", cfg.acc_url, cfg.agent_name);
+    match client.post(&url)
+        .header("Authorization", format!("Bearer {}", cfg.acc_token))
+        .json(&payload)
+        .timeout(Duration::from_secs(120))
+        .send()
+        .await
+    {
+        Ok(r) if r.status().is_success() => {
+            log(cfg, &format!("soul.export: uploaded {}B", data.len()));
+        }
+        Ok(r) => log(cfg, &format!("soul.export: server returned {}", r.status())),
+        Err(e) => log(cfg, &format!("soul.export: upload failed: {e}")),
+    }
+}
+
+/// Receive a new soul, overwrite local config, restart with new identity.
+async fn handle_soul_import(cfg: &Config, msg: &BusMessage) {
+    let body = msg.body.as_ref().cloned().unwrap_or_default();
+    let new_name = match body.get("new_name").and_then(|v| v.as_str()) {
+        Some(n) => n.to_string(),
+        None => { log(cfg, "soul.import: missing new_name"); return; }
+    };
+    let new_token = body.get("new_token").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let tar_hex = body.get("tar_gz_hex").and_then(|v| v.as_str()).unwrap_or("");
+
+    log(cfg, &format!("soul.import: receiving identity '{new_name}'"));
+
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".into());
+
+    // Unpack tarball if provided
+    if !tar_hex.is_empty() {
+        match hex::decode(tar_hex) {
+            Ok(tar_bytes) => {
+                let tar_path = format!("/tmp/acc-soul-import-{new_name}.tar.gz");
+                if tokio::fs::write(&tar_path, &tar_bytes).await.is_ok() {
+                    let status = tokio::process::Command::new("tar")
+                        .args(["-xzf", &tar_path, "-C", &home,
+                               "--exclude=.acc/.env",  // we rewrite this below
+                               "--exclude=.ccc/.env"])
+                        .status()
+                        .await;
+                    let _ = tokio::fs::remove_file(&tar_path).await;
+                    match status {
+                        Ok(s) if s.success() => log(cfg, "soul.import: files extracted"),
+                        Ok(s) => log(cfg, &format!("soul.import: tar extract exited {s}")),
+                        Err(e) => log(cfg, &format!("soul.import: tar extract error: {e}")),
+                    }
+                }
+            }
+            Err(e) => log(cfg, &format!("soul.import: hex decode failed: {e}")),
+        }
+    }
+
+    // Rewrite ~/.acc/.env (or ~/.ccc/.env): update AGENT_NAME and token
+    let acc_dir = if std::path::Path::new(&format!("{home}/.acc")).exists() {
+        format!("{home}/.acc")
+    } else {
+        format!("{home}/.ccc")
+    };
+    let env_path = format!("{acc_dir}/.env");
+
+    if let Ok(current_env) = std::fs::read_to_string(&env_path) {
+        let updated: String = current_env.lines().map(|line| {
+            if line.starts_with("AGENT_NAME=") {
+                format!("AGENT_NAME={new_name}")
+            } else if !new_token.is_empty() &&
+                (line.starts_with("ACC_AGENT_TOKEN=") || line.starts_with("CCC_AGENT_TOKEN=")) {
+                let key = line.split('=').next().unwrap_or("ACC_AGENT_TOKEN");
+                format!("{key}={new_token}")
+            } else {
+                line.to_string()
+            }
+        }).collect::<Vec<_>>().join("\n") + "\n";
+        if let Err(e) = std::fs::write(&env_path, &updated) {
+            log(cfg, &format!("soul.import: failed to write .env: {e}"));
+        } else {
+            log(cfg, &format!("soul.import: updated .env (AGENT_NAME={new_name})"));
+        }
+    }
+
+    // Rewrite ~/.acc/agent.json name field
+    let agent_json_path = format!("{acc_dir}/agent.json");
+    if let Ok(raw) = std::fs::read_to_string(&agent_json_path) {
+        if let Ok(mut meta) = serde_json::from_str::<serde_json::Value>(&raw) {
+            meta["name"] = serde_json::Value::String(new_name.clone());
+            if let Ok(updated) = serde_json::to_string_pretty(&meta) {
+                let _ = std::fs::write(&agent_json_path, updated);
+            }
+        }
+    }
+
+    log(cfg, &format!("soul.import: complete — restarting as '{new_name}'"));
+
+    // Restart: exec the current binary with the same args so it re-reads .env
+    let current_exe = std::env::current_exe().unwrap_or_else(|_| std::path::PathBuf::from("acc-agent"));
+    let args: Vec<String> = std::env::args().collect();
+    let _ = std::process::Command::new(&current_exe)
+        .args(&args[1..])
+        .spawn();
+    std::process::exit(0);
+}
+
+/// The source agent received confirmation it has been moved — exit cleanly.
+fn handle_soul_decommission(cfg: &Config, msg: &BusMessage) {
+    let reason = msg.body.as_ref()
+        .and_then(|b| b.get("reason"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("no reason given");
+    log(cfg, &format!("soul.decommission: exiting — {reason}"));
+    std::process::exit(0);
 }
 
 fn hmac_sign(payload: &Value, secret: &str) -> String {
