@@ -10,6 +10,11 @@ pub struct Config {
     pub pair_programming: bool,
     /// Fully-qualified hostname for this agent (self-healing registry updates).
     pub host: String,
+    /// SSH connection details — authoritative source for how to reach this agent.
+    /// Set via AGENT_SSH_USER / AGENT_SSH_HOST / AGENT_SSH_PORT in ~/.acc/.env.
+    pub ssh_user: String,
+    pub ssh_host: String,
+    pub ssh_port: u16,
 }
 
 /// Returns the FQDN for this machine.
@@ -73,6 +78,14 @@ impl Config {
 
         let host = resolve_hostname();
 
+        let ssh_user = std::env::var("AGENT_SSH_USER")
+            .unwrap_or_else(|_| std::env::var("USER").unwrap_or_else(|_| "unknown".into()));
+        let ssh_host = std::env::var("AGENT_SSH_HOST").unwrap_or_else(|_| host.clone());
+        let ssh_port = std::env::var("AGENT_SSH_PORT")
+            .ok()
+            .and_then(|p| p.parse::<u16>().ok())
+            .unwrap_or(22);
+
         if acc_url.is_empty() {
             return Err("ACC_URL not set in environment or ~/.acc/.env".into());
         }
@@ -85,6 +98,9 @@ impl Config {
             agentbus_token,
             pair_programming,
             host,
+            ssh_user,
+            ssh_host,
+            ssh_port,
         })
     }
 

@@ -220,7 +220,7 @@ fi
 
 # ── Post heartbeat to ACC ─────────────────────────────────────────────────
 if [ -n "$ACC_URL" ] && [ -n "$ACC_AGENT_TOKEN" ]; then
-  HEARTBEAT_PAYLOAD="{\"agent\":\"$AGENT_NAME\",\"host\":\"${AGENT_HOST:-$(hostname)}\",\"ts\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"status\":\"online\",\"pullRev\":\"$AFTER\",\"acc_version\":\"$ACC_VERSION\",\"ccc_version\":\"$ACC_VERSION\"}"
+  HEARTBEAT_PAYLOAD="{\"agent\":\"$AGENT_NAME\",\"host\":\"${AGENT_HOST:-$(hostname)}\",\"ts\":\"$(date -u +%Y-%m-%dT%H:%M:%SZ)\",\"status\":\"online\",\"pullRev\":\"$AFTER\",\"acc_version\":\"$ACC_VERSION\",\"ccc_version\":\"$ACC_VERSION\",\"ssh_user\":\"${AGENT_SSH_USER:-${USER:-}}\",\"ssh_host\":\"${AGENT_SSH_HOST:-}\",\"ssh_port\":${AGENT_SSH_PORT:-22}}"
   HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
     -X POST "$ACC_URL/api/heartbeat/$AGENT_NAME" \
     -H "Authorization: Bearer $ACC_AGENT_TOKEN" \

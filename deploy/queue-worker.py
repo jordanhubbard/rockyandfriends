@@ -82,6 +82,9 @@ AGENT_NAME      = os.environ.get("AGENT_NAME", "")
 # ACC_URL preferred; fall back to CCC_URL for pre-migration nodes
 ACC_URL         = (os.environ.get("ACC_URL") or os.environ.get("CCC_URL", "")).rstrip("/")
 ACC_AGENT_TOKEN = os.environ.get("ACC_AGENT_TOKEN") or os.environ.get("CCC_AGENT_TOKEN", "")
+AGENT_SSH_USER  = os.environ.get("AGENT_SSH_USER", os.environ.get("USER", ""))
+AGENT_SSH_HOST  = os.environ.get("AGENT_SSH_HOST", "")
+AGENT_SSH_PORT  = int(os.environ.get("AGENT_SSH_PORT", "22"))
 
 if not AGENT_NAME or not ACC_URL or not ACC_AGENT_TOKEN:
     log.error("AGENT_NAME, ACC_URL, and ACC_AGENT_TOKEN must be set in ~/.acc/.env")
@@ -339,6 +342,9 @@ def post_heartbeat(note: str = "idle") -> None:
         "ts": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "status": "ok",
         "note": note,
+        "ssh_user": AGENT_SSH_USER,
+        "ssh_host": AGENT_SSH_HOST,
+        "ssh_port": AGENT_SSH_PORT,
     })
 
 

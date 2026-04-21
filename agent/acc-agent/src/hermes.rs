@@ -355,6 +355,9 @@ async fn post_heartbeat(cfg: &Config, client: &reqwest::Client, note: &str) {
         "status": "ok",
         "note": &note[..note.len().min(200)],
         "host": cfg.host,
+        "ssh_user": cfg.ssh_user,
+        "ssh_host": cfg.ssh_host,
+        "ssh_port": cfg.ssh_port,
     });
     let _ = client
         .post(format!("{}/api/heartbeat/{}", cfg.acc_url, cfg.agent_name))
@@ -459,6 +462,9 @@ mod tests {
             agentbus_token: String::new(),
             pair_programming: false,
             host: String::new(),
+            ssh_user: "testuser".into(),
+            ssh_host: "127.0.0.1".into(),
+            ssh_port: 22,
         }
     }
 

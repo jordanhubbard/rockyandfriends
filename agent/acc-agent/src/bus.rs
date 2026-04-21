@@ -493,6 +493,9 @@ mod tests {
             agentbus_token: String::new(),
             pair_programming: false,
             host: String::new(),
+            ssh_user: "testuser".into(),
+            ssh_host: "127.0.0.1".into(),
+            ssh_port: 22,
         }
     }
 

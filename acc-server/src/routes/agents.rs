@@ -176,6 +176,7 @@ async fn agent_heartbeat(
         "unified_vram_used_mb", "unified_vram_free_mb", "unified_vram_total_mb",
         "ram", "ram_used_mb", "ram_avail_mb", "ram_total_mb",
         "ollama_status", "ollama_models", "ccc_version",
+        "ssh_user", "ssh_host", "ssh_port",
     ];
 
     if let Some(agent_obj) = agents_map.get_mut(&agent_name) {
@@ -408,6 +409,7 @@ async fn post_heartbeat(
         "unified_vram_used_mb", "unified_vram_free_mb", "unified_vram_total_mb",
         "ram", "ram_used_mb", "ram_avail_mb", "ram_total_mb",
         "ollama_status", "ollama_models", "ccc_version",
+        "ssh_user", "ssh_host", "ssh_port",
     ];
 
     let mut agents = state.agents.write().await;
