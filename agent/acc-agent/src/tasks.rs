@@ -240,6 +240,9 @@ async fn execute_task(cfg: &Config, client: &reqwest::Client, task: &Value, onli
         Err(e) => {
             log(cfg, &format!("task {task_id} failed: {e}"));
             unclaim_task(cfg, client, task_id).await;
+            // Back off before the outer loop can reclaim — prevents rapid retry hammering
+            // on rate limits or transient API errors.
+            sleep(POLL_IDLE).await;
         }
     }
 }

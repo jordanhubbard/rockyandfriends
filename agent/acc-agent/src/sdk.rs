@@ -63,6 +63,19 @@ pub async fn run_agent(
             .await
             .map_err(|e| format!("API request failed: {e}"))?;
 
+        if resp.status() == 429 {
+            let retry_after = resp
+                .headers()
+                .get("retry-after")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|s| s.parse::<u64>().ok())
+                .unwrap_or(60);
+            let wait = retry_after.min(120);
+            eprintln!("[sdk] 429 rate-limited — retrying in {wait}s");
+            tokio::time::sleep(Duration::from_secs(wait)).await;
+            continue;
+        }
+
         if !resp.status().is_success() {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
