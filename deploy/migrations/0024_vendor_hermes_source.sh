@@ -4,6 +4,7 @@
 #   1. Symlinks ~/.local/bin/hermes → ACC/hermes/hermes (vendored source)
 #   2. Installs ACC-specific plugins into ~/.hermes/plugins/
 #   3. Removes any stale reference to the old separate hermes-agent checkout
+# Restarts: acc-hermes-worker
 set -euo pipefail
 
 ACC_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"

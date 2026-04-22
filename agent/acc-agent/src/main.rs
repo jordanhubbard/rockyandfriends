@@ -10,7 +10,9 @@ mod migrate;
 mod peers;
 mod proxy;
 mod queue;
+mod services;
 mod tasks;
+mod upgrade;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -30,6 +32,7 @@ fn main() {
         "hermes" => tokio_run(hermes::run(rest)),
         "proxy" => tokio_run(proxy::run(rest)),
         "tasks" => tokio_run(tasks::run(rest)),
+        "upgrade" => tokio_run(upgrade::run_cli(rest)),
         cmd => {
             eprintln!("Unknown command: {cmd}");
             std::process::exit(1);
@@ -89,4 +92,8 @@ fn print_help() {
     eprintln!("PROXY:");
     eprintln!("  --port <n>    listen port (default: 9099)");
     eprintln!("  --target <u>  upstream URL (default: NVIDIA_API_BASE env var)");
+    eprintln!();
+    eprintln!("UPGRADE:");
+    eprintln!("  (no flags) — run pending migrations, restart services, post heartbeat");
+    eprintln!("  --dry-run    show what would run without making changes");
 }

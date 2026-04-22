@@ -221,31 +221,67 @@ async fn handle_update(cfg: &Config, msg: &BusMessage) {
     );
 
     let workspace = cfg.acc_dir.join("workspace");
-    let pull_script = workspace.join("deploy/agent-pull.sh");
 
-    if pull_script.exists() {
-        let status = tokio::process::Command::new("bash")
-            .arg(&pull_script)
+    // ── Inline git pull (no bash dependency for the core pull logic) ──────────
+    if workspace.join(".git").exists() {
+        let ws = workspace.to_str().unwrap_or(".");
+
+        // 1. git fetch origin --quiet
+        let fetch = tokio::process::Command::new("git")
+            .args(["-C", ws, "fetch", "origin", "--quiet"])
             .status()
             .await;
-        match status {
-            Ok(s) if s.success() => log(cfg, "agent-pull.sh complete"),
-            Ok(s) => log(cfg, &format!("agent-pull.sh exited {s}")),
-            Err(e) => log(cfg, &format!("agent-pull.sh error: {e}")),
-        }
-    } else {
-        let git_dir = workspace.join(".git");
-        if git_dir.exists() {
-            let status = tokio::process::Command::new("git")
-                .args(["-C", workspace.to_str().unwrap_or("."), "pull", "--ff-only"])
-                .status()
-                .await;
-            match status {
-                Ok(s) if s.success() => log(cfg, "git pull complete"),
-                _ => log(cfg, "WARNING: git pull failed"),
+        match &fetch {
+            Ok(s) if s.success() => {}
+            Ok(s) => {
+                log(cfg, &format!("WARNING: git fetch failed (exit {s}) — aborting update"));
+                touch_work_signal(cfg);
+                return;
+            }
+            Err(e) => {
+                log(cfg, &format!("WARNING: git fetch error: {e} — aborting update"));
+                touch_work_signal(cfg);
+                return;
             }
         }
+
+        // 2. Determine current branch
+        let branch_out = tokio::process::Command::new("git")
+            .args(["-C", ws, "rev-parse", "--abbrev-ref", "HEAD"])
+            .output()
+            .await;
+        let current_branch = match branch_out {
+            Ok(o) if o.status.success() => {
+                String::from_utf8_lossy(&o.stdout).trim().to_string()
+            }
+            _ => "main".to_string(),
+        };
+
+        // 3. git merge --ff-only origin/<branch> --quiet
+        let merge = tokio::process::Command::new("git")
+            .args(["-C", ws, "merge", "--ff-only", &format!("origin/{current_branch}"), "--quiet"])
+            .status()
+            .await;
+        match &merge {
+            Ok(s) if s.success() => log(cfg, &format!("git pull complete (branch={current_branch})")),
+            Ok(s) => {
+                log(cfg, &format!("WARNING: git merge --ff-only failed (exit {s}) — local changes? Skipping upgrade."));
+                touch_work_signal(cfg);
+                return;
+            }
+            Err(e) => {
+                log(cfg, &format!("WARNING: git merge error: {e} — skipping upgrade"));
+                touch_work_signal(cfg);
+                return;
+            }
+        }
+    } else {
+        log(cfg, "WARNING: workspace .git not found — skipping pull");
     }
+
+    // ── Run upgrade orchestrator (migrations → restarts → heartbeat) ──────────
+    crate::upgrade::run_upgrade(cfg, crate::upgrade::UpgradeOptions { dry_run: false }).await;
+
     touch_work_signal(cfg);
 }
 

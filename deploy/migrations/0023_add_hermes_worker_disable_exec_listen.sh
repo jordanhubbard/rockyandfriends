@@ -4,6 +4,7 @@
 # 1. Disables acc-exec-listen (duplicate of acc-bus-listener — caused double execution)
 # 2. Installs acc-hermes-worker on nodes where `hermes` is available
 # 3. Installs default commands.json (structured exec registry, replaces raw shell exec)
+# Restarts: acc-hermes-worker
 set -euo pipefail
 
 ACC_DIR="${HOME}/.acc"
