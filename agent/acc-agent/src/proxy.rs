@@ -117,7 +117,13 @@ async fn proxy_handler(State(state): State<ProxyState>, req: Request) -> Respons
         .path_and_query()
         .map(|p| p.as_str())
         .unwrap_or("/");
-    let url = format!("{}{}", state.upstream, path_and_query);
+    // Avoid double /v1 when NVIDIA_API_BASE already includes the version prefix
+    let effective_path = if state.upstream.ends_with("/v1") && path_and_query.starts_with("/v1/") {
+        &path_and_query[3..]
+    } else {
+        path_and_query
+    };
+    let url = format!("{}{}", state.upstream, effective_path);
 
     let method: reqwest::Method = match parts.method.as_str().parse() {
         Ok(m) => m,
