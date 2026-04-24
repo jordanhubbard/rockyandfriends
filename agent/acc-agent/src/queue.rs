@@ -16,6 +16,8 @@ use std::time::Duration;
 use tokio::process::Command;
 use tokio::time::sleep;
 
+use acc_client::Client;
+use acc_model::HeartbeatRequest;
 use crate::config::Config;
 use crate::peers;
 
@@ -52,7 +54,7 @@ pub async fn run(args: &[String]) {
         cfg.agent_name, cfg.acc_url, caps
     ));
 
-    let client = build_client();
+    let client = build_client(&cfg);
     post_heartbeat(&cfg, &client, "queue-worker starting").await;
 
     let mut poll_interval = POLL_INTERVAL_IDLE;
@@ -78,13 +80,7 @@ pub async fn run(args: &[String]) {
             }
         };
 
-        // Temporary bridge while queue.rs is still on reqwest: the peers
-        // module is already on acc-client. Build a per-cycle client just
-        // for this call. Removed once queue.rs finishes its port.
-        let online_peers = match acc_client::Client::new(&cfg.acc_url, &cfg.acc_token) {
-            Ok(c) => peers::list_peers(&cfg, &c).await,
-            Err(_) => Vec::new(),
-        };
+        let online_peers = peers::list_peers(&cfg, &client).await;
         let item = select_item(&items, &cfg.agent_name, &caps, &online_peers);
         if let Some(item) = item {
             let item_id = item["id"].as_str().unwrap_or("").to_string();
@@ -119,7 +115,7 @@ pub async fn run(args: &[String]) {
     }
 }
 
-async fn execute_item(cfg: &Config, client: &reqwest::Client, item: &serde_json::Value) {
+async fn execute_item(cfg: &Config, client: &Client, item: &serde_json::Value) {
     let item_id = item["id"].as_str().unwrap_or("").to_string();
 
     // Init workspace
@@ -446,7 +442,7 @@ async fn run_claude(
             _ = async {
                 loop {
                     interval.tick().await;
-                    let client = build_client();
+                    let client = build_client(&ka_cfg);
                     post_keepalive(&ka_cfg, &client, &ka_item, "claude still working").await;
                 }
             } => {}
@@ -520,18 +516,12 @@ async fn run_hermes_driver(
 
 // ── Queue API ──────────────────────────────────────────────────────────────────
 
-async fn fetch_queue(cfg: &Config, client: &reqwest::Client) -> Result<Vec<serde_json::Value>, String> {
-    let resp = client
-        .get(format!("{}/api/queue", cfg.acc_url))
-        .header("Authorization", format!("Bearer {}", cfg.acc_token))
-        .timeout(Duration::from_secs(15))
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-    let data: serde_json::Value = resp.json().await.map_err(|e| e.to_string())?;
-    Ok(data.as_array().cloned()
-        .or_else(|| data["items"].as_array().cloned())
-        .unwrap_or_default())
+async fn fetch_queue(_cfg: &Config, client: &Client) -> Result<Vec<serde_json::Value>, String> {
+    let items = client.queue().list().await.map_err(|e| e.to_string())?;
+    Ok(items
+        .into_iter()
+        .map(|i| serde_json::to_value(i).unwrap_or(serde_json::Value::Null))
+        .collect())
 }
 
 fn select_item<'a>(items: &'a [serde_json::Value], agent_name: &str, caps: &[String], online_peers: &[String]) -> Option<&'a serde_json::Value> {
@@ -583,79 +573,51 @@ fn select_item<'a>(items: &'a [serde_json::Value], agent_name: &str, caps: &[Str
     candidates.into_iter().next()
 }
 
-async fn claim_item(cfg: &Config, client: &reqwest::Client, item_id: &str) -> bool {
-    let body = serde_json::json!({"agent": cfg.agent_name, "note": "claiming"});
-    let resp = client
-        .post(format!("{}/api/item/{item_id}/claim", cfg.acc_url))
-        .header("Authorization", format!("Bearer {}", cfg.acc_token))
-        .json(&body)
-        .timeout(Duration::from_secs(15))
-        .send()
-        .await;
-    resp.map(|r| r.status().is_success()).unwrap_or(false)
+async fn claim_item(cfg: &Config, client: &Client, item_id: &str) -> bool {
+    client
+        .items()
+        .claim(item_id, &cfg.agent_name, Some("claiming"))
+        .await
+        .is_ok()
 }
 
-async fn post_complete(cfg: &Config, client: &reqwest::Client, item_id: &str, result: &str) {
+async fn post_complete(cfg: &Config, client: &Client, item_id: &str, result: &str) {
     let truncated = &result[..result.len().min(4000)];
-    let body = serde_json::json!({"agent": cfg.agent_name, "result": truncated, "resolution": truncated});
     let _ = client
-        .post(format!("{}/api/item/{item_id}/complete", cfg.acc_url))
-        .header("Authorization", format!("Bearer {}", cfg.acc_token))
-        .json(&body)
-        .timeout(Duration::from_secs(15))
-        .send()
+        .items()
+        .complete(item_id, &cfg.agent_name, Some(truncated), Some(truncated))
         .await;
 }
 
-async fn post_fail(cfg: &Config, client: &reqwest::Client, item_id: &str, reason: &str) {
-    let body = serde_json::json!({"agent": cfg.agent_name, "reason": &reason[..reason.len().min(2000)]});
+async fn post_fail(cfg: &Config, client: &Client, item_id: &str, reason: &str) {
+    let truncated = &reason[..reason.len().min(2000)];
+    let _ = client.items().fail(item_id, &cfg.agent_name, truncated).await;
+}
+
+async fn post_comment(cfg: &Config, client: &Client, item_id: &str, comment: &str) {
     let _ = client
-        .post(format!("{}/api/item/{item_id}/fail", cfg.acc_url))
-        .header("Authorization", format!("Bearer {}", cfg.acc_token))
-        .json(&body)
-        .timeout(Duration::from_secs(15))
-        .send()
+        .items()
+        .comment(item_id, &cfg.agent_name, comment)
         .await;
 }
 
-async fn post_comment(cfg: &Config, client: &reqwest::Client, item_id: &str, comment: &str) {
-    let body = serde_json::json!({"agent": cfg.agent_name, "comment": comment});
-    let _ = client
-        .post(format!("{}/api/item/{item_id}/comment", cfg.acc_url))
-        .header("Authorization", format!("Bearer {}", cfg.acc_token))
-        .json(&body)
-        .timeout(Duration::from_secs(10))
-        .send()
-        .await;
+async fn post_heartbeat(cfg: &Config, client: &Client, note: &str) {
+    let req = HeartbeatRequest {
+        ts: Some(chrono::Utc::now()),
+        status: Some("ok".into()),
+        note: Some(note.into()),
+        host: Some(cfg.host.clone()),
+        ssh_user: Some(cfg.ssh_user.clone()),
+        ssh_host: Some(cfg.ssh_host.clone()),
+        ssh_port: Some(cfg.ssh_port as u64),
+    };
+    let _ = client.items().heartbeat(&cfg.agent_name, &req).await;
 }
 
-async fn post_heartbeat(cfg: &Config, client: &reqwest::Client, note: &str) {
-    let body = serde_json::json!({
-        "ts": chrono::Utc::now().to_rfc3339(),
-        "status": "ok",
-        "note": note,
-        "host": cfg.host,
-        "ssh_user": cfg.ssh_user,
-        "ssh_host": cfg.ssh_host,
-        "ssh_port": cfg.ssh_port,
-    });
+async fn post_keepalive(cfg: &Config, client: &Client, item_id: &str, note: &str) {
     let _ = client
-        .post(format!("{}/api/heartbeat/{}", cfg.acc_url, cfg.agent_name))
-        .header("Authorization", format!("Bearer {}", cfg.acc_token))
-        .json(&body)
-        .timeout(Duration::from_secs(10))
-        .send()
-        .await;
-}
-
-async fn post_keepalive(cfg: &Config, client: &reqwest::Client, item_id: &str, note: &str) {
-    let body = serde_json::json!({"agent": cfg.agent_name, "note": note});
-    let _ = client
-        .post(format!("{}/api/item/{item_id}/keepalive", cfg.acc_url))
-        .header("Authorization", format!("Bearer {}", cfg.acc_token))
-        .json(&body)
-        .timeout(Duration::from_secs(10))
-        .send()
+        .items()
+        .keepalive(item_id, &cfg.agent_name, Some(note))
         .await;
 }
 
@@ -777,11 +739,8 @@ fn log(cfg: &Config, msg: &str) {
     }
 }
 
-fn build_client() -> reqwest::Client {
-    reqwest::Client::builder()
-        .timeout(Duration::from_secs(30))
-        .build()
-        .expect("failed to build HTTP client")
+fn build_client(cfg: &Config) -> Client {
+    Client::new(&cfg.acc_url, &cfg.acc_token).expect("failed to build HTTP client")
 }
 
 #[cfg(test)]
@@ -930,7 +889,8 @@ mod tests {
             json!({"id": "wq-2", "title": "Item 2", "status": "pending",
                    "assignee": "all", "priority": "urgent", "created": "2026-01-02T00:00:00Z"}),
         ]).await;
-        let client = build_client();
+        let cfg_ = mock_cfg(&mock.url);
+        let client = build_client(&cfg_);
         let items = fetch_queue(&mock_cfg(&mock.url), &client).await.unwrap();
         assert_eq!(items.len(), 2);
         assert!(items.iter().any(|i| i["id"] == "wq-1"));
@@ -939,7 +899,8 @@ mod tests {
     #[tokio::test]
     async fn test_fetch_queue_empty_hub() {
         let mock = crate::hub_mock::HubMock::new().await;
-        let client = build_client();
+        let cfg_ = mock_cfg(&mock.url);
+        let client = build_client(&cfg_);
         let items = fetch_queue(&mock_cfg(&mock.url), &client).await.unwrap();
         assert!(items.is_empty());
     }
@@ -947,9 +908,7 @@ mod tests {
     #[tokio::test]
     async fn test_fetch_queue_hub_down_returns_err() {
         let cfg = mock_cfg("http://127.0.0.1:1"); // nothing listening on port 1
-        let client = reqwest::Client::builder()
-            .timeout(Duration::from_secs(1))
-            .build().unwrap();
+        let client = build_client(&cfg);
         let result = fetch_queue(&cfg, &client).await;
         assert!(result.is_err(), "unreachable hub must return Err");
     }
@@ -957,7 +916,8 @@ mod tests {
     #[tokio::test]
     async fn test_claim_item_success_returns_true() {
         let mock = crate::hub_mock::HubMock::new().await; // default 200
-        let client = build_client();
+        let cfg_ = mock_cfg(&mock.url);
+        let client = build_client(&cfg_);
         assert!(claim_item(&mock_cfg(&mock.url), &client, "wq-111").await);
     }
 
@@ -967,7 +927,8 @@ mod tests {
         let mock = crate::hub_mock::HubMock::with_state(
             HubState { item_claim_status: 409, ..Default::default() }
         ).await;
-        let client = build_client();
+        let cfg_ = mock_cfg(&mock.url);
+        let client = build_client(&cfg_);
         assert!(!claim_item(&mock_cfg(&mock.url), &client, "wq-222").await);
     }
 
@@ -975,21 +936,24 @@ mod tests {
     async fn test_post_heartbeat_does_not_panic() {
         // post_heartbeat is fire-and-forget; verify it completes without panic.
         let mock = crate::hub_mock::HubMock::new().await;
-        let client = build_client();
+        let cfg_ = mock_cfg(&mock.url);
+        let client = build_client(&cfg_);
         post_heartbeat(&mock_cfg(&mock.url), &client, "test note").await;
     }
 
     #[tokio::test]
     async fn test_post_complete_does_not_panic() {
         let mock = crate::hub_mock::HubMock::new().await;
-        let client = build_client();
+        let cfg_ = mock_cfg(&mock.url);
+        let client = build_client(&cfg_);
         post_complete(&mock_cfg(&mock.url), &client, "wq-333", "done").await;
     }
 
     #[tokio::test]
     async fn test_post_fail_does_not_panic() {
         let mock = crate::hub_mock::HubMock::new().await;
-        let client = build_client();
+        let cfg_ = mock_cfg(&mock.url);
+        let client = build_client(&cfg_);
         post_fail(&mock_cfg(&mock.url), &client, "wq-444", "timeout").await;
     }
 
@@ -1002,7 +966,8 @@ mod tests {
             json!({"id": "urgent", "status": "pending", "assignee": "all",
                    "priority": "urgent", "created": "2026-01-02T00:00:00Z"}),
         ]).await;
-        let client = build_client();
+        let cfg_ = mock_cfg(&mock.url);
+        let client = build_client(&cfg_);
         let items = fetch_queue(&mock_cfg(&mock.url), &client).await.unwrap();
         let caps = vec![];
         let selected = select_item(&items, "boris", &caps, &[]).unwrap();
