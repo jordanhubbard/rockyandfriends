@@ -1,0 +1,18 @@
+[package]
+name = "acc"
+version = "0.1.0"
+edition = "2021"
+description = "ACC fleet CLI — tasks, projects, agents, bus"
+
+[[bin]]
+name = "acc"
+path = "src/main.rs"
+
+[dependencies]
+clap         = { version = "4",    features = ["derive", "env"] }
+reqwest      = { version = "0.12", features = ["json", "stream"] }
+tokio        = { version = "1",    features = ["full"] }
+tokio-util   = { version = "0.7",  features = ["io"] }
+futures-util = "0.3"
+serde_json   = "1"
+anyhow       = "1"

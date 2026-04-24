@@ -8,7 +8,7 @@
 #   make sync          # git push + broadcast rcc.update to all agents
 
 .PHONY: help deps deps-check env sync \
-        init register build test release clean \
+        init register build build-cli install-cli test release clean \
         docker-build docker-up docker-down docker-logs
 
 help: ## Show this help
@@ -122,9 +122,18 @@ register: ## Register this agent with the CCC hub
 
 # ── Build ──────────────────────────────────────────────────────────────────
 
-build: ## Build all Rust binaries (acc-agent, acc-server)
+build: ## Build all Rust binaries (acc-agent, acc-server, acc CLI)
 	@cargo build --release --manifest-path agent/Cargo.toml
 	@cargo build --release --manifest-path acc-server/Cargo.toml
+	@$(MAKE) build-cli
+
+build-cli: ## Build the acc CLI binary
+	@cargo build --release --manifest-path acc-cli/Cargo.toml
+
+install-cli: build-cli ## Build and install acc CLI to $$HOME/.local/bin/acc
+	@mkdir -p "$$HOME/.local/bin"
+	@cp acc-cli/target/release/acc "$$HOME/.local/bin/acc"
+	@echo "Installed acc to $$HOME/.local/bin/acc"
 
 # ── Testing ────────────────────────────────────────────────────────────────
 
@@ -162,4 +171,5 @@ docker-logs: ## Tail logs from all CCC containers
 clean: ## Remove build artifacts
 	@cargo clean --manifest-path agent/Cargo.toml
 	@cargo clean --manifest-path acc-server/Cargo.toml
+	@cargo clean --manifest-path acc-cli/Cargo.toml
 	@echo "Cleaned build artifacts."
