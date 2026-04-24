@@ -5,6 +5,7 @@ members = [
     "acc-server",
     "agent/acc-agent",
     "acc-model",
+    "acc-client",
 ]
 
 # Shared versions for deps used by 2+ members. Members opt in via
