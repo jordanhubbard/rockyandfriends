@@ -5,8 +5,9 @@
 //! Multiple agents run this concurrently; the server's SQL atomic claim prevents double-work.
 
 use std::path::PathBuf;
-use std::sync::Arc;
-use std::time::Duration;
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::{Duration, Instant};
+use std::collections::HashMap;
 use tokio::process::Command;
 use tokio::sync::Notify;
 use tokio::time::sleep;
@@ -18,6 +19,48 @@ use crate::peers;
 
 const POLL_IDLE: Duration = Duration::from_secs(30);
 const POLL_BUSY: Duration = Duration::from_secs(5);
+
+/// Hard cap on a single review's agentic loop. Without this, a stuck
+/// model call can hold a claim indefinitely (observed: 4h+ claims that
+/// never complete, blocking the whole fleet via `count_active_tasks`).
+const REVIEW_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+
+/// Hard cap on a work task's agentic loop. Longer than reviews because
+/// real implementation can legitimately take an hour+, but must be
+/// bounded.
+const WORK_TIMEOUT: Duration = Duration::from_secs(2 * 60 * 60);
+
+/// After this agent completes or unclaims a task, skip re-claiming it
+/// for this long. Breaks the re-claim loop where an agent instantly
+/// grabs back a task it just released (observed 2026-04-24: unclaim
+/// reversed by same-agent re-claim within 15s on every attempt).
+const RECLAIM_COOLDOWN: Duration = Duration::from_secs(15 * 60);
+
+/// Per-process cache of `(task_id, released_at)`. Keeps the last
+/// `RECLAIM_COOLDOWN` worth of finished tasks so the poll loop can
+/// skip them.
+fn recent_done() -> &'static Mutex<HashMap<String, Instant>> {
+    static CELL: OnceLock<Mutex<HashMap<String, Instant>>> = OnceLock::new();
+    CELL.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn mark_done(task_id: &str) {
+    if let Ok(mut m) = recent_done().lock() {
+        // GC entries older than the cooldown window
+        let now = Instant::now();
+        m.retain(|_, t| now.duration_since(*t) < RECLAIM_COOLDOWN);
+        m.insert(task_id.to_string(), now);
+    }
+}
+
+fn in_cooldown(task_id: &str) -> bool {
+    if let Ok(m) = recent_done().lock() {
+        if let Some(t) = m.get(task_id) {
+            return t.elapsed() < RECLAIM_COOLDOWN;
+        }
+    }
+    false
+}
 
 pub async fn run(args: &[String]) {
     let max_concurrent: usize = args.iter()
@@ -79,6 +122,7 @@ pub async fn run(args: &[String]) {
                     for task in &open_tasks {
                         let task_id = task["id"].as_str().unwrap_or("").to_string();
                         if task_id.is_empty() { continue; }
+                        if in_cooldown(&task_id) { continue; }
 
                         let preferred = task["metadata"]["preferred_executor"].as_str().unwrap_or("");
                         if !preferred.is_empty()
@@ -124,6 +168,7 @@ pub async fn run(args: &[String]) {
                 for task in &review_tasks {
                     let task_id = task["id"].as_str().unwrap_or("").to_string();
                     if task_id.is_empty() { continue; }
+                    if in_cooldown(&task_id) { continue; }
 
                     let preferred = task["metadata"]["preferred_executor"].as_str().unwrap_or("");
                     if !preferred.is_empty()
@@ -158,6 +203,7 @@ pub async fn run(args: &[String]) {
                 for task in &phase_tasks {
                     let task_id = task["id"].as_str().unwrap_or("").to_string();
                     if task_id.is_empty() { continue; }
+                    if in_cooldown(&task_id) { continue; }
 
                     match claim_task(&cfg, &client, &task_id).await {
                         Ok(claimed_task) => {
@@ -287,7 +333,13 @@ async fn execute_task(cfg: &Config, client: &Client, task: &Value, online_peers:
         "You are an autonomous coding agent. Your task is:\n\nTitle: {title}\n\nDescription:\n{description}\n\nYou are in a git workspace with existing code. Make the requested changes. When done, summarize what you did."
     );
 
-    let result = crate::sdk::run_agent(&prompt, &workspace).await;
+    let result = match tokio::time::timeout(
+        WORK_TIMEOUT,
+        crate::sdk::run_agent(&prompt, &workspace),
+    ).await {
+        Ok(r) => r,
+        Err(_) => Err(format!("timeout after {}m", WORK_TIMEOUT.as_secs() / 60)),
+    };
 
     match result {
         Ok(output) => {
@@ -303,6 +355,7 @@ async fn execute_task(cfg: &Config, client: &Client, task: &Value, online_peers:
             unclaim_task(cfg, client, task_id).await;
         }
     }
+    mark_done(task_id);
 }
 
 
@@ -405,7 +458,13 @@ async fn execute_review_task(cfg: &Config, client: &Client, task: &Value) {
         summary = &work_summary[..work_summary.len().min(2000)],
     );
 
-    let review_output = crate::sdk::run_agent(&review_prompt, &workspace).await;
+    let review_output = match tokio::time::timeout(
+        REVIEW_TIMEOUT,
+        crate::sdk::run_agent(&review_prompt, &workspace),
+    ).await {
+        Ok(r) => r,
+        Err(_) => Err(format!("timeout after {}m", REVIEW_TIMEOUT.as_secs() / 60)),
+    };
 
     let (verdict, reason, gaps) = match review_output {
         Ok(out) => parse_review_output(&out),
@@ -426,6 +485,7 @@ async fn execute_review_task(cfg: &Config, client: &Client, task: &Value) {
     }
 
     complete_task(cfg, client, task_id, &format!("verdict: {verdict}, reason: {reason}")).await;
+    mark_done(task_id);
     log(cfg, &format!("review {task_id} done: {verdict} ({} gaps filed)", gaps.len()));
 }
 
@@ -523,6 +583,7 @@ async fn execute_phase_commit_task(cfg: &Config, client: &Client, task: &Value) 
             let _ = client.tasks().create(&req).await;
         }
     }
+    mark_done(task_id);
 }
 
 async fn run_git_phase_commit(workspace: &PathBuf, branch: &str, commit_msg: &str) -> Result<String, String> {
