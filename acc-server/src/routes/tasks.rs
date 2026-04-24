@@ -297,14 +297,38 @@ async fn claim_task(
     let now_str = now.to_rfc3339();
     let expires_str = (now + chrono::Duration::hours(4)).to_rfc3339();
 
-    // Check agent's current load
-    let active: i64 = db.query_row(
-        "SELECT COUNT(*) FROM fleet_tasks WHERE claimed_by=?1 AND status IN ('claimed','in_progress')",
+    // Determine what type of task is being claimed (for per-type capacity logic)
+    let task_type: String = db.query_row(
+        "SELECT task_type FROM fleet_tasks WHERE id=?1",
+        params![id],
+        |r| r.get(0),
+    ).unwrap_or_else(|_| "work".to_string());
+
+    // Check agent's current load. Review tasks get 1 extra slot beyond the work cap
+    // so that agents at work capacity can still drain the review queue.
+    let active_work: i64 = db.query_row(
+        "SELECT COUNT(*) FROM fleet_tasks WHERE claimed_by=?1 AND status IN ('claimed','in_progress') \
+         AND task_type NOT IN ('review','phase_commit')",
+        params![agent],
+        |r| r.get(0),
+    ).unwrap_or(0);
+    let active_review: i64 = db.query_row(
+        "SELECT COUNT(*) FROM fleet_tasks WHERE claimed_by=?1 AND status IN ('claimed','in_progress') \
+         AND task_type = 'review'",
         params![agent],
         |r| r.get(0),
     ).unwrap_or(0);
 
-    if active >= max_tasks {
+    let at_capacity = if task_type == "review" {
+        // Reviews: blocked only when the review slot is already taken (1 concurrent review)
+        active_review >= 1
+    } else {
+        // Work/phase_commit/discovery: blocked at max_tasks
+        active_work >= max_tasks
+    };
+
+    if at_capacity {
+        let active = active_work + active_review;
         return (StatusCode::TOO_MANY_REQUESTS, Json(json!({
             "error": "agent_at_capacity",
             "active": active,
