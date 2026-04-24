@@ -126,6 +126,17 @@ build: ## Build all Rust binaries (acc-agent, acc-server, acc CLI)
 	@cargo build --release -p acc-agent -p acc-server
 	@bash scripts/install-acc.sh --build-only
 
+# ── Restart ────────────────────────────────────────────────────────────────
+
+restart-hub: ## Rebuild and restart acc-server on THIS node (hub only, needs sudo)
+	@bash deploy/restart-hub.sh
+
+restart-agent: ## Rebuild and restart acc-agent on THIS node (supervisor relaunches)
+	@bash deploy/restart-agent.sh
+
+restart-fleet: ## Restart acc-agent on every online agent in the fleet (from workstation)
+	@bash deploy/restart-fleet.sh
+
 build-cli: ## Build the acc CLI binary (installs Rust via rustup if needed)
 	@bash scripts/install-acc.sh --build-only
 
