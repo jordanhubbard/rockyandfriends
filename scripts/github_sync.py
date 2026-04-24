@@ -122,9 +122,13 @@ def gh_issue_close(repo: str, number: int) -> bool:
 
 # ── beads helpers ─────────────────────────────────────────────────────────
 
+def _bd_bin() -> str:
+    import shutil
+    return shutil.which("bd") or os.path.expanduser("~/.local/bin/bd")
+
 def bd(*args) -> tuple[int, str]:
     """Run a bd command, return (returncode, stdout)."""
-    cmd = ["bd"] + list(args)
+    cmd = [_bd_bin()] + list(args)
     if DRY_RUN and args and args[0] in ("create", "update", "close"):
         print(f"  [dry-run] bd {' '.join(args)}")
         return 0, ""
