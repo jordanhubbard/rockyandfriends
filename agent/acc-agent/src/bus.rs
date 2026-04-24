@@ -10,13 +10,13 @@ use std::time::Duration;
 
 use futures_util::StreamExt;
 use hmac::{Hmac, Mac};
-use reqwest::Client;
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{json, Value};
 use sha2::Sha256;
 use subtle::ConstantTimeEq;
 use tokio::time::sleep;
 
+use acc_client::Client;
 use crate::config::Config;
 use crate::exec_registry;
 
@@ -52,20 +52,27 @@ pub async fn run(args: &[String]) {
 
     if test_only {
         println!("[bus] testing connection to {}/bus/stream ...", cfg.acc_url);
-        let client = build_client();
-        match client
-            .get(format!("{}/bus/stream", cfg.acc_url))
-            .header("Authorization", format!("Bearer {}", cfg.acc_token))
-            .timeout(Duration::from_secs(5))
-            .send()
-            .await
-        {
-            Ok(r) => {
-                println!("[bus] connected, status {}", r.status());
+        let client = build_client(&cfg);
+        // Open the stream and pull one frame (the server sends a "connected"
+        // control message immediately on connect). If we get anything, we
+        // can reach the bus.
+        let stream = client.bus().stream();
+        tokio::pin!(stream);
+        match tokio::time::timeout(Duration::from_secs(5), stream.next()).await {
+            Ok(Some(Ok(_))) => {
+                println!("[bus] connected");
                 std::process::exit(0);
             }
-            Err(e) => {
-                eprintln!("[bus] connection failed: {e}");
+            Ok(Some(Err(e))) => {
+                eprintln!("[bus] stream error: {e}");
+                std::process::exit(1);
+            }
+            Ok(None) => {
+                eprintln!("[bus] stream closed immediately");
+                std::process::exit(1);
+            }
+            Err(_) => {
+                eprintln!("[bus] connect timed out");
                 std::process::exit(1);
             }
         }
@@ -78,7 +85,7 @@ pub async fn run(args: &[String]) {
         cfg.agent_name, cfg.acc_url
     ));
 
-    let client = build_client();
+    let client = build_client(&cfg);
     let mut retry_delay = Duration::from_secs(5);
 
     loop {
@@ -90,56 +97,33 @@ pub async fn run(args: &[String]) {
 }
 
 async fn listen_once(cfg: &Config, client: &Client) {
-    let url = format!("{}/bus/stream", cfg.acc_url);
-    let resp = match client
-        .get(&url)
-        .header("Authorization", format!("Bearer {}", cfg.acc_token))
-        .header("Accept", "text/event-stream")
-        .timeout(Duration::from_secs(3600))
-        .send()
-        .await
-    {
-        Ok(r) => r,
-        Err(e) => {
-            log(cfg, &format!("connect error: {e}"));
-            return;
-        }
-    };
-
-    let mut stream = resp.bytes_stream();
-    let mut buffer = String::new();
-
-    while let Some(chunk) = stream.next().await {
-        let chunk = match chunk {
-            Ok(c) => c,
+    let stream = client.bus().stream();
+    tokio::pin!(stream);
+    while let Some(msg) = stream.next().await {
+        let msg = match msg {
+            Ok(m) => m,
             Err(e) => {
                 log(cfg, &format!("stream read error: {e}"));
                 break;
             }
         };
-        buffer.push_str(&String::from_utf8_lossy(&chunk));
-
-        while let Some(pos) = buffer.find("\n\n") {
-            let event = buffer[..pos].to_string();
-            buffer = buffer[pos + 2..].to_string();
-            dispatch(cfg, client, &event).await;
-        }
+        // Round-trip through JSON so the existing BusMessage-based
+        // dispatcher keeps working without churn. The polymorphic
+        // body / extra fields survive unchanged.
+        let raw = match serde_json::to_string(&msg) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        dispatch(cfg, client, &raw).await;
     }
 }
 
-async fn dispatch(cfg: &Config, client: &Client, event: &str) {
-    let data = event
-        .lines()
-        .filter_map(|l| l.strip_prefix("data:"))
-        .map(|s| s.trim())
-        .collect::<Vec<_>>()
-        .join("");
-
-    if data.is_empty() {
+async fn dispatch(cfg: &Config, client: &Client, raw_json: &str) {
+    if raw_json.is_empty() {
         return;
     }
 
-    let msg: BusMessage = match serde_json::from_str(&data) {
+    let msg: BusMessage = match serde_json::from_str(raw_json) {
         Ok(m) => m,
         Err(_) => return,
     };
@@ -198,15 +182,11 @@ async fn handle_user_request(cfg: &Config, client: &Client, msg: &BusMessage) {
 }
 
 async fn try_claim_request(cfg: &Config, client: &Client, request_id: &str) -> bool {
-    let body = serde_json::json!({"agent": cfg.agent_name});
-    let resp = client
-        .post(format!("{}/api/requests/{}/claim", cfg.acc_url, request_id))
-        .header("Authorization", format!("Bearer {}", cfg.acc_token))
-        .json(&body)
-        .timeout(Duration::from_secs(10))
-        .send()
-        .await;
-    resp.map(|r| r.status().as_u16() == 200).unwrap_or(false)
+    let body = json!({"agent": cfg.agent_name});
+    client
+        .request_json("POST", &format!("/api/requests/{request_id}/claim"), Some(&body))
+        .await
+        .is_ok()
 }
 
 async fn handle_update(cfg: &Config, msg: &BusMessage) {
@@ -372,13 +352,11 @@ async fn handle_exec(cfg: &Config, client: &Client, msg: &BusMessage) {
 
         let acc_dir = cfg.acc_dir.clone();
         let agent_name = cfg.agent_name.clone();
-        let acc_url = cfg.acc_url.clone();
-        let acc_token = cfg.acc_token.clone();
         let client = client.clone();
 
         tokio::spawn(async move {
             let (output, exit_code) = exec_registry::execute(&cmd, &params, &acc_dir, timeout_secs).await;
-            post_result(&client, &acc_url, &acc_token, &exec_id, &agent_name, &output, exit_code).await;
+            post_result(&client, &exec_id, &agent_name, &output, exit_code).await;
         });
     } else if let Some(code) = body.get("code").and_then(|v| v.as_str()) {
         log(cfg, &format!(
@@ -386,13 +364,11 @@ async fn handle_exec(cfg: &Config, client: &Client, msg: &BusMessage) {
         ));
         let code = code.to_string();
         let agent_name = cfg.agent_name.clone();
-        let acc_url = cfg.acc_url.clone();
-        let acc_token = cfg.acc_token.clone();
         let client = client.clone();
 
         tokio::spawn(async move {
             let (output, exit_code) = run_shell(&code, timeout_secs).await;
-            post_result(&client, &acc_url, &acc_token, &exec_id, &agent_name, &output, exit_code).await;
+            post_result(&client, &exec_id, &agent_name, &output, exit_code).await;
         });
     } else {
         log(cfg, &format!("acc.exec {exec_id}: neither 'command' nor 'code' field present — skipping"));
@@ -400,30 +376,23 @@ async fn handle_exec(cfg: &Config, client: &Client, msg: &BusMessage) {
 }
 
 async fn post_exec_result(client: &Client, cfg: &Config, exec_id: &str, output: &str, exit_code: i32) {
-    post_result(client, &cfg.acc_url, &cfg.acc_token, exec_id, &cfg.agent_name, output, exit_code).await;
+    post_result(client, exec_id, &cfg.agent_name, output, exit_code).await;
 }
 
 async fn post_result(
     client: &Client,
-    acc_url: &str,
-    acc_token: &str,
     exec_id: &str,
     agent_name: &str,
     output: &str,
     exit_code: i32,
 ) {
-    let result = serde_json::json!({
+    let body = json!({
         "agent": agent_name,
         "output": output,
         "exit_code": exit_code,
     });
-    let url = format!("{acc_url}/api/exec/{exec_id}/result");
     let _ = client
-        .post(&url)
-        .header("Authorization", format!("Bearer {acc_token}"))
-        .json(&result)
-        .timeout(Duration::from_secs(15))
-        .send()
+        .request_json("POST", &format!("/api/exec/{exec_id}/result"), Some(&body))
         .await;
 }
 
@@ -503,18 +472,9 @@ async fn handle_soul_export(cfg: &Config, client: &Client) {
         "size_bytes": data.len(),
     });
 
-    let url = format!("{}/api/agents/{}/soul/data", cfg.acc_url, cfg.agent_name);
-    match client.post(&url)
-        .header("Authorization", format!("Bearer {}", cfg.acc_token))
-        .json(&payload)
-        .timeout(Duration::from_secs(120))
-        .send()
-        .await
-    {
-        Ok(r) if r.status().is_success() => {
-            log(cfg, &format!("soul.export: uploaded {}B", data.len()));
-        }
-        Ok(r) => log(cfg, &format!("soul.export: server returned {}", r.status())),
+    let path = format!("/api/agents/{}/soul/data", cfg.agent_name);
+    match client.request_json("POST", &path, Some(&payload)).await {
+        Ok(_) => log(cfg, &format!("soul.export: uploaded {}B", data.len())),
         Err(e) => log(cfg, &format!("soul.export: upload failed: {e}")),
     }
 }
@@ -665,11 +625,8 @@ fn log(cfg: &Config, msg: &str) {
     }
 }
 
-fn build_client() -> Client {
-    Client::builder()
-        .timeout(Duration::from_secs(3600))
-        .build()
-        .expect("failed to build HTTP client")
+fn build_client(cfg: &Config) -> Client {
+    Client::new(&cfg.acc_url, &cfg.acc_token).expect("failed to build HTTP client")
 }
 
 #[cfg(test)]
@@ -736,11 +693,11 @@ mod tests {
     }
 
     fn mk_event(type_: &str, to: &str) -> String {
-        format!(r#"data: {{"type":"{type_}","to":"{to}"}}"#)
+        format!(r#"{{"type":"{type_}","to":"{to}"}}"#)
     }
 
     fn mk_event_body(type_: &str, to: &str, body_json: &str) -> String {
-        format!(r#"data: {{"type":"{type_}","to":"{to}","body":{body_json}}}"#)
+        format!(r#"{{"type":"{type_}","to":"{to}","body":{body_json}}}"#)
     }
 
     // ── dispatch unit tests (no HTTP) ─────────────────────────────────────────
@@ -749,7 +706,7 @@ mod tests {
     async fn test_dispatch_ping_no_panic() {
         let dir = tempfile::tempdir().unwrap();
         let cfg = test_cfg_in_dir(dir.path(), "http://unused");
-        let client = Client::new();
+        let client = Client::new("http://unused", "test-tok").unwrap();
         dispatch(&cfg, &client, &mk_event("ping", "natasha")).await;
     }
 
@@ -757,7 +714,7 @@ mod tests {
     async fn test_dispatch_work_available_touches_signal() {
         let dir = tempfile::tempdir().unwrap();
         let cfg = test_cfg_in_dir(dir.path(), "http://unused");
-        let client = Client::new();
+        let client = Client::new("http://unused", "test-tok").unwrap();
         dispatch(&cfg, &client, &mk_event("work.available", "all")).await;
         assert!(cfg.work_signal_file().exists(), "work-signal must be created");
     }
@@ -766,7 +723,7 @@ mod tests {
     async fn test_dispatch_project_arrived_touches_signal() {
         let dir = tempfile::tempdir().unwrap();
         let cfg = test_cfg_in_dir(dir.path(), "http://unused");
-        let client = Client::new();
+        let client = Client::new("http://unused", "test-tok").unwrap();
         dispatch(&cfg, &client, &mk_event("project.arrived", "natasha")).await;
         assert!(cfg.work_signal_file().exists());
     }
@@ -775,7 +732,7 @@ mod tests {
     async fn test_dispatch_quench_creates_file() {
         let dir = tempfile::tempdir().unwrap();
         let cfg = test_cfg_in_dir(dir.path(), "http://unused");
-        let client = Client::new();
+        let client = Client::new("http://unused", "test-tok").unwrap();
         dispatch(&cfg, &client, &mk_event_body("acc.quench", "all", r#"{"minutes":5}"#)).await;
         assert!(cfg.quench_file().exists(), "quench file must be written");
     }
@@ -784,7 +741,7 @@ mod tests {
     async fn test_dispatch_skips_wrong_target() {
         let dir = tempfile::tempdir().unwrap();
         let cfg = test_cfg_in_dir(dir.path(), "http://unused");
-        let client = Client::new();
+        let client = Client::new("http://unused", "test-tok").unwrap();
         // to="boris" — natasha should ignore it
         dispatch(&cfg, &client, &mk_event("work.available", "boris")).await;
         assert!(!cfg.work_signal_file().exists(), "natasha must not react to boris's message");
@@ -794,7 +751,7 @@ mod tests {
     async fn test_dispatch_malformed_json_no_panic() {
         let dir = tempfile::tempdir().unwrap();
         let cfg = test_cfg_in_dir(dir.path(), "http://unused");
-        let client = Client::new();
+        let client = Client::new("http://unused", "test-tok").unwrap();
         dispatch(&cfg, &client, "data: {not valid json}").await;
     }
 
@@ -802,7 +759,7 @@ mod tests {
     async fn test_dispatch_empty_event_no_panic() {
         let dir = tempfile::tempdir().unwrap();
         let cfg = test_cfg_in_dir(dir.path(), "http://unused");
-        let client = Client::new();
+        let client = Client::new("http://unused", "test-tok").unwrap();
         dispatch(&cfg, &client, "").await;
     }
 
@@ -812,7 +769,7 @@ mod tests {
     async fn test_listen_once_hub_unreachable_returns_gracefully() {
         let dir = tempfile::tempdir().unwrap();
         let cfg = test_cfg_in_dir(dir.path(), "http://127.0.0.1:1");
-        let client = Client::builder().timeout(Duration::from_secs(1)).build().unwrap();
+        let client = Client::new(&cfg.acc_url, &cfg.acc_token).unwrap();
         // Must not panic or hang.
         listen_once(&cfg, &client).await;
     }
@@ -824,7 +781,7 @@ mod tests {
             serde_json::json!({"type":"ping","from":"hub","to":"all"}).to_string(),
         ]).await;
         let cfg = test_cfg_in_dir(dir.path(), &mock.url);
-        let client = build_client();
+        let client = build_client(&cfg);
         listen_once(&cfg, &client).await;
         // ping leaves no observable side-effects — just verify no panic
     }
@@ -836,7 +793,7 @@ mod tests {
             serde_json::json!({"type":"acc.quench","to":"all","body":{"minutes":10,"reason":"test"}}).to_string(),
         ]).await;
         let cfg = test_cfg_in_dir(dir.path(), &mock.url);
-        let client = build_client();
+        let client = build_client(&cfg);
         listen_once(&cfg, &client).await;
         assert!(cfg.quench_file().exists(), "quench file must exist after acc.quench event");
     }
@@ -848,7 +805,7 @@ mod tests {
             serde_json::json!({"type":"work.available","to":"all"}).to_string(),
         ]).await;
         let cfg = test_cfg_in_dir(dir.path(), &mock.url);
-        let client = build_client();
+        let client = build_client(&cfg);
         listen_once(&cfg, &client).await;
         assert!(cfg.work_signal_file().exists());
     }
@@ -861,7 +818,7 @@ mod tests {
             serde_json::json!({"type":"work.available","to":"all"}).to_string(),
         ]).await;
         let cfg = test_cfg_in_dir(dir.path(), &mock.url);
-        let client = build_client();
+        let client = build_client(&cfg);
         listen_once(&cfg, &client).await;
         assert!(cfg.quench_file().exists(), "quench file from first event");
         assert!(cfg.work_signal_file().exists(), "work signal from second event");
@@ -874,7 +831,7 @@ mod tests {
             serde_json::json!({"type":"work.available","to":"boris"}).to_string(),
         ]).await;
         let cfg = test_cfg_in_dir(dir.path(), &mock.url);
-        let client = build_client();
+        let client = build_client(&cfg);
         listen_once(&cfg, &client).await;
         assert!(!cfg.work_signal_file().exists(), "natasha must not react to boris's work signal");
     }
@@ -887,7 +844,7 @@ mod tests {
             serde_json::json!({"type":"work.available","to":"all"}).to_string(),
         ]).await;
         let cfg = test_cfg_in_dir(dir.path(), &mock.url);
-        let client = build_client();
+        let client = build_client(&cfg);
         listen_once(&cfg, &client).await;
         // valid event after bad one is still processed
         assert!(cfg.work_signal_file().exists());
@@ -899,7 +856,7 @@ mod tests {
     async fn test_try_claim_request_success() {
         // Mock returns 200 → claim succeeds
         let mock = crate::hub_mock::HubMock::new().await;
-        let client = Client::new();
+        let client = Client::new(&mock.url, "test-tok").unwrap();
         let cfg = test_cfg_in_dir(&tempfile::tempdir().unwrap().into_path(), &mock.url);
         let claimed = try_claim_request(&cfg, &client, "req-abc").await;
         assert!(claimed, "200 response should mean claim succeeded");
@@ -911,7 +868,7 @@ mod tests {
         let mock = crate::hub_mock::HubMock::with_state(
             HubState { request_claim_status: 409, ..Default::default() }
         ).await;
-        let client = Client::new();
+        let client = Client::new(&mock.url, "test-tok").unwrap();
         let cfg = test_cfg_in_dir(&tempfile::tempdir().unwrap().into_path(), &mock.url);
         let claimed = try_claim_request(&cfg, &client, "req-abc").await;
         assert!(!claimed, "409 response should mean claim lost");
@@ -922,10 +879,8 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mock = crate::hub_mock::HubMock::new().await; // default 200
         let cfg = test_cfg_in_dir(dir.path(), &mock.url);
-        let client = Client::new();
-        dispatch(&cfg, &client, &format!(
-            r#"data: {{"type":"user.request","to":"all","body":{{"request_id":"req-123"}}}}"#
-        )).await;
+        let client = Client::new(&mock.url, "test-tok").unwrap();
+        dispatch(&cfg, &client, r#"{"type":"user.request","to":"all","body":{"request_id":"req-123"}}"#).await;
         assert!(cfg.work_signal_file().exists(), "claim win must touch work-signal");
     }
 
@@ -937,10 +892,8 @@ mod tests {
             HubState { request_claim_status: 409, ..Default::default() }
         ).await;
         let cfg = test_cfg_in_dir(dir.path(), &mock.url);
-        let client = Client::new();
-        dispatch(&cfg, &client, &format!(
-            r#"data: {{"type":"user.request","to":"all","body":{{"request_id":"req-456"}}}}"#
-        )).await;
+        let client = Client::new(&mock.url, "test-tok").unwrap();
+        dispatch(&cfg, &client, r#"{"type":"user.request","to":"all","body":{"request_id":"req-456"}}"#).await;
         assert!(!cfg.work_signal_file().exists(), "claim loss must NOT touch work-signal");
     }
 
@@ -949,9 +902,9 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let mock = crate::hub_mock::HubMock::new().await;
         let cfg = test_cfg_in_dir(dir.path(), &mock.url);
-        let client = Client::new();
+        let client = Client::new(&mock.url, "test-tok").unwrap();
         // body without request_id — should log and return silently
-        dispatch(&cfg, &client, r#"data: {"type":"user.request","to":"all","body":{}}"#).await;
+        dispatch(&cfg, &client, r#"{"type":"user.request","to":"all","body":{}}"#).await;
     }
 
     // ── post_result hub mock tests ────────────────────────────────────────────
@@ -959,24 +912,22 @@ mod tests {
     #[tokio::test]
     async fn test_post_result_success() {
         let mock = crate::hub_mock::HubMock::new().await;
-        let client = Client::new();
+        let client = Client::new(&mock.url, "test-tok").unwrap();
         // post_result is fire-and-forget; just verify it doesn't panic.
-        post_result(&client, &mock.url, "test-tok", "exec-abc", "natasha", "output text", 0).await;
+        post_result(&client, "exec-abc", "natasha", "output text", 0).await;
     }
 
     #[tokio::test]
     async fn test_post_result_nonzero_exit() {
         let mock = crate::hub_mock::HubMock::new().await;
-        let client = Client::new();
-        post_result(&client, &mock.url, "test-tok", "exec-def", "boris", "stderr output", 1).await;
+        let client = Client::new(&mock.url, "test-tok").unwrap();
+        post_result(&client, "exec-def", "boris", "stderr output", 1).await;
     }
 
     #[tokio::test]
     async fn test_post_result_hub_down_no_panic() {
         // post_result must not panic when the hub is unreachable.
-        let client = Client::builder()
-            .timeout(Duration::from_secs(1))
-            .build().unwrap();
-        post_result(&client, "http://127.0.0.1:1", "tok", "exec-xyz", "agent", "out", 0).await;
+        let client = Client::new("http://127.0.0.1:1", "tok").unwrap();
+        post_result(&client, "exec-xyz", "agent", "out", 0).await;
     }
 }

@@ -131,6 +131,7 @@ fn build_router(state: S) -> Router {
         .route("/api/exec/:id/result",          post(ok))
         // SSE stream (bus listener)
         .route("/bus/stream",                   get(sse_stream))
+        .route("/api/bus/stream",               get(sse_stream))
         // Peer discovery
         .route("/api/agents/names",             get(agent_names))
         .with_state(state)

@@ -87,8 +87,13 @@ impl<'a> BusApi<'a> {
                     // Split off the frame including the terminator.
                     let frame: Vec<u8> = buf.drain(..=end).collect();
                     if let Some(data) = extract_sse_data(&frame) {
-                        let msg: BusMsg = serde_json::from_str(&data)?;
-                        yield msg;
+                        // Malformed JSON in a single frame should not kill
+                        // the whole stream — servers occasionally emit
+                        // garbage (comments, test events, etc.). Skip
+                        // parse failures silently and keep streaming.
+                        if let Ok(msg) = serde_json::from_str::<BusMsg>(&data) {
+                            yield msg;
+                        }
                     }
                     // No `data:` lines in frame = keep-alive or metadata-only; skip.
                 }

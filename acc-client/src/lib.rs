@@ -87,6 +87,47 @@ impl Client {
         tasks::TasksApi { client: self }
     }
 
+    /// Low-level request helper for endpoints this crate hasn't typed yet.
+    ///
+    /// Handles bearer auth, JSON request/response, and the typed error
+    /// mapping (409 → Conflict, 423 → Locked, etc.). Callers pass the HTTP
+    /// method as a string (`"GET" | "POST" | "PUT" | "DELETE" | ...`) and
+    /// parse the returned `serde_json::Value` as needed.
+    ///
+    /// Prefer a typed method where one exists — this is an escape hatch
+    /// for bespoke endpoints (custom dispatch, soul data, etc.) not worth
+    /// modeling upstream.
+    pub async fn request_json(
+        &self,
+        method: &str,
+        path: &str,
+        body: Option<&serde_json::Value>,
+    ) -> Result<serde_json::Value> {
+        use reqwest::Method;
+        let m = Method::from_bytes(method.as_bytes()).map_err(|_| Error::Api {
+            status: 0,
+            body: acc_model::ApiError {
+                error: "invalid_method".into(),
+                message: Some(format!("unknown HTTP method: {method}")),
+                extra: Default::default(),
+            },
+        })?;
+        let mut req = self.http.request(m, self.url(path));
+        if let Some(b) = body {
+            req = req.json(b);
+        }
+        let resp = req.send().await?;
+        let status = resp.status().as_u16();
+        let bytes = resp.bytes().await?;
+        if !(200..300).contains(&status) {
+            return Err(Error::from_response(status, &bytes));
+        }
+        if bytes.is_empty() {
+            return Ok(serde_json::Value::Null);
+        }
+        Ok(serde_json::from_slice(&bytes)?)
+    }
+
     /// Entry point for queue list/get.
     pub fn queue(&self) -> queue::QueueApi<'_> {
         queue::QueueApi { client: self }
