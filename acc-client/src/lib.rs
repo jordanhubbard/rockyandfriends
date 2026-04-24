@@ -15,6 +15,8 @@
 
 pub mod auth;
 pub mod error;
+pub mod items;
+pub mod queue;
 pub mod tasks;
 
 pub use acc_model as model;
@@ -79,5 +81,15 @@ impl Client {
     /// Entry point for task operations.
     pub fn tasks(&self) -> tasks::TasksApi<'_> {
         tasks::TasksApi { client: self }
+    }
+
+    /// Entry point for queue list/get.
+    pub fn queue(&self) -> queue::QueueApi<'_> {
+        queue::QueueApi { client: self }
+    }
+
+    /// Entry point for per-item mutations and heartbeat.
+    pub fn items(&self) -> items::ItemsApi<'_> {
+        items::ItemsApi { client: self }
     }
 }
