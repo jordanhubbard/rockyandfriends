@@ -63,12 +63,15 @@ restart_one() {
     echo "[restart-fleet] → ${name}: ssh ${user}@${host}:${port}"
     # -oBatchMode=yes: no interactive prompts, fail fast if keys aren't set up
     # -oStrictHostKeyChecking=accept-new: tolerant of first-time hosts without prompting
+    # Reset --hard origin/main: fleet nodes track main exactly. No local
+    # commits, no edits in-flight. If a human is hand-debugging on a
+    # fleet node, that's not a supported workflow.
     if ssh -o ConnectTimeout=10 \
            -o BatchMode=yes \
            -o StrictHostKeyChecking=accept-new \
            -p "$port" \
            "${user}@${host}" \
-           "cd ~/.acc/workspace && git pull --quiet && bash deploy/restart-agent.sh" \
+           "cd ~/.acc/workspace && git fetch --quiet origin && git reset --hard --quiet origin/main && bash deploy/restart-agent.sh" \
            2>&1 | sed "s/^/  [${name}] /"; then
         echo "[restart-fleet] ✓ ${name}"
         return 0
