@@ -33,8 +33,13 @@ pub struct BusMsg {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub thread_id: Option<String>,
 
+    /// The bus body is polymorphic on the wire: the server accepts a
+    /// string from `POST /api/bus/send` but some message producers
+    /// store an embedded JSON object instead. We take the raw value
+    /// and let callers interpret (`body.as_ref().and_then(Value::as_str)`
+    /// for the string case).
     #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub body: Option<String>,
+    pub body: Option<Value>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub data: Option<Value>,
 

@@ -299,7 +299,11 @@ fn print_bus_message(m: &BusMsg) {
         count += 1;
     }
     if let Some(body) = &m.body {
-        let b = if body.len() > 40 { format!("{}…", &body[..40]) } else { body.clone() };
+        let as_str = body
+            .as_str()
+            .map(String::from)
+            .unwrap_or_else(|| body.to_string());
+        let b = if as_str.len() > 40 { format!("{}…", &as_str[..40]) } else { as_str };
         hint.push_str(&format!("body={b}  "));
         count += 1;
     }
