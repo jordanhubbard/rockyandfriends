@@ -429,7 +429,23 @@ async fn complete_task(
         &format!("SELECT {TASK_COLS} FROM fleet_tasks WHERE id=?1"),
         params![id], row_to_task,
     ).unwrap_or(json!({"id":id}));
+    drop(db); // release lock before potentially calling into projects state
     let _ = state.bus_tx.send(json!({"type":"tasks:completed","task_id":id,"agent":agent}).to_string());
+
+    // CCC-tk0: any completed task may have modified the project's
+    // AgentFS workspace. Mark the project dirty so a subsequent
+    // milestone-commit task knows to push and clear the bit. The
+    // milestone-commit task itself calls POST /api/projects/:id/clean
+    // so it doesn't re-mark its own project dirty.
+    if let Some(pid) = task.get("project_id").and_then(|v| v.as_str()).map(String::from) {
+        let task_type = task.get("task_type").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        if !pid.is_empty() && task_type != "phase_commit" {
+            let state_clone = state.clone();
+            tokio::spawn(async move {
+                let _ = crate::routes::projects::set_agentfs_dirty(&state_clone, &pid, true).await;
+            });
+        }
+    }
 
     // F4: notify GitHub if this task has a linked issue
     if let Some(meta) = task.get("metadata").and_then(|m| m.as_object()) {

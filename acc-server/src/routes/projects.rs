@@ -35,7 +35,53 @@ pub fn router() -> Router<Arc<AppState>> {
         .route("/api/projects/:owner/:repo", get(get_project))
         .route("/api/projects/:id", get(get_project_by_id).patch(update_project).delete(delete_project))
         .route("/api/projects/:id/import-beads", post(import_beads))
+        .route("/api/projects/:id/clean", post(mark_project_clean))
         .merge(metrics::router())
+}
+
+/// Set agentfs_dirty on a project. Used by:
+///   - POST /api/projects/:id/clean       → set false (milestone-commit task)
+///   - tasks::complete_task on completion → set true (any task touched AgentFS)
+///
+/// Returns true if the project existed and the field was set.
+pub async fn set_agentfs_dirty(state: &Arc<AppState>, project_id: &str, dirty: bool) -> bool {
+    let mut projects = read_projects(state).await;
+    let mut found = false;
+    for p in projects.iter_mut() {
+        if p.get("id").and_then(|v| v.as_str()) == Some(project_id) {
+            if let Some(obj) = p.as_object_mut() {
+                obj.insert("agentfs_dirty".to_string(), json!(dirty));
+                obj.insert("updatedAt".to_string(), json!(chrono::Utc::now().to_rfc3339()));
+            }
+            found = true;
+            break;
+        }
+    }
+    if found {
+        write_projects(state, projects).await;
+    }
+    found
+}
+
+// ── POST /api/projects/:id/clean ──────────────────────────────────────────
+//
+// Marks the project's AgentFS state as clean (committed and pushed to git).
+// Called by the milestone-commit task after a successful push.
+async fn mark_project_clean(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> impl IntoResponse {
+    if !state.is_authed(&headers) {
+        return (axum::http::StatusCode::UNAUTHORIZED, Json(json!({"error":"Unauthorized"}))).into_response();
+    }
+    if !set_agentfs_dirty(&state, &id, false).await {
+        return (axum::http::StatusCode::NOT_FOUND, Json(json!({"error":"Project not found"}))).into_response();
+    }
+    let _ = state.bus_tx.send(
+        json!({"type":"projects:agentfs_clean","project_id":id}).to_string()
+    );
+    (axum::http::StatusCode::OK, Json(json!({"ok":true,"project_id":id,"agentfs_dirty":false}))).into_response()
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────
@@ -287,6 +333,7 @@ async fn create_project(
         "agentfs_path": agentfs_path.clone(),
         "git_url":      git_url.clone().map(Value::String).unwrap_or(Value::Null),
         "clone_status": clone_status,
+        "agentfs_dirty": false,
         "description":  body.get("description").cloned().unwrap_or(json!("")),
         "repoUrl":      body.get("repoUrl").cloned().unwrap_or(json!(null)),
         "slackChannels": body.get("slackChannels").cloned().unwrap_or(json!([])),
@@ -391,13 +438,32 @@ async fn delete_project(
         return (axum::http::StatusCode::UNAUTHORIZED, Json(json!({"error":"Unauthorized"}))).into_response();
     }
     let hard = params.get("hard").map(|v| v == "true").unwrap_or(false);
-    let mut projects = read_projects(&state).await;
+    let force = params.get("force").map(|v| v == "true").unwrap_or(false);
+    let projects = read_projects(&state).await;
     let idx = projects.iter().position(|p| {
         p.get("id").and_then(|v| v.as_str()) == Some(&id)
     });
     match idx {
         None => (axum::http::StatusCode::NOT_FOUND, Json(json!({"error":"Project not found"}))).into_response(),
         Some(i) => {
+            // Dirty-bit gate: refuse delete (soft or hard) when AgentFS
+            // has unpushed changes, unless force=true is set. Caller is
+            // expected to either (a) run the milestone-commit task to
+            // push and mark clean, or (b) explicitly accept loss with
+            // force=true.
+            let agentfs_dirty = projects[i]
+                .get("agentfs_dirty").and_then(|v| v.as_bool()).unwrap_or(false);
+            if agentfs_dirty && !force {
+                return (
+                    axum::http::StatusCode::CONFLICT,
+                    Json(json!({
+                        "error": "agentfs_dirty",
+                        "message": "Project has unpushed AgentFS changes. Run the milestone-commit task to push, or pass force=true to discard.",
+                        "project_id": id,
+                    })),
+                ).into_response();
+            }
+            let mut projects = projects;
             if hard {
                 let removed = projects.remove(i);
                 write_projects(&state, projects).await;

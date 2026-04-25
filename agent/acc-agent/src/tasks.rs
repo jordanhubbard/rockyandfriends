@@ -605,6 +605,18 @@ async fn execute_phase_commit_task(cfg: &Config, client: &Client, task: &Value) 
     match run_git_phase_commit(&workspace, &branch, &commit_msg).await {
         Ok(out) => {
             log(cfg, &format!("phase_commit {task_id}: pushed {branch}"));
+            // CCC-tk0: this is the milestone-commit task. Now that the
+            // AgentFS state is committed and pushed to git, mark the
+            // project's AgentFS as clean. Server-side dirty bit gets
+            // re-set the next time any task in this project completes.
+            if !project_id.is_empty() {
+                let path = format!("/api/projects/{project_id}/clean");
+                if let Err(e) = client.request_json("POST", &path, None).await {
+                    log(cfg, &format!("phase_commit {task_id}: /clean failed: {e} (push succeeded; bit will need manual reset)"));
+                } else {
+                    log(cfg, &format!("phase_commit {task_id}: marked project {project_id} clean"));
+                }
+            }
             complete_task(cfg, client, task_id, &format!("pushed branch {branch}: {out}")).await;
         }
         Err(e) => {
