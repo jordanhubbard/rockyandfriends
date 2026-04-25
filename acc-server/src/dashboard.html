@@ -298,6 +298,80 @@
       </div>
     </div>
 
+    <!-- ── LOGS (CCC-zkc) ── -->
+    <div x-show="tab === 'logs'">
+      <div class="flex items-center justify-between mb-4 gap-3">
+        <div class="flex items-center gap-3">
+          <h1 class="text-lg font-semibold text-gray-900">Consolidated Logs</h1>
+          <span class="text-xs px-2 py-0.5 rounded-full font-medium"
+            :class="logConnected ? 'bg-emerald-100 text-emerald-800' : 'bg-red-100 text-red-800'"
+            x-text="logConnected ? 'Live' : 'Disconnected'"></span>
+        </div>
+        <div class="flex items-center gap-2">
+          <input x-model="logIdentifierFilter" placeholder="identifier (e.g. acc-agent-tasks)"
+            class="text-xs px-2 py-1 border border-gray-300 rounded font-mono w-56">
+          <input x-model="logFilter" placeholder="text grep…"
+            class="text-xs px-2 py-1 border border-gray-300 rounded w-48">
+          <button @click="logEvents = []" class="text-xs text-gray-400 hover:text-gray-700 transition">Clear</button>
+        </div>
+      </div>
+      <div class="bg-gray-900 rounded-xl shadow-sm p-4 font-mono text-xs h-[36rem] overflow-y-auto flex flex-col-reverse">
+        <div>
+          <template x-for="(ev, i) in logEvents.filter(e =>
+              (!logIdentifierFilter || (e.identifier || '').includes(logIdentifierFilter)) &&
+              (!logFilter || (e.msg || '').toLowerCase().includes(logFilter.toLowerCase())))" :key="i">
+            <div class="flex gap-3 py-0.5 hover:bg-white/5 px-1 rounded">
+              <span class="text-gray-500 shrink-0" x-text="(ev.ts || '').slice(11, 19)"></span>
+              <span class="shrink-0 w-32 truncate" :class="{
+                  'text-red-400': ev.level === 'error',
+                  'text-yellow-400': ev.level === 'warn',
+                  'text-emerald-400': ev.level === 'notice',
+                  'text-indigo-400': ev.level === 'info',
+                  'text-gray-500': ev.level === 'debug'
+                }" x-text="ev.identifier || '—'"></span>
+              <span class="text-gray-300 break-all" x-text="ev.msg"></span>
+            </div>
+          </template>
+          <div x-show="logEvents.length === 0" class="text-gray-600 py-4 text-center">
+            Waiting for journald entries… (Linux+systemd only; on macOS/non-systemd hosts this stream returns a
+            single "unsupported" record. acc-server must run on Linux for this tab to populate.)
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── HERMES PANES (CCC-6m0) ── -->
+    <div x-show="tab === 'panes'">
+      <div class="flex items-center justify-between mb-4">
+        <h1 class="text-lg font-semibold text-gray-900">Hermes Interactive Panes</h1>
+        <span class="text-xs text-gray-500">PTY-over-WebSocket per agent — placeholder; backend not yet implemented</span>
+      </div>
+      <div class="grid grid-cols-2 gap-4">
+        <template x-for="a in agents.filter(x => x.online)" :key="a.name">
+          <div class="bg-gray-900 rounded-xl shadow-sm p-3 font-mono text-xs h-72 flex flex-col">
+            <div class="flex items-center justify-between mb-2 border-b border-gray-700 pb-2">
+              <span class="text-emerald-400 font-semibold" x-text="a.name"></span>
+              <span class="text-gray-500" x-text="a.ssh_user + '@' + (a.ssh_host || '?')"></span>
+            </div>
+            <div class="flex-1 flex items-center justify-center text-gray-500 text-center px-4">
+              <div>
+                <div class="text-yellow-400 mb-2">[ CCC-6m0 — pane backend pending ]</div>
+                <div class="text-xs">A WebSocket relay opening an SSH session to <span x-text="a.ssh_host"></span>
+                running <code>hermes</code> in an interactive 80x24 terminal will mount here.</div>
+                <div class="text-xs mt-2 text-gray-600">
+                  For now, run manually:<br>
+                  <code class="text-indigo-300" x-text="'ssh ' + a.ssh_user + '@' + (a.ssh_host || a.name) + ' hermes'"></code>
+                </div>
+              </div>
+            </div>
+          </div>
+        </template>
+        <div x-show="agents.filter(x => x.online).length === 0" class="col-span-2 text-center text-gray-400 text-sm py-8">
+          No agents online.
+        </div>
+      </div>
+    </div>
+
   </main>
 </div>
 
@@ -439,6 +513,8 @@ function dashboard() {
       { id: 'tasks',    label: 'Tasks' },
       { id: 'agents',   label: 'Agents' },
       { id: 'bus',      label: 'Event Bus' },
+      { id: 'logs',     label: 'Logs' },
+      { id: 'panes',    label: 'Hermes Panes' },
     ],
     projects: [],
     tasks: [],
@@ -446,6 +522,11 @@ function dashboard() {
     busEvents: [],
     busConnected: false,
     busSource: null,
+    logEvents: [],
+    logConnected: false,
+    logSource: null,
+    logFilter: '',
+    logIdentifierFilter: '',
     taskFilter: { status: 'open', project_id: '' },
     loading: { projects: false, tasks: false, agents: false },
     toast: '',
@@ -508,6 +589,8 @@ function dashboard() {
       else if (id === 'tasks') { await this.loadProjects(); await this.loadTasks(); }
       else if (id === 'agents') await this.loadAgents();
       else if (id === 'bus') this.connectBus();
+      else if (id === 'logs') this.connectLogs();
+      else if (id === 'panes') await this.loadAgents();
     },
 
     // ── Projects ──
@@ -676,6 +759,31 @@ function dashboard() {
         } catch { /* ignore parse errors */ }
       };
       es.onerror = () => { this.busConnected = false; };
+    },
+
+    // ── Logs (CCC-zkc) ──
+
+    connectLogs() {
+      if (this.logSource) return;
+      const url = `/api/logs/stream?token=${encodeURIComponent(this.token)}`;
+      const es = new EventSource(url);
+      this.logSource = es;
+      es.onopen = () => { this.logConnected = true; };
+      es.onmessage = (ev) => {
+        try {
+          const parsed = JSON.parse(ev.data);
+          if (parsed.type === 'connected') return;
+          this.logEvents.unshift({
+            ts: parsed.ts || new Date().toISOString(),
+            level: parsed.level || 'info',
+            identifier: parsed.identifier || '',
+            host: parsed.host || '',
+            msg: parsed.msg || '',
+          });
+          if (this.logEvents.length > 1000) this.logEvents.pop();
+        } catch { /* ignore parse errors */ }
+      };
+      es.onerror = () => { this.logConnected = false; };
     },
 
     // ── Helpers ──
