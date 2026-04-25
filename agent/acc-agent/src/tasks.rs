@@ -770,6 +770,9 @@ fn log(cfg: &Config, msg: &str) {
         use std::io::Write;
         let _ = writeln!(f, "{line}");
     }
+    // CCC-u3c: also emit through tracing so journald (when available)
+    // sees this for the consolidated dashboard log viewer.
+    tracing::info!(component = "tasks", agent = %cfg.agent_name, "{msg}");
 }
 
 fn parse_task_type(s: &str) -> Option<TaskType> {

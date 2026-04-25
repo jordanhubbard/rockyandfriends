@@ -610,7 +610,11 @@ fn str_field(body: &Option<Value>, key: &str) -> Option<String> {
     body.as_ref()?.get(key)?.as_str().map(String::from)
 }
 
+fn log_tracing(cfg: &Config, msg: &str) {
+    tracing::info!(component = "bus", agent = %cfg.agent_name, "{msg}");
+}
 fn log(cfg: &Config, msg: &str) {
+    log_tracing(cfg, msg);
     let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ");
     let line = format!("[{ts}] [{}] [bus] {msg}", cfg.agent_name);
     eprintln!("{line}");

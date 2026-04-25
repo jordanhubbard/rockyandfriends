@@ -400,7 +400,11 @@ async fn post_fail(cfg: &Config, client: &Client, item_id: &str, reason: &str) {
     let _ = client.items().fail(item_id, &cfg.agent_name, truncated).await;
 }
 
+fn log_tracing(cfg: &Config, msg: &str) {
+    tracing::info!(component = "hermes", agent = %cfg.agent_name, "{msg}");
+}
 fn log(cfg: &Config, msg: &str) {
+    log_tracing(cfg, msg);
     let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ");
     let line = format!("[{ts}] [{}] [hermes] {msg}", cfg.agent_name);
     eprintln!("{line}");

@@ -248,6 +248,7 @@ fn log(cfg: &Config, msg: &str) {
     let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ");
     let line = format!("[{ts}] [{}] [upgrade] {msg}", cfg.agent_name);
     eprintln!("{line}");
+    tracing::info!(component = "upgrade", agent = %cfg.agent_name, "{msg}");
     let log_path = cfg.log_file("upgrade");
     if let Ok(mut f) = std::fs::OpenOptions::new()
         .create(true)

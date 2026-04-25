@@ -724,7 +724,11 @@ fn dirs_home() -> PathBuf {
     PathBuf::from(std::env::var("HOME").unwrap_or_else(|_| "/root".into()))
 }
 
+fn log_tracing(cfg: &Config, msg: &str) {
+    tracing::info!(component = "queue", agent = %cfg.agent_name, "{msg}");
+}
 fn log(cfg: &Config, msg: &str) {
+    log_tracing(cfg, msg);
     let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ");
     let line = format!("[{ts}] [{}] [queue] {msg}", cfg.agent_name);
     eprintln!("{line}");

@@ -248,6 +248,30 @@ def setup_logging(
             log_filter=_ComponentFilter(COMPONENT_PREFIXES["gateway"]),
         )
 
+    # --- syslog handler (CCC-u3c) ------------------------------------------
+    # Ship WARNING+ to the system journal so the consolidated dashboard
+    # log viewer (CCC-zkc) can subscribe via journald (Linux) / unified
+    # logging (macOS) and surface hermes failures alongside acc-agent's.
+    # Best-effort: if the syslog socket isn't reachable, keep file logging
+    # working and skip the syslog handler.
+    try:
+        from logging.handlers import SysLogHandler
+        # /dev/log on Linux, /var/run/syslog on macOS; Python picks first
+        # that exists.
+        for sock in ("/dev/log", "/var/run/syslog"):
+            if os.path.exists(sock):
+                _syslog = SysLogHandler(address=sock, facility=SysLogHandler.LOG_USER)
+                _syslog.setLevel(logging.WARNING)
+                # Tag with 'hermes' identifier so cross-fleet greps are clean.
+                _syslog.setFormatter(
+                    RedactingFormatter("hermes[%(process)d]: %(name)s %(levelname)s %(message)s")
+                )
+                root.addHandler(_syslog)
+                break
+    except Exception:
+        # syslog is best-effort; never block startup on it
+        pass
+
     # Ensure root logger level is low enough for the handlers to fire.
     if root.level == logging.NOTSET or root.level > level:
         root.setLevel(level)

@@ -280,6 +280,7 @@ fn log(cfg: &Config, msg: &str) {
         use std::io::Write;
         let _ = writeln!(f, "{line}");
     }
+    tracing::info!(component = "supervise", agent = %cfg.agent_name, "{msg}");
 }
 
 fn child_log(agent_name: &str, acc_dir: &std::path::Path, child: &str, msg: &str) {

@@ -6,6 +6,7 @@ mod config;
 mod exec_registry;
 mod hermes;
 mod json;
+mod log_init;
 mod migrate;
 mod peers;
 mod proxy;
@@ -24,6 +25,11 @@ fn main() {
     }
     let sub = args[1].as_str();
     let rest = &args[2..];
+    // Initialize tracing once per process. Long-running daemons (bus,
+    // queue, tasks, hermes, supervise, proxy, upgrade) get journald +
+    // stderr; short-lived subcommands (migrate, agent, json) get only
+    // stderr to avoid journal noise.
+    log_init::init(sub);
     match sub {
         "migrate" => migrate::run(rest),
         "agent" => agent::run(rest),

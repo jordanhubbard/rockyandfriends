@@ -5,12 +5,25 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
 async fn main() {
-    tracing_subscriber::registry()
-        .with(tracing_subscriber::EnvFilter::new(
-            std::env::var("RUST_LOG").unwrap_or_else(|_| "acc_server=info,tower_http=info".into()),
-        ))
-        .with(tracing_subscriber::fmt::layer())
-        .init();
+    // Tracing setup: stderr fmt layer always; journald layer when systemd
+    // is reachable (Linux only; silently skipped elsewhere). The journald
+    // layer is what makes acc-server log lines visible via
+    // `journalctl -u acc-server -f` for the consolidated dashboard
+    // viewer (CCC-zkc).
+    let env_filter = tracing_subscriber::EnvFilter::new(
+        std::env::var("RUST_LOG").unwrap_or_else(|_| "acc_server=info,tower_http=info".into()),
+    );
+    let fmt_layer = tracing_subscriber::fmt::layer();
+    let registry = tracing_subscriber::registry().with(env_filter).with(fmt_layer);
+    match tracing_journald::layer() {
+        Ok(journald) => {
+            registry.with(journald).init();
+        }
+        Err(_) => {
+            // Not on systemd (macOS, container without /run/systemd, etc.)
+            registry.init();
+        }
+    }
 
     let cfg = config::load();
     let port = cfg.port;
