@@ -136,11 +136,26 @@ mv "$tmp" "$AGENT_DEST"
 echo "[restart-agent] Stopping running acc-agent so the daemon manager respawns with the new binary"
 # Capture old supervise PID before kill so we can confirm a NEW one comes up
 old_sup=$(pgrep -f "acc-agent supervise" | head -1 || true)
-pkill -x acc-agent 2>/dev/null || true
 
-# launchd (macOS, KeepAlive=true) and systemd (Restart=on-failure) typically
-# relaunch within 2-8 seconds. Poll up to ~30s for a NEW supervise process
-# whose PID differs from the one we killed.
+# Use `systemctl restart` on Linux: pkill sends SIGTERM which causes a clean
+# exit (code 0) that Restart=on-failure won't recover from. systemctl restart
+# uses SIGTERM too but marks the unit for immediate restart regardless of exit
+# code. Fall back to pkill on macOS (launchd handles KeepAlive).
+if [[ "$(uname)" != "Darwin" ]] && command -v systemctl &>/dev/null; then
+    if systemctl is-active acc-agent &>/dev/null; then
+        sudo systemctl restart acc-agent 2>/dev/null || \
+            { echo "[restart-agent] systemctl restart failed — falling back to pkill" >&2; pkill -x acc-agent 2>/dev/null || true; }
+    else
+        # Unit isn't active — start it fresh so systemd takes ownership
+        pkill -x acc-agent 2>/dev/null || true
+        sudo systemctl start acc-agent 2>/dev/null || true
+    fi
+else
+    pkill -x acc-agent 2>/dev/null || true
+fi
+
+# Poll up to ~30s for a NEW supervise process whose PID differs from the one
+# we killed. launchd and systemd typically relaunch within 2-8 seconds.
 new_sup=""
 for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
     sleep 2
