@@ -42,13 +42,33 @@ cp "$AGENT_BIN" "$tmp"
 chmod +x "$tmp"
 mv "$tmp" "$AGENT_DEST"
 
-echo "[restart-agent] Stopping running acc-agent (supervisor will relaunch)"
+echo "[restart-agent] Stopping running acc-agent so the daemon manager respawns with the new binary"
+# Capture old supervise PID before kill so we can confirm a NEW one comes up
+old_sup=$(pgrep -f "acc-agent supervise" | head -1 || true)
 pkill -x acc-agent 2>/dev/null || true
-sleep 2
 
-if pgrep -x acc-agent >/dev/null; then
-    PID=$(pgrep -x acc-agent | head -1)
-    echo "[restart-agent] ✓ acc-agent running (pid=$PID)"
+# launchd (macOS, KeepAlive=true) and systemd typically relaunch within
+# 2-8 seconds. Poll up to ~30s for a NEW supervise process whose PID
+# differs from the one we killed.
+new_sup=""
+for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
+    sleep 2
+    candidate=$(pgrep -f "acc-agent supervise" | head -1 || true)
+    if [ -n "$candidate" ] && [ "$candidate" != "$old_sup" ]; then
+        new_sup="$candidate"
+        break
+    fi
+done
+
+if [ -n "$new_sup" ]; then
+    echo "[restart-agent] ✓ acc-agent supervise relaunched (pid=$new_sup, was pid=${old_sup:-none})"
 else
-    echo "[restart-agent] ⚠ acc-agent not running yet — supervisor may take a few seconds to relaunch"
+    echo "[restart-agent] ✗ acc-agent supervise did NOT relaunch within 30s" >&2
+    echo "    Likely cause: launchd/systemd unit not installed or not configured to restart on exit." >&2
+    if [[ "$(uname)" == "Darwin" ]]; then
+        echo "    Try: launchctl load ~/Library/LaunchAgents/com.acc.agent.plist" >&2
+    else
+        echo "    Try: re-run deploy/setup-node.sh, or manually exec: nohup $AGENT_DEST supervise &" >&2
+    fi
+    exit 1
 fi
