@@ -29,6 +29,7 @@ import json
 import logging
 logger = logging.getLogger(__name__)
 import os
+import urllib.request
 import random
 import re
 import sys
@@ -189,6 +190,22 @@ def _get_proxy_from_env() -> Optional[str]:
         if value:
             return normalize_proxy_url(value)
     return None
+
+
+def _get_proxy_for_base_url(base_url: Optional[str]) -> Optional[str]:
+    """Return an env-configured proxy unless NO_PROXY excludes this base URL."""
+    proxy = _get_proxy_from_env()
+    if not proxy or not base_url:
+        return proxy
+    host = base_url_hostname(base_url)
+    if not host:
+        return proxy
+    try:
+        if urllib.request.proxy_bypass_environment(host):
+            return None
+    except Exception:
+        pass
+    return proxy
 
 
 def _install_safe_stdio() -> None:
@@ -503,6 +520,41 @@ def _sanitize_messages_surrogates(messages: list) -> bool:
     return found
 
 
+def _escape_invalid_chars_in_json_strings(raw: str) -> str:
+    """Escape unescaped control chars inside JSON string values.
+
+    Walks the raw JSON character-by-character tracking whether we are inside
+    a double-quoted string.  Inside strings, replaces literal control characters
+    (0x00-0x1F) that aren't already part of an escape sequence with their
+    \\uXXXX equivalents.  Ported from upstream hermes-agent #12093.
+    """
+    out: list = []
+    in_string = False
+    i = 0
+    n = len(raw)
+    while i < n:
+        ch = raw[i]
+        if in_string:
+            if ch == "\\" and i + 1 < n:
+                out.append(ch)
+                out.append(raw[i + 1])
+                i += 2
+                continue
+            if ch == '"':
+                in_string = False
+                out.append(ch)
+            elif ord(ch) < 0x20:
+                out.append(f"\\u{ord(ch):04x}")
+            else:
+                out.append(ch)
+        else:
+            if ch == '"':
+                in_string = True
+            out.append(ch)
+        i += 1
+    return "".join(out)
+
+
 def _repair_tool_call_arguments(raw_args: str, tool_name: str = "?") -> str:
     """Attempt to repair malformed tool_call argument JSON.
 
@@ -523,6 +575,22 @@ def _repair_tool_call_arguments(raw_args: str, tool_name: str = "?") -> str:
     if raw_stripped == "None":
         logger.warning("Sanitized Python-None tool_call arguments for %s", tool_name)
         return "{}"
+
+    # Repair pass 0: llama.cpp backends sometimes emit literal control
+    # characters (tabs, newlines) inside JSON string values. json.loads
+    # with strict=False accepts these and lets us re-serialise into
+    # wire-valid JSON without any string surgery (#12068).
+    try:
+        parsed = json.loads(raw_stripped, strict=False)
+        reserialised = json.dumps(parsed, separators=(",", ":"))
+        if reserialised != raw_stripped:
+            logger.warning(
+                "Repaired unescaped control chars in tool_call arguments for %s",
+                tool_name,
+            )
+        return reserialised
+    except (json.JSONDecodeError, TypeError, ValueError):
+        pass
 
     # Attempt common JSON repairs
     fixed = raw_stripped
@@ -556,6 +624,21 @@ def _repair_tool_call_arguments(raw_args: str, tool_name: str = "?") -> str:
         )
         return fixed
     except json.JSONDecodeError:
+        pass
+
+    # Repair pass 4: escape unescaped control chars inside JSON strings,
+    # then retry.  Catches cases where strict=False alone fails because
+    # other malformations are also present (#12093).
+    try:
+        escaped = _escape_invalid_chars_in_json_strings(fixed)
+        if escaped != fixed:
+            json.loads(escaped)
+            logger.warning(
+                "Repaired control-char-laced tool_call arguments for %s: %s → %s",
+                tool_name, raw_stripped[:80], escaped[:80],
+            )
+            return escaped
+    except (json.JSONDecodeError, TypeError, ValueError):
         pass
 
     # Last resort: replace with empty object so the API request doesn't
@@ -697,6 +780,22 @@ def _qwen_portal_headers() -> dict:
         "X-DashScope-UserAgent": _ua,
         "X-DashScope-AuthType": "qwen-oauth",
     }
+
+
+def _pool_may_recover_from_rate_limit(pool) -> bool:
+    """Return True only when credential-pool rotation has somewhere to go.
+
+    With a single-credential pool (Gemini OAuth, Vertex service accounts,
+    or any "one personal key" setup) the primary entry just 429'd and there
+    is nothing to rotate to — waiting for cooldown just burns retry budget
+    against the same exhausted quota.  Fall back to fallback_model instead.
+    See upstream issue #11314.
+    """
+    if pool is None:
+        return False
+    if not pool.has_available():
+        return False
+    return len(pool.entries()) > 1
 
 
 class AIAgent:
@@ -4429,8 +4528,9 @@ class AIAgent:
                 _sock_opts.append((_socket.IPPROTO_TCP, _socket.TCP_KEEPALIVE, 30))
             # When a custom transport is provided, httpx won't auto-read proxy
             # from env vars (allow_env_proxies = trust_env and transport is None).
-            # Explicitly read proxy settings to ensure HTTP_PROXY/HTTPS_PROXY work.
-            _proxy = _get_proxy_from_env()
+            # Explicitly read proxy settings to ensure HTTP_PROXY/HTTPS_PROXY work,
+            # while still honouring NO_PROXY for the target host.
+            _proxy = _get_proxy_for_base_url(getattr(self, "base_url", None))
             return _httpx.Client(
                 transport=_httpx.HTTPTransport(socket_options=_sock_opts),
                 proxy=_proxy,
@@ -10354,7 +10454,7 @@ class AIAgent:
                         # at least one more attempt to fire — jumping to a fallback
                         # provider here short-circuits it.
                         pool = self._credential_pool
-                        pool_may_recover = pool is not None and pool.has_available()
+                        pool_may_recover = _pool_may_recover_from_rate_limit(pool)
                         if not pool_may_recover:
                             self._emit_status("⚠️ Rate limited — switching to fallback provider...")
                             if self._try_activate_fallback():
