@@ -80,13 +80,67 @@ import re
 import shutil
 import threading
 import time
+import sys
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
+# Stdio subprocess stderr redirection
+# ---------------------------------------------------------------------------
+#
+# stdio_client() defaults errlog=sys.stderr, so MCP server startup banners
+# write directly onto the terminal while the TUI is rendering — corrupting
+# the display and potentially hanging the session.  We redirect every stdio
+# MCP subprocess's stderr to ~/.hermes/logs/mcp-stderr.log instead, tagged
+# with the server name so individual servers remain debuggable.
+
+_mcp_stderr_log_fh: Optional[Any] = None
+_mcp_stderr_log_lock = threading.Lock()
+
+
+def _get_mcp_stderr_log() -> Any:
+    """Return a shared append-mode file handle for MCP subprocess stderr."""
+    global _mcp_stderr_log_fh
+    with _mcp_stderr_log_lock:
+        if _mcp_stderr_log_fh is not None:
+            return _mcp_stderr_log_fh
+        try:
+            from hermes_constants import get_hermes_home
+            log_dir = get_hermes_home() / "logs"
+            log_dir.mkdir(parents=True, exist_ok=True)
+            log_path = log_dir / "mcp-stderr.log"
+            fh = open(log_path, "a", encoding="utf-8", errors="replace", buffering=1)
+            fh.fileno()  # confirm real fd before committing
+            _mcp_stderr_log_fh = fh
+        except Exception as exc:
+            logger.debug("Failed to open MCP stderr log, using devnull: %s", exc)
+            try:
+                _mcp_stderr_log_fh = open(os.devnull, "w", encoding="utf-8")
+            except Exception:
+                _mcp_stderr_log_fh = sys.stderr
+        return _mcp_stderr_log_fh
+
+
+def _write_stderr_log_header(server_name: str) -> None:
+    """Write a session marker before launching a server."""
+    fh = _get_mcp_stderr_log()
+    try:
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        fh.write(f"\n===== [{ts}] starting MCP server '{server_name}' =====\n")
+        fh.flush()
+    except Exception:
+        pass
+
+# ---------------------------------------------------------------------------
 # Graceful import -- MCP SDK is an optional dependency
 # ---------------------------------------------------------------------------
+
+# Conservative fallback for SDK builds that don't export LATEST_PROTOCOL_VERSION.
+# Streamable HTTP was introduced by 2025-03-26, so this remains valid for the
+# HTTP transport path even on older-but-supported SDK versions.
+LATEST_PROTOCOL_VERSION = "2025-03-26"
 
 _MCP_AVAILABLE = False
 _MCP_HTTP_AVAILABLE = False
@@ -109,6 +163,10 @@ try:
         _MCP_NEW_HTTP = True
     except ImportError:
         _MCP_NEW_HTTP = False
+    try:
+        from mcp.types import LATEST_PROTOCOL_VERSION  # noqa: F811
+    except ImportError:
+        logger.debug("mcp.types.LATEST_PROTOCOL_VERSION not available — using fallback")
     # Sampling types -- separated so older SDK versions don't break MCP support
     try:
         from mcp.types import (
@@ -962,7 +1020,8 @@ class MCPServerTask:
 
         # Snapshot child PIDs before spawning so we can track the new one.
         pids_before = _snapshot_child_pids()
-        async with stdio_client(server_params) as (read_stream, write_stream):
+        _write_stderr_log_header(self.name)
+        async with stdio_client(server_params, errlog=_get_mcp_stderr_log()) as (read_stream, write_stream):
             # Capture the newly spawned subprocess PID for force-kill cleanup.
             new_pids = _snapshot_child_pids() - pids_before
             if new_pids:

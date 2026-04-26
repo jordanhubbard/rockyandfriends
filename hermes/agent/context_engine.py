@@ -98,6 +98,19 @@ class ContextEngine(ABC):
         """
         return False
 
+    def has_content_to_compress(self, messages: List[Dict[str, Any]]) -> bool:
+        """Quick check: is there anything in messages that can be compacted?
+
+        Used by the gateway /compress command as a preflight guard —
+        returning False lets the gateway report "nothing to compress yet"
+        without making an LLM call.
+
+        Default returns True (always attempt). Engines with a cheap way
+        to introspect their own head/tail boundaries should override this
+        to return False when the transcript is still entirely protected.
+        """
+        return True
+
     # -- Optional: session lifecycle ---------------------------------------
 
     def on_session_start(self, session_id: str, **kwargs) -> None:
