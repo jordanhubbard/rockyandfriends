@@ -779,6 +779,70 @@ def _pool_may_recover_from_rate_limit(pool) -> bool:
     return len(pool.entries()) > 1
 
 
+def _summarize_user_message_for_log(user_message) -> str:
+    """Return a plain-string summary of user_message suitable for log/print lines.
+
+    Handles str, None, list (multimodal chat content), and scalar fallback.
+    The returned value always supports slicing and .replace() so callers
+    don't need to guard against list/None.
+    """
+    if user_message is None:
+        return ""
+    if isinstance(user_message, str):
+        return user_message
+    if isinstance(user_message, list):
+        text_parts: list[str] = []
+        image_count = 0
+        for part in user_message:
+            if not isinstance(part, dict):
+                continue
+            ptype = part.get("type", "")
+            if ptype in ("text", "input_text"):
+                text_parts.append(part.get("text", ""))
+            elif ptype in ("image_url", "input_image", "image"):
+                image_count += 1
+        pieces: list[str] = []
+        if text_parts:
+            pieces.append(" ".join(text_parts))
+        if image_count:
+            pieces.append(f"[{image_count} {'image' if image_count == 1 else 'images'}]")
+        return " ".join(pieces)
+    return str(user_message)
+
+
+def _chat_content_to_responses_parts(content) -> list:
+    """Convert chat-style content to Responses API input_text / input_image parts.
+
+    Returns an empty list for non-list inputs (strings, None, etc.) so callers
+    can always iterate the result safely.
+    """
+    if not isinstance(content, list):
+        return []
+    out: list[dict] = []
+    for part in content:
+        if not isinstance(part, dict):
+            continue
+        ptype = part.get("type", "")
+        if ptype in ("text", "input_text"):
+            out.append({"type": "input_text", "text": part.get("text", "")})
+        elif ptype in ("input_image",):
+            # Already in Responses format — pass through
+            out.append(part)
+        elif ptype == "image_url":
+            img = part.get("image_url", {})
+            if isinstance(img, str):
+                if img:
+                    out.append({"type": "input_image", "image_url": img})
+            elif isinstance(img, dict):
+                url = img.get("url", "")
+                if url:
+                    entry: dict = {"type": "input_image", "image_url": url}
+                    if "detail" in img:
+                        entry["detail"] = img["detail"]
+                    out.append(entry)
+    return out
+
+
 class AIAgent:
     """
     AI Agent with tool calling capabilities.
