@@ -217,6 +217,19 @@ fn parse_restarts_header(source: &str) -> Vec<String> {
         .collect()
 }
 
+fn workspace_rev(cfg: &Config) -> String {
+    let workspace = cfg.acc_dir.join("workspace");
+    std::process::Command::new("git")
+        .args(["rev-parse", "--short", "HEAD"])
+        .current_dir(&workspace)
+        .output()
+        .ok()
+        .and_then(|o| String::from_utf8(o.stdout).ok())
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "unknown".to_string())
+}
+
 async fn post_heartbeat(cfg: &Config) {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(15))
@@ -224,9 +237,11 @@ async fn post_heartbeat(cfg: &Config) {
         .unwrap_or_default();
 
     let url = format!("{}/api/heartbeat/{}", cfg.acc_url, cfg.agent_name);
+    let rev = workspace_rev(cfg);
     let body = serde_json::json!({
         "status": "ok",
         "note": "upgrade complete",
+        "ccc_version": rev,
     });
 
     match client
