@@ -65,6 +65,14 @@ ensure_daemon_configured() {
         fi
 
     elif command -v systemctl &>/dev/null; then
+        # Hub nodes (Rocky) use acc-server.service which supervises acc-agent workers
+        # directly. Agent nodes use acc-agent.service (supervise mode).
+        # Detect which model is in use by checking acc-server.service first.
+        if systemctl is-active acc-server.service &>/dev/null 2>&1; then
+            echo "[restart-agent] acc-server.service is active — hub mode (acc-server manages workers)"
+            return 0  # acc-server handles worker supervision; nothing to configure here
+        fi
+
         local SERVICE_SRC="${WORKSPACE}/deploy/systemd/acc-agent.service"
         local SERVICE_DST="/etc/systemd/system/acc-agent.service"
         local rendered
@@ -134,7 +142,30 @@ mv "$tmp" "$AGENT_DEST"
 
 # ── Kill and wait for respawn ──────────────────────────────────────────────
 echo "[restart-agent] Stopping running acc-agent so the daemon manager respawns with the new binary"
-# Capture old supervise PID before kill so we can confirm a NEW one comes up
+
+# Hub nodes (Rocky): acc-server.service owns the acc-agent workers.
+# Kill the workers and the Rust supervisor in acc-server will respawn them
+# with the new binary. No separate supervise process to look for.
+if [[ "$(uname)" != "Darwin" ]] && command -v systemctl &>/dev/null \
+    && systemctl is-active acc-server.service &>/dev/null 2>&1; then
+    pkill -f "acc-agent (bus|queue|tasks|hermes|proxy)" 2>/dev/null || true
+    # Wait for acc-server's Rust supervisor to respawn at least one worker.
+    new_worker=""
+    for _ in 1 2 3 4 5 6 7 8 9 10; do
+        sleep 2
+        new_worker=$(pgrep -f "acc-agent (bus|queue|tasks)" | head -1 || true)
+        [ -n "$new_worker" ] && break
+    done
+    if [ -n "$new_worker" ]; then
+        echo "[restart-agent] ✓ acc-agent workers respawned by acc-server.service supervisor"
+    else
+        echo "[restart-agent] ✗ workers did not respawn within 20s — check: journalctl -u acc-server.service" >&2
+        exit 1
+    fi
+    exit 0
+fi
+
+# Agent nodes: supervise mode (launchd / acc-agent.service / plain).
 old_sup=$(pgrep -f "acc-agent supervise" | head -1 || true)
 
 # Use `systemctl restart` on Linux: pkill sends SIGTERM which causes a clean
