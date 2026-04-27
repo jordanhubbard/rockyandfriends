@@ -584,26 +584,41 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_post_heartbeat_no_panic() {
+    async fn test_post_heartbeat_hits_endpoint() {
         let mock = HubMock::new().await;
         let cfg = test_cfg(&mock.url);
         let client = build_client(&cfg);
-        post_heartbeat(&test_cfg(&mock.url), &client, "hermes-test").await;
+        post_heartbeat(&cfg, &client, "hermes-test").await;
+        let log = mock.state.read().await.call_log.lock().await.clone();
+        assert!(
+            log.iter().any(|e| e.contains("/api/heartbeat/natasha")),
+            "post_heartbeat must hit /api/heartbeat/{{agent}}, got: {log:?}"
+        );
     }
 
     #[tokio::test]
-    async fn test_post_complete_no_panic() {
+    async fn test_post_complete_hits_endpoint() {
         let mock = HubMock::new().await;
         let cfg = test_cfg(&mock.url);
         let client = build_client(&cfg);
-        post_complete(&test_cfg(&mock.url), &client, "wq-333", "output text").await;
+        post_complete(&cfg, &client, "wq-333", "output text").await;
+        let log = mock.state.read().await.call_log.lock().await.clone();
+        assert!(
+            log.iter().any(|e| e.contains("/api/item/wq-333/complete")),
+            "post_complete must hit /api/item/{{id}}/complete, got: {log:?}"
+        );
     }
 
     #[tokio::test]
-    async fn test_post_fail_no_panic() {
+    async fn test_post_fail_hits_endpoint() {
         let mock = HubMock::new().await;
         let cfg = test_cfg(&mock.url);
         let client = build_client(&cfg);
-        post_fail(&test_cfg(&mock.url), &client, "wq-444", "timeout").await;
+        post_fail(&cfg, &client, "wq-444", "timeout").await;
+        let log = mock.state.read().await.call_log.lock().await.clone();
+        assert!(
+            log.iter().any(|e| e.contains("/api/item/wq-444/fail")),
+            "post_fail must hit /api/item/{{id}}/fail, got: {log:?}"
+        );
     }
 }

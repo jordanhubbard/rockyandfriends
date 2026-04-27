@@ -109,7 +109,7 @@ impl HermesAgent {
         }
     }
 
-    async fn run_conversation(
+    pub(crate) async fn run_conversation(
         &self,
         item_id: Option<String>,
         query: String,
@@ -361,6 +361,7 @@ mod tests {
     use std::future::Future;
     use std::path::PathBuf;
     use std::pin::Pin;
+    use std::sync::atomic::AtomicU32;
 
     fn test_cfg(url: &str) -> Config {
         Config {
@@ -381,6 +382,9 @@ mod tests {
         Client::new(&cfg.acc_url, &cfg.acc_token).expect("client")
     }
 
+    // ── Test providers ────────────────────────────────────────────────────────
+
+    /// Always returns a single text block with end_turn.
     struct EchoProvider {
         reply: String,
     }
@@ -406,60 +410,191 @@ mod tests {
         }
     }
 
+    /// First call returns a bash tool_use; second call returns end_turn.
+    struct TwoStepProvider {
+        step: Arc<AtomicU32>,
+    }
+
+    impl LlmProvider for TwoStepProvider {
+        fn complete<'a>(
+            &'a self,
+            _system: &'a str,
+            _messages: &'a [Value],
+            _tools: &'a [Value],
+            _max_tokens: u32,
+        ) -> Pin<Box<dyn Future<Output = super::super::provider::ProviderResult> + Send + 'a>>
+        {
+            let step = self.step.fetch_add(1, Ordering::SeqCst);
+            Box::pin(async move {
+                if step == 0 {
+                    Ok(super::super::provider::LlmResponse {
+                        content: vec![json!({
+                            "type": "tool_use",
+                            "id": "call-1",
+                            "name": "bash",
+                            "input": {"command": "echo tool_ran"}
+                        })],
+                        stop_reason: "tool_use".to_string(),
+                        input_tokens: 10,
+                        output_tokens: 5,
+                    })
+                } else {
+                    Ok(super::super::provider::LlmResponse {
+                        content: vec![json!({"type": "text", "text": "tool executed successfully"})],
+                        stop_reason: "end_turn".to_string(),
+                        input_tokens: 20,
+                        output_tokens: 10,
+                    })
+                }
+            })
+        }
+    }
+
+    /// Always returns max_tokens stop reason.
+    struct MaxTokensProvider;
+
+    impl LlmProvider for MaxTokensProvider {
+        fn complete<'a>(
+            &'a self,
+            _system: &'a str,
+            _messages: &'a [Value],
+            _tools: &'a [Value],
+            _max_tokens: u32,
+        ) -> Pin<Box<dyn Future<Output = super::super::provider::ProviderResult> + Send + 'a>>
+        {
+            Box::pin(async move {
+                Ok(super::super::provider::LlmResponse {
+                    content: vec![json!({"type": "text", "text": "partial work done"})],
+                    stop_reason: "max_tokens".to_string(),
+                    input_tokens: 8000,
+                    output_tokens: 8192,
+                })
+            })
+        }
+    }
+
     fn make_agent(url: &str) -> HermesAgent {
         let cfg = test_cfg(url);
         let client = build_client(&cfg);
-        let provider = Box::new(EchoProvider { reply: "task done".to_string() });
-        let tools = ToolRegistry::default_tools();
-        HermesAgent::new(cfg, client, provider, tools)
+        HermesAgent::new(cfg, client, Box::new(EchoProvider { reply: "task done".to_string() }), ToolRegistry::default_tools())
+    }
+
+    // ── run_conversation tests ─────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn run_conversation_returns_success_and_text() {
+        let mock = HubMock::new().await;
+        let cfg = test_cfg(&mock.url);
+        let client = build_client(&cfg);
+        let agent = HermesAgent::new(
+            cfg, client,
+            Box::new(EchoProvider { reply: "task done".to_string() }),
+            ToolRegistry::default_tools(),
+        );
+        let (ok, output) = agent.run_conversation(None, "do the thing".to_string()).await;
+        assert!(ok, "EchoProvider returns end_turn so conversation must succeed");
+        assert_eq!(output, "task done", "output must be the provider's text reply");
     }
 
     #[tokio::test]
-    async fn run_query_echos_response() {
+    async fn run_conversation_tool_use_executes_bash_and_continues() {
         let mock = HubMock::new().await;
-        let agent = make_agent(&mock.url);
-        // run_query prints to stdout; we just verify it doesn't panic
-        agent.run_query("what is 2+2?".to_string()).await;
+        let cfg = test_cfg(&mock.url);
+        let client = build_client(&cfg);
+        let agent = HermesAgent::new(
+            cfg, client,
+            Box::new(TwoStepProvider { step: Arc::new(AtomicU32::new(0)) }),
+            ToolRegistry::default_tools(),
+        );
+        // Step 1: provider returns tool_use(bash, echo tool_ran)
+        // Step 2: agent executes bash, adds result to history, calls provider again
+        // Step 3: provider returns end_turn with "tool executed successfully"
+        let (ok, output) = agent.run_conversation(None, "run a tool".to_string()).await;
+        assert!(ok, "should succeed after tool execution");
+        assert_eq!(output, "tool executed successfully");
     }
+
+    #[tokio::test]
+    async fn run_conversation_max_tokens_returns_failure() {
+        let mock = HubMock::new().await;
+        let cfg = test_cfg(&mock.url);
+        let client = build_client(&cfg);
+        let agent = HermesAgent::new(
+            cfg, client,
+            Box::new(MaxTokensProvider),
+            ToolRegistry::default_tools(),
+        );
+        let (ok, output) = agent.run_conversation(None, "a query".to_string()).await;
+        assert!(!ok, "max_tokens must signal failure");
+        assert!(
+            output.contains("Token budget exhausted"),
+            "output must explain token exhaustion, got: {output:?}"
+        );
+    }
+
+    // ── fetch_item tests ───────────────────────────────────────────────────────
 
     #[tokio::test]
     async fn fetch_item_returns_none_on_empty_queue() {
         let mock = HubMock::new().await;
         let agent = make_agent(&mock.url);
-        let item = agent.fetch_item().await;
-        assert!(item.is_none());
+        assert!(agent.fetch_item().await.is_none());
     }
 
     #[tokio::test]
-    async fn fetch_item_skips_claude_only() {
-        use crate::hub_mock::HubMock;
-        use serde_json::json;
+    async fn fetch_item_skips_claude_only_tag() {
         let mock = HubMock::with_queue(vec![json!({
-            "id": "wq-c1",
-            "status": "pending",
-            "assignee": "all",
-            "tags": ["claude_cli"],
-            "preferred_executor": "claude_cli"
-        })])
-        .await;
-        let agent = make_agent(&mock.url);
-        let item = agent.fetch_item().await;
-        assert!(item.is_none());
+            "id": "wq-c1", "status": "pending", "assignee": "all",
+            "tags": ["claude_cli"], "preferred_executor": ""
+        })]).await;
+        assert!(make_agent(&mock.url).fetch_item().await.is_none());
     }
+
+    #[tokio::test]
+    async fn fetch_item_skips_claude_only_preferred_executor() {
+        let mock = HubMock::with_queue(vec![json!({
+            "id": "wq-c2", "status": "pending", "assignee": "all",
+            "tags": [], "preferred_executor": "claude_cli"
+        })]).await;
+        assert!(make_agent(&mock.url).fetch_item().await.is_none());
+    }
+
+    #[tokio::test]
+    async fn fetch_item_returns_eligible_item() {
+        let mock = HubMock::with_queue(vec![json!({
+            "id": "wq-ok", "status": "pending", "assignee": "all",
+            "tags": ["gpu"], "preferred_executor": ""
+        })]).await;
+        let item = make_agent(&mock.url).fetch_item().await;
+        assert!(item.is_some());
+        assert_eq!(item.unwrap()["id"], "wq-ok");
+    }
+
+    // ── claim tests ────────────────────────────────────────────────────────────
 
     #[tokio::test]
     async fn claim_succeeds_against_mock() {
         let mock = HubMock::new().await;
-        let agent = make_agent(&mock.url);
-        assert!(agent.claim("wq-test").await);
+        assert!(make_agent(&mock.url).claim("wq-test").await);
     }
 
     #[tokio::test]
-    async fn tool_names_advertised() {
+    async fn claim_conflict_returns_false() {
+        use crate::hub_mock::HubState;
+        let mock = HubMock::with_state(HubState { item_claim_status: 409, ..Default::default() }).await;
+        assert!(!make_agent(&mock.url).claim("wq-clash").await);
+    }
+
+    // ── tool advertisement ─────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn tool_names_advertised_in_registry() {
         let mock = HubMock::new().await;
         let agent = make_agent(&mock.url);
         let names = agent.tools.names();
         assert!(names.contains(&"bash".to_string()));
         assert!(names.contains(&"read_file".to_string()));
+        assert!(names.contains(&"write_file".to_string()));
+        assert!(names.contains(&"web_fetch".to_string()));
     }
 }

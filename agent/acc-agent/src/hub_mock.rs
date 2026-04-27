@@ -38,6 +38,8 @@ pub struct HubState {
     pub task_create_status: u16,
     /// HTTP status code for PUT /api/tasks/:id/review-result (default 200)
     pub review_result_status: u16,
+    /// Log of all requests received: "METHOD /path". Inspectable by tests.
+    pub call_log: Arc<Mutex<Vec<String>>>,
 }
 
 impl Default for HubState {
@@ -53,6 +55,7 @@ impl Default for HubState {
             created_tasks: Arc::new(Mutex::new(vec![])),
             task_create_status: 201,
             review_result_status: 200,
+            call_log: Arc::new(Mutex::new(vec![])),
         }
     }
 }
@@ -110,13 +113,13 @@ type S = Arc<RwLock<HubState>>;
 fn build_router(state: S) -> Router {
     Router::new()
         // Heartbeat — queue worker uses /api/heartbeat/:name
-        .route("/api/heartbeat/:name",          post(ok))
-        .route("/api/agents/:name/heartbeat",   post(ok))
+        .route("/api/heartbeat/:name",          post(logged_heartbeat))
+        .route("/api/agents/:name/heartbeat",   post(logged_agents_heartbeat))
         // Queue worker item routes
         .route("/api/queue",                    get(queue_items))
         .route("/api/item/:id/claim",           post(item_claim))
-        .route("/api/item/:id/complete",        post(ok))
-        .route("/api/item/:id/fail",            post(ok))
+        .route("/api/item/:id/complete",        post(logged_complete))
+        .route("/api/item/:id/fail",            post(logged_fail))
         .route("/api/item/:id/keepalive",       post(ok))
         .route("/api/item/:id/comment",         post(ok))
         // Fleet task routes
@@ -219,4 +222,24 @@ async fn request_claim(State(st): State<S>, Path(id): Path<String>) -> impl Into
         json!({"error": "already_claimed"})
     };
     (sc, Json(body)).into_response()
+}
+
+async fn logged_heartbeat(State(st): State<S>, Path(name): Path<String>) -> Json<Value> {
+    st.read().await.call_log.lock().await.push(format!("POST /api/heartbeat/{name}"));
+    Json(json!({"ok": true}))
+}
+
+async fn logged_agents_heartbeat(State(st): State<S>, Path(name): Path<String>) -> Json<Value> {
+    st.read().await.call_log.lock().await.push(format!("POST /api/agents/{name}/heartbeat"));
+    Json(json!({"ok": true}))
+}
+
+async fn logged_complete(State(st): State<S>, Path(id): Path<String>) -> Json<Value> {
+    st.read().await.call_log.lock().await.push(format!("POST /api/item/{id}/complete"));
+    Json(json!({"ok": true}))
+}
+
+async fn logged_fail(State(st): State<S>, Path(id): Path<String>) -> Json<Value> {
+    st.read().await.call_log.lock().await.push(format!("POST /api/item/{id}/fail"));
+    Json(json!({"ok": true}))
 }
