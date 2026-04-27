@@ -1,9 +1,11 @@
-//! Hermes session driver.
+//! Python subprocess backend for hermes.
 //!
-//! Replaces hermes-driver.py. Wraps the hermes CLI with:
+//! Wraps the hermes CLI binary with:
 //!   - auto-resume on budget exhaustion (up to 6 attempts)
 //!   - CCC heartbeat/keepalive posting during execution
-//!   - three modes: --item <id>, --resume <session-id>, --poll
+//!   - three modes: --item <id>, --query <text>, --resume <session-id>
+//!   - --poll: continuous queue polling
+//!   - --gateway: exec hermes gateway run --replace
 
 use std::time::Duration;
 use tokio::process::Command;
@@ -232,7 +234,6 @@ async fn invoke_hermes(
             };
             log(cfg, &format!("hermes exited {} ({} chars)", out.status.code().unwrap_or(-1), output.len()));
 
-            // Try to extract new session ID from output
             let new_session = extract_session_id(&stdout);
             let success = out.status.success();
             (output, success, new_session)
@@ -254,7 +255,6 @@ fn extract_session_id(output: &str) -> Option<String> {
     for line in output.lines() {
         let lower = line.to_lowercase();
         if lower.contains("session_id:") || lower.contains("session:") {
-            // Session IDs look like: 20260417_153022_abc123
             for word in line.split_whitespace() {
                 if word.starts_with("20") && word.contains('_') && word.len() > 15 {
                     return Some(word.to_string());
@@ -277,7 +277,6 @@ fn find_hermes() -> String {
             return candidate.clone();
         }
     }
-    // Search PATH
     if let Ok(path_var) = std::env::var("PATH") {
         for dir in path_var.split(':') {
             let p = std::path::PathBuf::from(dir).join("hermes");
@@ -289,15 +288,6 @@ fn find_hermes() -> String {
     "hermes".into()
 }
 
-// Gateway mode — exec `hermes gateway run --replace` and let it own the
-// process lifecycle.
-//
-// `--replace` causes hermes to take over from any pre-existing gateway
-// (matches its own PID file) instead of exiting with status 1 and a
-// "Gateway already running" message. Without this flag we observed a
-// supervisor spam-loop on do-host1: every restart from supervise would
-// hit the existing PID, exit 1, get respawned, repeat. With `--replace`
-// the new invocation cleanly takes over and runs steady-state.
 async fn run_gateway(cfg: &Config) {
     let hermes_bin = find_hermes();
     log(cfg, &format!("starting gateway (bin={hermes_bin})"));
@@ -311,7 +301,6 @@ async fn run_gateway(cfg: &Config) {
     }
 }
 
-// Queue poll mode
 async fn poll_queue(cfg: &Config, client: &Client) {
     log(cfg, &format!("starting queue poll (agent={}, hub={})", cfg.agent_name, cfg.acc_url));
     loop {
@@ -341,7 +330,6 @@ async fn fetch_hermes_item(cfg: &Config, client: &Client) -> Option<serde_json::
         if !assignee.is_empty() && assignee != "all" && assignee != cfg.agent_name.as_str() {
             continue;
         }
-        // Skip tasks explicitly reserved for claude CLI
         let tags: Vec<&str> = raw["tags"]
             .as_array()
             .map(|a| a.iter().filter_map(|v| v.as_str()).collect())
@@ -400,11 +388,8 @@ async fn post_fail(cfg: &Config, client: &Client, item_id: &str, reason: &str) {
     let _ = client.items().fail(item_id, &cfg.agent_name, truncated).await;
 }
 
-fn log_tracing(cfg: &Config, msg: &str) {
-    tracing::info!(component = "hermes", agent = %cfg.agent_name, "{msg}");
-}
 fn log(cfg: &Config, msg: &str) {
-    log_tracing(cfg, msg);
+    tracing::info!(component = "hermes", agent = %cfg.agent_name, "{msg}");
     let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ");
     let line = format!("[{ts}] [{}] [hermes] {msg}", cfg.agent_name);
     eprintln!("{line}");
@@ -423,7 +408,6 @@ fn build_client(cfg: &Config) -> Client {
     Client::new(&cfg.acc_url, &cfg.acc_token).expect("failed to build HTTP client")
 }
 
-// Helper trait for setting optional env vars on Command
 trait CommandExt {
     fn env_opt(self, key: &str, val: Option<&str>) -> Self;
 }
@@ -436,7 +420,6 @@ impl CommandExt for &mut Command {
         self
     }
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -460,8 +443,6 @@ mod tests {
         }
     }
 
-    // ── Pure unit tests ───────────────────────────────────────────────────────
-
     #[test]
     fn test_extract_session_id_found() {
         let output = "session_id: 20260417_153022_abc123 at turn 5";
@@ -476,8 +457,6 @@ mod tests {
         let output = "normal hermes output without session info";
         assert_eq!(extract_session_id(output), None);
     }
-
-    // ── fetch_hermes_item hub mock tests ─────────────────────────────────────
 
     #[tokio::test]
     async fn test_fetch_hermes_item_returns_hermes_tagged() {
@@ -562,7 +541,6 @@ mod tests {
         ]).await;
         let cfg = test_cfg(&mock.url);
         let client = build_client(&cfg);
-        // cfg.agent_name = "natasha", item assigned to "boris"
         let item = fetch_hermes_item(&test_cfg(&mock.url), &client).await;
         assert!(item.is_none(), "item assigned to another agent must be skipped");
     }
@@ -589,8 +567,6 @@ mod tests {
         assert!(item.is_none());
     }
 
-    // ── api_claim ─────────────────────────────────────────────────────────────
-
     #[tokio::test]
     async fn test_api_claim_success_returns_true() {
         let mock = HubMock::new().await;
@@ -606,8 +582,6 @@ mod tests {
         let client = build_client(&cfg);
         assert!(!api_claim(&test_cfg(&mock.url), &client, "wq-222").await);
     }
-
-    // ── fire-and-forget helpers ───────────────────────────────────────────────
 
     #[tokio::test]
     async fn test_post_heartbeat_no_panic() {
