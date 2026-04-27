@@ -333,13 +333,26 @@ async fn auto_file_phase_commits(state: &Arc<AppState>) {
         let consecutive_failures = project.get("phase_commit_consecutive_failures")
             .and_then(|v| v.as_i64()).unwrap_or(0);
         if consecutive_failures >= 3 {
-            // Log once per project per 10 ticks (~150s) so the alert is
-            // visible without spamming.
+            // Emit a bus alert once per project per 10 ticks (~150s) so the
+            // Slack gateway surfaces it to the human — then log and skip.
+            // Agents cannot fix git/SSH infrastructure; the human must.
             if Utc::now().timestamp() % 150 < 15 {
                 info!(
                     "[dispatch] phase_commit auto-fill paused for project {project_id} \
                      — {consecutive_failures} consecutive failures; reset via /clean or manual fix"
                 );
+                let project_name = project.get("name").and_then(|v| v.as_str()).unwrap_or("unknown");
+                let _ = state.bus_tx.send(serde_json::json!({
+                    "type": "phase_commit.paused",
+                    "project_id": project_id,
+                    "project_name": project_name,
+                    "consecutive_failures": consecutive_failures,
+                    "action_required": format!(
+                        "Git push is failing for project '{}'. Check remote/SSH credentials, \
+                         then POST /api/projects/{}/clean to resume auto-commits.",
+                        project_name, project_id
+                    ),
+                }).to_string());
             }
             continue;
         }

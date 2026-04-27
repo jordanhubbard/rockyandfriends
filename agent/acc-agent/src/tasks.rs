@@ -430,6 +430,13 @@ async fn execute_task(cfg: &Config, client: &Client, task: &Value, online_peers:
          verified by `git diff` against your edits — a written description that \
          doesn't actually modify files counts as a failed task.\n\
          \n\
+         SCOPE BOUNDARY — infrastructure failures are NOT your problem to fix:\n\
+         If you encounter git push failures, SSH errors, missing remotes, auth \
+         failures, or other network/infrastructure issues, do NOT investigate \
+         them, write investigation docs about them, or create follow-up tasks \
+         about them. These are outside agent control. Simply note the error in \
+         your summary and stop — the human who owns the infrastructure will handle it.\n\
+         \n\
          When the edits are applied, summarize in 1-3 sentences what you changed."
     );
 
@@ -717,8 +724,9 @@ async fn execute_phase_commit_task(cfg: &Config, client: &Client, task: &Value) 
         }
         Err(e) => {
             log(cfg, &format!("phase_commit {task_id} git failed: {e}"));
-            // Drift-fix #4: tell the server this attempt failed so the
-            // dispatch loop can stop auto-filing if we hit 3 in a row.
+
+            // Report consecutive failure count to the server so dispatch
+            // can pause after 3 in a row (drift-fix #4).
             if !project_id.is_empty() {
                 let path = format!("/api/projects/{project_id}/phase-commit-failed");
                 let body = serde_json::json!({"reason": e});
@@ -726,17 +734,36 @@ async fn execute_phase_commit_task(cfg: &Config, client: &Client, task: &Value) 
                     log(cfg, &format!("phase_commit {task_id}: failure-report POST failed: {re}"));
                 }
             }
-            unclaim_task(cfg, client, task_id).await;
-            // File investigation task
-            let req = CreateTaskRequest {
-                project_id: project_id.to_string(),
-                title: format!("Investigate git failure: phase {phase}"),
-                description: Some(format!("Phase commit failed for {task_id}: {e}")),
-                priority: Some(0),
-                task_type: Some(TaskType::Work),
-                ..Default::default()
-            };
-            let _ = client.tasks().create(&req).await;
+
+            // Git/SSH/network failures are infrastructure problems outside
+            // agent control. Do NOT file an investigation task — that only
+            // creates a loop where agents write docs about their own git
+            // problems rather than doing project work.
+            //
+            // Instead: complete the task with a clear failure summary and
+            // emit a bus event so the Slack gateway surfaces it to the
+            // human who owns git credentials / repo setup.
+            let summary = format!(
+                "git push failed (outside agent control) — human action required.\n\
+                 Error: {e}\n\
+                 Project: {project_id}\n\
+                 Branch: {branch}\n\
+                 The workspace has uncommitted changes. Once the repo/SSH is fixed,\n\
+                 POST /api/projects/{project_id}/clean to re-enable auto-filing."
+            );
+            complete_task(cfg, client, task_id, &summary).await;
+
+            // Notify humans via the bus so Slack/Telegram picks it up.
+            let alert = serde_json::json!({
+                "type": "phase_commit.push_failed",
+                "agent": cfg.agent_name,
+                "project_id": project_id,
+                "branch": branch,
+                "error": e,
+                "task_id": task_id,
+                "action_required": "Check git remote / SSH credentials and POST /api/projects/PROJ_ID/clean to resume.",
+            });
+            let _ = client.request_json("POST", "/api/bus/send", Some(&alert)).await;
         }
     }
     mark_done(task_id);
