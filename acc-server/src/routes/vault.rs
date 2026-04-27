@@ -13,12 +13,13 @@ use std::{collections::HashMap, sync::Arc};
 
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
-        .route("/api/vault/status", get(vault_status))
-        .route("/api/vault/unlock", post(vault_unlock))
-        .route("/api/vault/lock",   post(vault_lock))
-        .route("/api/vault/rotate", post(vault_rotate))
-        .route("/api/vault/import", post(vault_import))
-        .route("/api/vault/export", get(vault_export))
+        .route("/api/vault/status",           get(vault_status))
+        .route("/api/vault/unlock",           post(vault_unlock))
+        .route("/api/vault/lock",             post(vault_lock))
+        .route("/api/vault/rotate",           post(vault_rotate))
+        .route("/api/vault/import",           post(vault_import))
+        .route("/api/vault/import-plaintext", post(vault_import_plaintext))
+        .route("/api/vault/export",           get(vault_export))
 }
 
 async fn vault_status(
@@ -129,6 +130,32 @@ async fn vault_export(
         "salt":    salt_b64,
         "secrets": blobs,
     })).into_response()
+}
+
+/// Bulk import plaintext key-value pairs, encrypting each via the vault.
+/// Supports keys containing slashes (impossible via /api/secrets/:key).
+/// Body: { "secrets": { "key": "plaintext_value", ... } }
+async fn vault_import_plaintext(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+    Json(body): Json<ImportBody>,
+) -> impl IntoResponse {
+    if !state.is_admin_authed(&headers) {
+        return (StatusCode::UNAUTHORIZED, Json(json!({"error": "Unauthorized"}))).into_response();
+    }
+    if state.vault.is_enabled().await && state.vault.is_locked().await {
+        return (StatusCode::SERVICE_UNAVAILABLE, Json(json!({"error": "vault is locked"}))).into_response();
+    }
+    let mut ok = 0usize;
+    let mut errs: Vec<String> = Vec::new();
+    for (key, value) in body.secrets {
+        match state.vault.set(&key, &value).await {
+            Ok(_) => ok += 1,
+            Err(e) => errs.push(format!("{key}: {e}")),
+        }
+    }
+    flush_vault_to_db(&state).await;
+    Json(json!({"ok": errs.is_empty(), "imported": ok, "errors": errs})).into_response()
 }
 
 /// Persist current vault state (salt + encrypted blobs) to the fleet DB.

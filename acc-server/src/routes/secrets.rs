@@ -14,7 +14,7 @@ use std::sync::Arc;
 pub fn router() -> Router<Arc<AppState>> {
     Router::new()
         .route("/api/secrets", get(list_secrets))
-        .route("/api/secrets/:key", get(get_secret).post(set_secret).put(set_secret).delete(delete_secret))
+        .route("/api/secrets/*key", get(get_secret).post(set_secret).put(set_secret).delete(delete_secret))
 }
 
 async fn list_secrets(
