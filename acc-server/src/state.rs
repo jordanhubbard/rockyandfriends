@@ -140,8 +140,43 @@ impl AppState {
 pub async fn load_all(state: &Arc<AppState>) {
     let conn = state.fleet_db.lock().await;
     *state.agents.write().await  = crate::db::db_load_agents(&conn);
-    let items     = crate::db::db_load_queue_items(&conn);
+    let mut items = crate::db::db_load_queue_items(&conn);
     let completed = crate::db::db_load_queue_completed(&conn);
+
+    // Recovery fallback: if queue_items is empty but fleet_tasks has pending source='queue'
+    // items (e.g. after a queue_items table wipe or schema migration), rebuild the
+    // in-memory queue from fleet_tasks so work is not silently lost on restart.
+    if items.is_empty() {
+        if let Ok(mut stmt) = conn.prepare(
+            "SELECT id, COALESCE(title,''), COALESCE(description,''), status, priority, created_at \
+             FROM fleet_tasks \
+             WHERE source='queue' AND status IN ('open','claimed') \
+             ORDER BY created_at ASC"
+        ) {
+            let recovered: Vec<serde_json::Value> = stmt
+                .query_map([], |row| {
+                    Ok(serde_json::json!({
+                        "id":          row.get::<_, String>(0)?,
+                        "title":       row.get::<_, String>(1)?,
+                        "description": row.get::<_, String>(2)?,
+                        "status":      "pending",
+                        "priority":    row.get::<_, String>(4).unwrap_or_else(|_| "normal".to_string()),
+                        "assignee":    "all",
+                        "created":     row.get::<_, String>(5)?,
+                    }))
+                })
+                .map(|rows| rows.filter_map(|r| r.ok()).collect())
+                .unwrap_or_default();
+            if !recovered.is_empty() {
+                tracing::warn!(
+                    "load_all: queue_items empty — recovered {} item(s) from fleet_tasks",
+                    recovered.len()
+                );
+                items = recovered;
+            }
+        }
+    }
+
     *state.queue.write().await   = QueueData { items, completed };
     *state.secrets.write().await = crate::db::db_load_secrets(&conn);
     *state.projects.write().await = crate::db::db_load_projects(&conn);

@@ -316,12 +316,22 @@ impl HermesAgent {
             "output_tokens": output_tokens,
             "stop_reason":   stop_reason,
         });
-        let _ = self.http
+        match self.http
             .post(&url)
             .header("Authorization", format!("Bearer {}", self.cfg.acc_token))
             .json(&body)
             .send()
-            .await;
+            .await
+        {
+            Ok(resp) if !resp.status().is_success() => {
+                let status = resp.status().as_u16();
+                tracing::warn!("save_turn: task={task_id} idx={turn_index} HTTP {status}");
+            }
+            Err(e) => {
+                tracing::warn!("save_turn: task={task_id} idx={turn_index} error: {e}");
+            }
+            Ok(_) => {}
+        }
     }
 
     async fn execute_tools(&self, content: &[Value]) -> Vec<Value> {
@@ -454,6 +464,8 @@ async fn post_heartbeat(cfg: &Config, client: &Client, note: &str) {
         ssh_user: Some(cfg.ssh_user.clone()),
         ssh_host: Some(cfg.ssh_host.clone()),
         ssh_port: Some(cfg.ssh_port as u64),
+        tasks_in_flight: None,
+        estimated_free_slots: None,
     };
     let _ = client.items().heartbeat(&cfg.agent_name, &req).await;
 }

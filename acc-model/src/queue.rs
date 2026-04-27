@@ -134,6 +134,12 @@ pub struct HeartbeatRequest {
     pub ssh_host: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ssh_port: Option<u64>,
+    /// How many tasks this agent is actively executing right now.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tasks_in_flight: Option<u32>,
+    /// Self-reported free capacity (how many more tasks this agent can accept).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub estimated_free_slots: Option<u32>,
 }
 
 #[cfg(test)]

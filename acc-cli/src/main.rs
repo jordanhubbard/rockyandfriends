@@ -239,6 +239,11 @@ fn task_type_str(t: TaskType) -> &'static str {
         TaskType::Idea => "idea",
         TaskType::Discovery => "discovery",
         TaskType::PhaseCommit => "phase_commit",
+        TaskType::Feature => "feature",
+        TaskType::Bug => "bug",
+        TaskType::Epic => "epic",
+        TaskType::Task => "task",
+        TaskType::Unknown => "unknown",
     }
 }
 fn review_result_str(r: acc_model::ReviewResult) -> &'static str {

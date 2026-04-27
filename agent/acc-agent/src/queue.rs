@@ -56,7 +56,8 @@ pub async fn run(args: &[String]) {
     ));
 
     let client = build_client(&cfg);
-    post_heartbeat(&cfg, &client, "queue-worker starting").await;
+    let active_tasks = Arc::new(std::sync::atomic::AtomicU32::new(0));
+    post_heartbeat(&cfg, &client, "queue-worker starting", 0).await;
 
     // SSE-driven wakeup: mirrors the pattern in tasks.rs.
     let nudge = Arc::new(Notify::new());
@@ -76,7 +77,8 @@ pub async fn run(args: &[String]) {
             continue;
         }
 
-        post_heartbeat(&cfg, &client, "idle").await;
+        let in_flight = active_tasks.load(std::sync::atomic::Ordering::Relaxed);
+        post_heartbeat(&cfg, &client, "idle", in_flight).await;
 
         let items = match fetch_queue(&cfg, &client).await {
             Ok(v) => v,
@@ -102,7 +104,10 @@ pub async fn run(args: &[String]) {
                 continue;
             }
 
+            let in_flight = active_tasks.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+            post_heartbeat(&cfg, &client, "working", in_flight).await;
             execute_item(&cfg, &client, &item).await;
+            active_tasks.fetch_sub(1, std::sync::atomic::Ordering::Relaxed);
             poll_interval = POLL_INTERVAL_BUSY;
         } else {
             log(&cfg, "no claimable items — sleeping");
@@ -647,7 +652,10 @@ async fn post_comment(cfg: &Config, client: &Client, item_id: &str, comment: &st
         .await;
 }
 
-async fn post_heartbeat(cfg: &Config, client: &Client, note: &str) {
+async fn post_heartbeat(cfg: &Config, client: &Client, note: &str, tasks_in_flight: u32) {
+    let max_slots: u32 = std::env::var("AGENT_MAX_TASKS")
+        .ok().and_then(|v| v.parse().ok()).unwrap_or(2);
+    let free_slots = max_slots.saturating_sub(tasks_in_flight);
     let req = HeartbeatRequest {
         ts: Some(chrono::Utc::now()),
         status: Some("ok".into()),
@@ -656,6 +664,8 @@ async fn post_heartbeat(cfg: &Config, client: &Client, note: &str) {
         ssh_user: Some(cfg.ssh_user.clone()),
         ssh_host: Some(cfg.ssh_host.clone()),
         ssh_port: Some(cfg.ssh_port as u64),
+        tasks_in_flight: Some(tasks_in_flight),
+        estimated_free_slots: Some(free_slots),
     };
     let _ = client.items().heartbeat(&cfg.agent_name, &req).await;
 }
@@ -817,6 +827,12 @@ async fn subscribe_bus(cfg: &Config, client: &Client, nudge: &Arc<Notify>) -> Re
         if matches!(kind, "work.available" | "queue.item.created" | "project.arrived") {
             log(cfg, &format!("SSE work signal: {kind}"));
             nudge.notify_one();
+        } else if matches!(kind, "tasks:dispatch_nudge" | "tasks:dispatch_assigned") {
+            let target = msg.to.as_deref().unwrap_or("");
+            if target.is_empty() || target == cfg.agent_name {
+                log(cfg, &format!("SSE task dispatch signal: {kind}"));
+                nudge.notify_one();
+            }
         }
     }
     Ok(())
@@ -1017,7 +1033,7 @@ mod tests {
         let mock = crate::hub_mock::HubMock::new().await;
         let cfg_ = mock_cfg(&mock.url);
         let client = build_client(&cfg_);
-        post_heartbeat(&mock_cfg(&mock.url), &client, "test note").await;
+        post_heartbeat(&mock_cfg(&mock.url), &client, "test note", 0).await;
     }
 
     #[tokio::test]

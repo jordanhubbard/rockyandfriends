@@ -447,6 +447,7 @@ async fn post_heartbeat(
         "ram", "ram_used_mb", "ram_avail_mb", "ram_total_mb",
         "ollama_status", "ollama_models", "ccc_version",
         "ssh_user", "ssh_host", "ssh_port",
+        "tasks_in_flight", "estimated_free_slots",
     ];
 
     let mut agents = state.agents.write().await;

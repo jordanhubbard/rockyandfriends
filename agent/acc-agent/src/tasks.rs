@@ -68,6 +68,8 @@ fn spawn_keepalive(
                         ssh_user: Some(cfg.ssh_user.clone()),
                         ssh_host: Some(cfg.ssh_host.clone()),
                         ssh_port: Some(cfg.ssh_port as u64),
+                        tasks_in_flight: None,
+                        estimated_free_slots: None,
                     };
                     let _ = client.items().heartbeat(&cfg.agent_name, &req).await;
                 }
