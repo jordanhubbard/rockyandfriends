@@ -26,12 +26,23 @@ pub struct SlackAdapter {
 
 impl SlackAdapter {
     /// Returns None if required tokens are missing.
-    pub async fn new(sessions: Arc<SessionStore>, agent: Arc<HermesAgent>) -> Option<Self> {
-        let app_token = std::env::var("SLACK_APP_TOKEN").ok()
+    ///
+    /// `workspace` is an optional uppercase suffix: None → primary vars,
+    /// Some("OFTERRA") → SLACK_APP_TOKEN_OFTERRA, SLACK_BOT_TOKEN_OFTERRA.
+    pub async fn new(
+        sessions: Arc<SessionStore>,
+        agent: Arc<HermesAgent>,
+        workspace: Option<&str>,
+    ) -> Option<Self> {
+        let suffix = workspace.map(|w| format!("_{}", w.to_uppercase())).unwrap_or_default();
+
+        let app_token = std::env::var(format!("SLACK_APP_TOKEN{suffix}")).ok()
             .filter(|t| t.starts_with("xapp-"))?;
-        // Try standard bot token, then the omgjkh variant.
-        let bot_token = std::env::var("SLACK_BOT_TOKEN").ok()
-            .or_else(|| std::env::var("SLACK_OMGJKH_TOKEN").ok())
+        // For the default workspace also try the legacy SLACK_OMGJKH_TOKEN name.
+        let bot_token = std::env::var(format!("SLACK_BOT_TOKEN{suffix}")).ok()
+            .or_else(|| {
+                if suffix.is_empty() { std::env::var("SLACK_OMGJKH_TOKEN").ok() } else { None }
+            })
             .filter(|t| !t.is_empty())?;
 
         let http = reqwest::Client::builder()

@@ -41,12 +41,26 @@ fn nvidia_enabled(_: &Config) -> bool {
     std::env::var("NVIDIA_API_BASE").is_ok()
 }
 
+fn slack_gateway_enabled(_: &Config) -> bool {
+    std::env::var("SLACK_APP_TOKEN")
+        .map(|t| t.starts_with("xapp-"))
+        .unwrap_or(false)
+}
+
+fn slack_gateway_ofterra_enabled(_: &Config) -> bool {
+    std::env::var("SLACK_APP_TOKEN_OFTERRA")
+        .map(|t| t.starts_with("xapp-"))
+        .unwrap_or(false)
+}
+
 static CHILDREN: &[ChildSpec] = &[
-    ChildSpec { name: "bus",    args: &["bus"],                     direct_exe: false, enabled: always        },
-    ChildSpec { name: "queue",  args: &["queue"],                   direct_exe: false, enabled: always        },
-    ChildSpec { name: "tasks",  args: &["tasks"],                   direct_exe: false, enabled: always        },
-    ChildSpec { name: "hermes", args: &["hermes", "--poll"],        direct_exe: false, enabled: always        },
-    ChildSpec { name: "proxy",  args: &["proxy", "--port", "9099"], direct_exe: false, enabled: nvidia_enabled },
+    ChildSpec { name: "bus",              args: &["bus"],                                              direct_exe: false, enabled: always                      },
+    ChildSpec { name: "queue",            args: &["queue"],                                            direct_exe: false, enabled: always                      },
+    ChildSpec { name: "tasks",            args: &["tasks"],                                            direct_exe: false, enabled: always                      },
+    ChildSpec { name: "hermes",           args: &["hermes", "--poll"],                                 direct_exe: false, enabled: always                      },
+    ChildSpec { name: "gateway",          args: &["hermes", "--gateway"],                              direct_exe: false, enabled: slack_gateway_enabled        },
+    ChildSpec { name: "gateway-ofterra",  args: &["hermes", "--gateway", "--workspace", "ofterra"],    direct_exe: false, enabled: slack_gateway_ofterra_enabled },
+    ChildSpec { name: "proxy",            args: &["proxy", "--port", "9099"],                          direct_exe: false, enabled: nvidia_enabled               },
 ];
 
 pub async fn run(args: &[String]) {
