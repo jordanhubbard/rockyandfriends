@@ -8,7 +8,7 @@
 #   make sync          # git push + broadcast rcc.update to all agents
 
 .PHONY: help deps deps-check env sync \
-        init register build build-cli install-cli test lint release clean \
+        init register build build-cli install-cli install start restart shutdown test lint release clean \
         docker-build docker-up docker-down docker-logs
 
 help: ## Show this help
@@ -136,6 +136,54 @@ restart-agent: ## Rebuild and restart acc-agent on THIS node (supervisor relaunc
 
 restart-fleet: ## Restart acc-agent on every online agent in the fleet (from workstation)
 	@bash deploy/restart-fleet.sh
+
+# ── Host-aware: detect hub vs fleet node automatically ─────────────────────
+
+install: build ## Install acc-agent binary to $$HOME/.acc/bin on this node
+	@ACC_DIR=$${ACC_DIR:-$$HOME/.acc}; \
+	mkdir -p "$$ACC_DIR/bin"; \
+	cp target/release/acc-agent "$$ACC_DIR/bin/acc-agent"; \
+	echo "✓ acc-agent installed → $$ACC_DIR/bin/acc-agent"
+
+start: ## Start the agent daemon on this node (auto-detects hub vs fleet)
+	@if [ "$$(uname)" = "Darwin" ]; then \
+		launchctl load "$$HOME/Library/LaunchAgents/com.acc.agent.plist" 2>/dev/null || true; \
+		echo "✓ com.acc.agent loaded (launchd)"; \
+	elif command -v systemctl >/dev/null 2>&1 && systemctl is-active acc-server.service >/dev/null 2>&1; then \
+		sudo systemctl start acc-server; \
+		echo "✓ acc-server.service started (hub)"; \
+	elif command -v systemctl >/dev/null 2>&1; then \
+		sudo systemctl start acc-agent 2>/dev/null || \
+		    nohup "$$HOME/.acc/bin/acc-agent" supervise >>"$$HOME/.acc/logs/supervise.log" 2>&1 & \
+		echo "✓ acc-agent started (fleet)"; \
+	else \
+		nohup "$$HOME/.acc/bin/acc-agent" supervise >>"$$HOME/.acc/logs/supervise.log" 2>&1 & \
+		echo "✓ acc-agent started (nohup fallback)"; \
+	fi
+
+restart: ## Rebuild and restart on this node (auto-detects hub vs fleet)
+	@if [ "$$(uname)" != "Darwin" ] && command -v systemctl >/dev/null 2>&1 \
+	        && systemctl is-active acc-server.service >/dev/null 2>&1; then \
+		bash deploy/restart-hub.sh; \
+	else \
+		bash deploy/restart-agent.sh; \
+	fi
+
+shutdown: ## Stop the agent daemon on this node (auto-detects hub vs fleet)
+	@if [ "$$(uname)" = "Darwin" ]; then \
+		launchctl unload "$$HOME/Library/LaunchAgents/com.acc.agent.plist" 2>/dev/null || true; \
+		echo "✓ com.acc.agent unloaded (launchd)"; \
+	elif command -v systemctl >/dev/null 2>&1 && systemctl is-active acc-server.service >/dev/null 2>&1; then \
+		sudo systemctl stop acc-server; \
+		echo "✓ acc-server.service stopped (hub)"; \
+	elif command -v systemctl >/dev/null 2>&1; then \
+		sudo systemctl stop acc-agent 2>/dev/null || \
+		    pkill -f "acc-agent supervise" 2>/dev/null || true; \
+		echo "✓ acc-agent stopped (fleet)"; \
+	else \
+		pkill -f "acc-agent supervise" 2>/dev/null || true; \
+		echo "✓ acc-agent stopped (pkill)"; \
+	fi
 
 build-cli: ## Build the acc CLI binary (installs Rust via rustup if needed)
 	@bash scripts/install-acc.sh --build-only

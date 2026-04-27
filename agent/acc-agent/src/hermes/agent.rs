@@ -280,10 +280,6 @@ impl HermesAgent {
         let mut final_output = String::new();
 
         for iteration in 1..=MAX_ITERATIONS {
-            if self.shutdown.load(Ordering::SeqCst) {
-                return "shutting down".to_string();
-            }
-
             let resp = match self
                 .provider
                 .complete(system, &history.messages, &tools_api, MAX_TOKENS)
