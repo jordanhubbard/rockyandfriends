@@ -11,7 +11,7 @@ mod tool;
 pub(crate) mod python_backend;
 
 use agent::HermesAgent;
-use provider::AnthropicProvider;
+use provider::make_provider;
 use tool::ToolRegistry;
 use acc_client::Client;
 use crate::config::Config;
@@ -61,10 +61,12 @@ async fn native_run(args: &[String]) {
 
     let model = std::env::var("HERMES_MODEL")
         .unwrap_or_else(|_| "claude-opus-4-7".to_string());
-    let api_key = std::env::var("ANTHROPIC_API_KEY").unwrap_or_default();
-    let provider = AnthropicProvider::new(api_key, model);
+    let api_key = std::env::var("ANTHROPIC_API_KEY")
+        .or_else(|_| std::env::var("OPENAI_API_KEY"))
+        .unwrap_or_default();
+    let provider = make_provider(api_key, model);
 
-    let hermes = HermesAgent::new(cfg, client, Box::new(provider), tools);
+    let hermes = HermesAgent::new(cfg, client, provider, tools);
 
     if poll {
         hermes.poll_queue().await;

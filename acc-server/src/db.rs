@@ -10,7 +10,7 @@ use rusqlite::{Connection, Result, params};
 use serde_json::Value;
 use std::path::Path;
 
-const CURRENT_VERSION: i64 = 6;
+const CURRENT_VERSION: i64 = 7;
 
 /// Open a database connection, create schema if needed, run any pending migrations.
 pub fn open(path: &str) -> Result<Connection> {
@@ -323,6 +323,25 @@ fn run_migrations(conn: &Connection) -> Result<()> {
             CREATE INDEX IF NOT EXISTS idx_conversations_task ON conversations(task_id, turn_index);
         ")?;
         set_schema_version(conn, 6)?;
+    }
+
+    if version < 7 {
+        // Add source column to fleet_tasks for unified task model
+        let has_source: bool = conn.query_row(
+            "SELECT COUNT(*) FROM pragma_table_info('fleet_tasks') WHERE name='source'",
+            [],
+            |row| row.get::<_, i64>(0),
+        ).unwrap_or(0) > 0;
+        if !has_source {
+            conn.execute_batch(
+                "ALTER TABLE fleet_tasks ADD COLUMN source TEXT NOT NULL DEFAULT 'fleet';"
+            )?;
+            conn.execute_batch(
+                "CREATE INDEX IF NOT EXISTS idx_fleet_tasks_source ON fleet_tasks(source, status);"
+            )?;
+        }
+        conn.execute("INSERT INTO schema_version (version) VALUES (?1)", params![7])?;
+        tracing::info!("Migration v7 applied: source column on fleet_tasks");
     }
 
     set_schema_version(conn, CURRENT_VERSION)?;
@@ -871,6 +890,39 @@ pub fn db_load_turns(conn: &Connection, task_id: &str) -> Vec<serde_json::Value>
     .ok()
     .map(|rows| rows.filter_map(|r| r.ok()).collect())
     .unwrap_or_default()
+}
+
+/// Create a fleet_task record mirroring a queue item, with source='queue'.
+/// Called when POST /api/queue creates a new item so it's visible to the fleet task system.
+pub fn db_create_fleet_task_from_queue(
+    conn: &Connection,
+    item_id: &str,
+    title: &str,
+    description: &str,
+    priority_str: &str,
+    project_id: &str,
+    metadata: &serde_json::Value,
+) -> Result<()> {
+    // Map queue priority string to integer
+    let priority_int: i64 = match priority_str {
+        "critical" => 0,
+        "high"     => 1,
+        "medium"   => 2,
+        "normal"   => 2,
+        "low"      => 3,
+        "idea"     => 4,
+        _          => 2,
+    };
+    let meta_str = metadata.to_string();
+    conn.execute(
+        "INSERT OR IGNORE INTO fleet_tasks
+         (id, project_id, title, description, status, priority, source, metadata, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, 'open', ?5, 'queue', ?6,
+                 strftime('%Y-%m-%dT%H:%M:%SZ','now'),
+                 strftime('%Y-%m-%dT%H:%M:%SZ','now'))",
+        params![item_id, project_id, title, description, priority_int, meta_str],
+    )?;
+    Ok(())
 }
 
 /// Collect outputs from all completed blockers and write them as the task's inputs map.

@@ -38,14 +38,15 @@ struct TaskQuery {
     agent: Option<String>,
     task_type: Option<String>,
     phase: Option<String>,
+    source: Option<String>,
     limit: Option<i64>,
     offset: Option<i64>,
 }
 
-// Columns 0-12 (original) + 13-17 (new) + 18-19 (output, inputs)
+// Columns 0-12 (original) + 13-17 (new) + 18-19 (output, inputs) + 20 (source)
 const TASK_COLS: &str = "id,project_id,title,description,status,priority,claimed_by,claimed_at,\
     claim_expires_at,completed_at,completed_by,created_at,metadata,\
-    task_type,review_of,phase,blocked_by,review_result,output,inputs";
+    task_type,review_of,phase,blocked_by,review_result,output,inputs,source";
 
 fn row_to_task(row: &rusqlite::Row) -> rusqlite::Result<Value> {
     let metadata_str: String = row.get(12)?;
@@ -60,6 +61,7 @@ fn row_to_task(row: &rusqlite::Row) -> rusqlite::Result<Value> {
         let s: String = row.get(19).unwrap_or_else(|_| "{}".to_string());
         serde_json::from_str(&s).unwrap_or(json!({}))
     };
+    let source: String = row.get(20).unwrap_or_else(|_| "fleet".to_string());
     Ok(json!({
         "id":               row.get::<_, String>(0)?,
         "project_id":       row.get::<_, String>(1)?,
@@ -81,6 +83,7 @@ fn row_to_task(row: &rusqlite::Row) -> rusqlite::Result<Value> {
         "review_result":    row.get::<_, Option<String>>(17)?,
         "output":           output_val,
         "inputs":           inputs_val,
+        "source":           source,
     }))
 }
 
@@ -117,6 +120,10 @@ async fn list_tasks(
     if let Some(ph) = &q.phase {
         sql.push_str(" AND phase=?");
         binds.push(ph.clone());
+    }
+    if let Some(src) = &q.source {
+        sql.push_str(" AND source=?");
+        binds.push(src.clone());
     }
     sql.push_str(" ORDER BY priority ASC, created_at ASC");
     let limit = q.limit.unwrap_or(50).min(200);
@@ -1111,5 +1118,29 @@ mod tests {
         let server = TestServer::new().await;
         let task = create_idea(&server, "proj-a", "My idea", "alice").await;
         assert_eq!(task["metadata"]["created_by"], json!("alice"));
+    }
+
+    #[tokio::test]
+    async fn test_list_tasks_filter_by_source() {
+        let server = TestServer::new().await;
+        // Create a fleet task with default source
+        let body = json!({
+            "project_id": "proj-src", "title": "Fleet task", "description": "test",
+            "priority": 2, "task_type": "work"
+        });
+        let resp = testing::call(&server.app, post_json("/api/tasks", &body)).await;
+        assert_eq!(resp.status(), StatusCode::CREATED);
+
+        // List with source=fleet should return it
+        let resp = testing::call(&server.app, testing::get("/api/tasks?source=fleet")).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let data = testing::body_json(resp).await;
+        assert!(data["count"].as_u64().unwrap_or(0) >= 1);
+
+        // List with source=queue should return empty (no queue-sourced tasks created)
+        let resp = testing::call(&server.app, testing::get("/api/tasks?source=queue")).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let data = testing::body_json(resp).await;
+        assert_eq!(data["count"].as_u64().unwrap_or(0), 0);
     }
 }

@@ -324,6 +324,26 @@ async fn post_queue(
 
     db_flush_queue(&state).await;
 
+    // Dual-write: create a fleet_task mirror so queue items are visible to the
+    // fleet task system (DAG dependencies, capability-based routing, etc.).
+    // Best-effort: failure here must not fail the queue item creation.
+    {
+        let description_str = body.get("description").and_then(|s| s.as_str()).unwrap_or("");
+        let assignee_str = body.get("assignee").and_then(|s| s.as_str()).unwrap_or("all");
+        let tags_val = body.get("tags").cloned().unwrap_or(serde_json::json!([]));
+        let meta = serde_json::json!({"tags": tags_val, "assignee": assignee_str});
+        let conn = state.fleet_db.lock().await;
+        let _ = crate::db::db_create_fleet_task_from_queue(
+            &conn,
+            &final_id,
+            &title,
+            description_str,
+            priority,
+            "queue",
+            &meta,
+        );
+    }
+
     let _ = state.bus_tx.send(
         serde_json::json!({"type": "work.available", "item_id": final_id}).to_string(),
     );

@@ -40,6 +40,10 @@ pub struct HubState {
     pub review_result_status: u16,
     /// Log of all requests received: "METHOD /path". Inspectable by tests.
     pub call_log: Arc<Mutex<Vec<String>>>,
+    /// Capabilities registered per agent name via PUT /api/agents/:name/capabilities
+    pub agent_capabilities: Arc<Mutex<HashMap<String, Vec<String>>>>,
+    /// Turns stored per task id via POST /api/tasks/:id/turns
+    pub task_turns: Arc<Mutex<HashMap<String, Vec<Value>>>>,
 }
 
 impl Default for HubState {
@@ -56,6 +60,8 @@ impl Default for HubState {
             task_create_status: 201,
             review_result_status: 200,
             call_log: Arc::new(Mutex::new(vec![])),
+            agent_capabilities: Arc::new(Mutex::new(HashMap::new())),
+            task_turns: Arc::new(Mutex::new(HashMap::new())),
         }
     }
 }
@@ -128,6 +134,10 @@ fn build_router(state: S) -> Router {
         .route("/api/tasks/:id/complete",       put(ok))
         .route("/api/tasks/:id/unclaim",        put(ok))
         .route("/api/tasks/:id/review-result",  put(task_review_result))
+        .route("/api/tasks/:id/turns",          get(get_task_turns).post(append_task_turn))
+        .route("/api/tasks/:id/keepalive",      put(logged_keepalive))
+        // Agent capability registration
+        .route("/api/agents/:name/capabilities", put(register_capabilities))
         // User request routes (first-responder)
         .route("/api/requests/:id/claim",       post(request_claim))
         // Exec result (bus worker)
@@ -241,5 +251,31 @@ async fn logged_complete(State(st): State<S>, Path(id): Path<String>) -> Json<Va
 
 async fn logged_fail(State(st): State<S>, Path(id): Path<String>) -> Json<Value> {
     st.read().await.call_log.lock().await.push(format!("POST /api/item/{id}/fail"));
+    Json(json!({"ok": true}))
+}
+
+async fn logged_keepalive(State(st): State<S>, Path(id): Path<String>) -> Json<Value> {
+    st.read().await.call_log.lock().await.push(format!("PUT /api/tasks/{id}/keepalive"));
+    Json(json!({"ok": true}))
+}
+
+async fn register_capabilities(State(st): State<S>, Path(name): Path<String>, Json(body): Json<Value>) -> Json<Value> {
+    let caps: Vec<String> = body["capabilities"]
+        .as_array()
+        .map(|a| a.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
+        .unwrap_or_default();
+    st.read().await.agent_capabilities.lock().await.insert(name, caps);
+    Json(json!({"ok": true}))
+}
+
+async fn get_task_turns(State(st): State<S>, Path(id): Path<String>) -> Json<Value> {
+    let turns = st.read().await.task_turns.lock().await
+        .get(&id).cloned().unwrap_or_default();
+    Json(json!({"ok": true, "turns": turns}))
+}
+
+async fn append_task_turn(State(st): State<S>, Path(id): Path<String>, Json(body): Json<Value>) -> Json<Value> {
+    st.read().await.task_turns.lock().await
+        .entry(id).or_default().push(body);
     Json(json!({"ok": true}))
 }

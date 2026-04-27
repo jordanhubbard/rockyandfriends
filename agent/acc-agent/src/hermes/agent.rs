@@ -26,6 +26,7 @@ When you have completed the task, summarize what you did in a final message.";
 pub struct HermesAgent {
     cfg: Config,
     client: Client,
+    http: reqwest::Client,
     provider: Box<dyn LlmProvider>,
     tools: ToolRegistry,
     shutdown: Arc<AtomicBool>,
@@ -38,6 +39,10 @@ impl HermesAgent {
         provider: Box<dyn LlmProvider>,
         tools: ToolRegistry,
     ) -> Self {
+        let http = reqwest::Client::builder()
+            .timeout(std::time::Duration::from_secs(30))
+            .build()
+            .expect("failed to build shared HTTP client for HermesAgent");
         let shutdown = Arc::new(AtomicBool::new(false));
         let sd = shutdown.clone();
         tokio::spawn(async move {
@@ -48,7 +53,7 @@ impl HermesAgent {
                 sd.store(true, Ordering::SeqCst);
             }
         });
-        Self { cfg, client, provider, tools, shutdown }
+        Self { cfg, client, http, provider, tools, shutdown }
     }
 
     pub async fn run_item(&self, item_id: String, query: String) {
@@ -261,14 +266,11 @@ impl HermesAgent {
         (success, final_output)
     }
 
-    async fn register_capabilities(&self) {
+    pub(crate) async fn register_capabilities(&self) {
         let caps = self.tools.names();
-        let url = format!(
-            "{}/api/agents/{}/capabilities",
-            self.cfg.acc_url, self.cfg.agent_name
-        );
+        let url = format!("{}/api/agents/{}/capabilities", self.cfg.acc_url, self.cfg.agent_name);
         let body = serde_json::json!({"capabilities": caps});
-        let _ = reqwest::Client::new()
+        let _ = self.http
             .put(&url)
             .header("Authorization", format!("Bearer {}", self.cfg.acc_token))
             .json(&body)
@@ -277,9 +279,9 @@ impl HermesAgent {
         self.log(&format!("registered capabilities: {}", caps.join(", ")));
     }
 
-    async fn load_turns(&self, task_id: &str) -> Vec<Value> {
+    pub(crate) async fn load_turns(&self, task_id: &str) -> Vec<Value> {
         let url = format!("{}/api/tasks/{}/turns", self.cfg.acc_url, task_id);
-        let resp = reqwest::Client::new()
+        let resp = self.http
             .get(&url)
             .header("Authorization", format!("Bearer {}", self.cfg.acc_token))
             .send()
@@ -295,7 +297,7 @@ impl HermesAgent {
         }
     }
 
-    async fn save_turn(
+    pub(crate) async fn save_turn(
         &self,
         task_id: &str,
         turn_index: i64,
@@ -314,7 +316,7 @@ impl HermesAgent {
             "output_tokens": output_tokens,
             "stop_reason":   stop_reason,
         });
-        let _ = reqwest::Client::new()
+        let _ = self.http
             .post(&url)
             .header("Authorization", format!("Bearer {}", self.cfg.acc_token))
             .json(&body)
@@ -323,38 +325,44 @@ impl HermesAgent {
     }
 
     async fn execute_tools(&self, content: &[Value]) -> Vec<Value> {
-        let mut results = Vec::new();
-        for block in content {
-            if block["type"] != "tool_use" {
-                continue;
-            }
-            let tool_use_id = block["id"].as_str().unwrap_or("").to_string();
-            let tool_name = block["name"].as_str().unwrap_or("");
-            let input = block["input"].clone();
+        use futures_util::future::join_all;
 
-            self.log(&format!(
-                "tool call: {tool_name}({})",
-                serde_json::to_string(&input).unwrap_or_default()
-            ));
+        let futs: Vec<_> = content
+            .iter()
+            .filter(|b| b["type"] == "tool_use")
+            .map(|block| {
+                let id = block["id"].as_str().unwrap_or("").to_string();
+                let name = block["name"].as_str().unwrap_or("").to_string();
+                let input = block["input"].clone();
+                self.run_one_tool(id, name, input)
+            })
+            .collect();
 
-            let (content_str, is_error) = match self.tools.get(tool_name) {
-                Some(tool) => match tool.execute(input).await {
-                    Ok(out) => (out, false),
-                    Err(e) => (e, true),
-                },
-                None => (format!("unknown tool: {tool_name}"), true),
-            };
+        join_all(futs).await
+    }
 
-            // Cap tool output sent back to LLM to avoid blowing context
-            let truncated = &content_str[..content_str.len().min(100_000)];
-            results.push(json!({
-                "type": "tool_result",
-                "tool_use_id": tool_use_id,
-                "content": truncated,
-                "is_error": is_error,
-            }));
-        }
-        results
+    async fn run_one_tool(&self, tool_use_id: String, tool_name: String, input: Value) -> Value {
+        self.log(&format!(
+            "tool call: {tool_name}({})",
+            serde_json::to_string(&input).unwrap_or_default()
+        ));
+
+        let (content_str, is_error) = match self.tools.get(&tool_name) {
+            Some(tool) => match tool.execute(input).await {
+                Ok(out) => (out, false),
+                Err(e) => (e, true),
+            },
+            None => (format!("unknown tool: {tool_name}"), true),
+        };
+
+        // Cap output to ~16k chars to stay within context budget
+        let truncated = &content_str[..content_str.len().min(16_384)];
+        json!({
+            "type": "tool_result",
+            "tool_use_id": tool_use_id,
+            "content": truncated,
+            "is_error": is_error,
+        })
     }
 
     async fn fetch_item(&self) -> Option<Value> {
@@ -699,5 +707,99 @@ mod tests {
         assert!(names.contains(&"read_file".to_string()));
         assert!(names.contains(&"write_file".to_string()));
         assert!(names.contains(&"web_fetch".to_string()));
+    }
+
+    // ── run_item tests ─────────────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn run_item_completes_on_success() {
+        use crate::hub_mock::HubState;
+        let mock = HubMock::with_state(HubState {
+            queue_items: vec![json!({
+                "id": "wq-item-1", "status": "pending", "assignee": "all",
+                "tags": [], "preferred_executor": ""
+            })],
+            ..Default::default()
+        }).await;
+        let cfg = test_cfg(&mock.url);
+        let client = build_client(&cfg);
+        let agent = HermesAgent::new(
+            cfg, client,
+            Box::new(EchoProvider { reply: "done".to_string() }),
+            ToolRegistry::default_tools(),
+        );
+        agent.run_item("wq-item-1".to_string(), "test task".to_string()).await;
+        let log = mock.state.read().await.call_log.lock().await.clone();
+        assert!(
+            log.iter().any(|e| e.contains("/api/item/wq-item-1/complete")),
+            "complete must be called after successful run; log={log:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn run_item_fails_on_max_tokens() {
+        let mock = HubMock::new().await;
+        let cfg = test_cfg(&mock.url);
+        let client = build_client(&cfg);
+        let agent = HermesAgent::new(
+            cfg, client,
+            Box::new(MaxTokensProvider),
+            ToolRegistry::default_tools(),
+        );
+        agent.run_item("wq-item-2".to_string(), "another task".to_string()).await;
+        let log = mock.state.read().await.call_log.lock().await.clone();
+        assert!(
+            log.iter().any(|e| e.contains("/api/item/wq-item-2/fail")),
+            "fail must be called when max_tokens hit; log={log:?}"
+        );
+    }
+
+    // ── turns round-trip test ──────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn turns_save_and_load_round_trip() {
+        let mock = HubMock::new().await;
+        let cfg = test_cfg(&mock.url);
+        let client = build_client(&cfg);
+        let agent = HermesAgent::new(
+            cfg, client,
+            Box::new(EchoProvider { reply: "done".to_string() }),
+            ToolRegistry::default_tools(),
+        );
+        // Save a turn
+        agent.save_turn(
+            "task-abc",
+            0,
+            "assistant",
+            &serde_json::json!([{"type": "text", "text": "hello"}]),
+            10,
+            5,
+            "end_turn",
+        ).await;
+        // Load it back
+        let turns = agent.load_turns("task-abc").await;
+        assert_eq!(turns.len(), 1, "should have one stored turn");
+        assert_eq!(turns[0]["role"], "assistant");
+    }
+
+    // ── capability registration ─────────────────────────────────────────────────
+
+    #[tokio::test]
+    async fn register_capabilities_stores_to_hub() {
+        let mock = HubMock::new().await;
+        let cfg = test_cfg(&mock.url);
+        let client = build_client(&cfg);
+        let agent = HermesAgent::new(
+            cfg, client,
+            Box::new(EchoProvider { reply: "ok".to_string() }),
+            ToolRegistry::default_tools(),
+        );
+        agent.register_capabilities().await;
+        let caps = mock.state.read().await
+            .agent_capabilities.lock().await
+            .get("natasha").cloned()
+            .unwrap_or_default();
+        assert!(caps.contains(&"bash".to_string()), "bash must be in registered capabilities");
+        assert!(caps.contains(&"web_fetch".to_string()), "web_fetch must be in registered capabilities");
     }
 }
