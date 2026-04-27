@@ -4,6 +4,7 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 mod agent;
 mod conversation;
+mod gateway;
 mod provider;
 mod tool;
 
@@ -14,6 +15,11 @@ use acc_client::Client;
 use crate::config::Config;
 
 pub async fn run(args: &[String]) {
+    // Gateway mode: long-running Slack/Telegram bot.
+    if args.iter().any(|a| a == "--gateway") {
+        gateway::run().await;
+        return;
+    }
     native_run(args).await;
 }
 

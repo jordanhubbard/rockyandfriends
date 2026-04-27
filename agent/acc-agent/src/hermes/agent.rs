@@ -266,6 +266,71 @@ impl HermesAgent {
         (success, final_output)
     }
 
+    /// One conversational turn for the gateway. Appends the user message to the provided
+    /// history, runs the LLM loop (with tool use), appends the assistant reply, and returns
+    /// the final text. The caller owns the history and persists it between turns.
+    pub(crate) async fn run_gateway_turn(
+        &self,
+        history: &mut ConversationHistory,
+        message: &str,
+        system: &str,
+    ) -> String {
+        history.push_user_text(message);
+        let tools_api = self.tools.to_api_format();
+        let mut final_output = String::new();
+
+        for iteration in 1..=MAX_ITERATIONS {
+            if self.shutdown.load(Ordering::SeqCst) {
+                return "shutting down".to_string();
+            }
+
+            let resp = match self
+                .provider
+                .complete(system, &history.messages, &tools_api, MAX_TOKENS)
+                .await
+            {
+                Ok(r) => r,
+                Err(e) => {
+                    tracing::warn!("[hermes-gateway] LLM error at iteration {iteration}: {e}");
+                    return format!("I encountered an error: {e}");
+                }
+            };
+
+            history.input_tokens += resp.input_tokens;
+            history.output_tokens += resp.output_tokens;
+
+            for block in &resp.content {
+                if block["type"] == "text" {
+                    if let Some(t) = block["text"].as_str() {
+                        final_output = t.to_string();
+                    }
+                }
+            }
+
+            history.push_assistant_content(resp.content.clone());
+
+            match resp.stop_reason.as_str() {
+                "end_turn" => break,
+                "tool_use" => {
+                    let tool_results = self.execute_tools(&resp.content).await;
+                    history.push_tool_results(tool_results);
+                }
+                "max_tokens" => {
+                    return format!(
+                        "I've reached my token limit. Here's what I have so far: {}",
+                        &final_output[..final_output.len().min(1000)]
+                    );
+                }
+                reason => {
+                    tracing::debug!("[hermes-gateway] stop: {reason}");
+                    break;
+                }
+            }
+        }
+
+        final_output
+    }
+
     pub(crate) async fn register_capabilities(&self) {
         let caps = self.tools.names();
         let url = format!("{}/api/agents/{}/capabilities", self.cfg.acc_url, self.cfg.agent_name);
