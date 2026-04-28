@@ -2,6 +2,7 @@
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
+mod acc_tools;
 mod agent;
 mod conversation;
 mod gateway;

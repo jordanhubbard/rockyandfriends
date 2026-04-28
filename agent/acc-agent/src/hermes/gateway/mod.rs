@@ -2,6 +2,7 @@ mod session;
 mod slack;
 mod telegram;
 
+use super::acc_tools::all_acc_task_tools;
 use super::agent::HermesAgent;
 use super::provider::make_provider;
 use super::slack_api::SlackApiClient;
@@ -54,6 +55,14 @@ pub async fn run(workspace: Option<&str>) {
     let slack_tokens = resolve_slack_tokens(&client, workspace, &cfg.agent_name).await;
 
     let mut tool_list = ToolRegistry::default_tools_vec();
+
+    // ACC task introspection — list/get/mine. Always registered so bots
+    // can answer "what's on the queue?" and "what's assigned to me?"
+    // without operator setup. Mutations stay out of LLM reach.
+    let acc_task_tools = all_acc_task_tools(Arc::new(client.clone()), cfg.agent_name.clone());
+    let acc_task_tool_count = acc_task_tools.len();
+    tool_list.extend(acc_task_tools);
+
     let slack_api = if let Some((bot_token, _)) = slack_tokens.as_ref() {
         let api = Arc::new(SlackApiClient::new(bot_token.clone()));
         tool_list.extend(all_slack_tools(api.clone()));
@@ -112,8 +121,8 @@ pub async fn run(workspace: Option<&str>) {
                     let slack_tool_count = if slack_api.is_some() { 5 } else { 0 };
                     eprintln!(
                         "[hermes-gateway/{ws_label}] Slack adapter started \
-                         ({} Slack tools, {} memory-search tools)",
-                        slack_tool_count, memory_search_count
+                         ({} Slack tools, {} memory-search tools, {} ACC task tools)",
+                        slack_tool_count, memory_search_count, acc_task_tool_count
                     );
                     let adapter = Arc::new(adapter);
                     handles.push(tokio::spawn(async move { adapter.run().await }));
