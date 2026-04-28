@@ -329,7 +329,36 @@ echo "[restart-agent] Stopping running acc-agent so the daemon manager respawns 
 # with the new binary. No separate supervise process to look for.
 if [[ "$(uname)" != "Darwin" ]] && command -v systemctl &>/dev/null \
     && systemctl is-active acc-server.service &>/dev/null 2>&1; then
-    pkill -f "acc-agent (bus|queue|tasks|hermes|proxy)" 2>/dev/null || true
+    # Resolve PIDs upfront then signal by PID. The earlier
+    # `pkill -f "acc-agent (bus|queue|tasks|hermes|proxy)"` form silently
+    # left `hermes --gateway` and `slack-ingest` running on the previous
+    # binary in production (they kept their old PIDs across restart),
+    # so the new binary's tools never reached the gateway. PID-based
+    # kill + verify + SIGKILL escalation is the robust path.
+    declare -a child_pids=()
+    while IFS= read -r p; do
+        [ -n "$p" ] && child_pids+=("$p")
+    done < <(pgrep -f 'acc-agent +(bus|queue|tasks|proxy|hermes|slack-ingest)([[:space:]]|$)' 2>/dev/null || true)
+
+    if [ "${#child_pids[@]}" -gt 0 ]; then
+        kill -TERM "${child_pids[@]}" 2>/dev/null || true
+        # Up to ~10s for graceful exit before escalating.
+        for _ in 1 2 3 4 5; do
+            sleep 2
+            still_alive=false
+            for p in "${child_pids[@]}"; do
+                if kill -0 "$p" 2>/dev/null; then still_alive=true; break; fi
+            done
+            $still_alive || break
+        done
+        for p in "${child_pids[@]}"; do
+            if kill -0 "$p" 2>/dev/null; then
+                echo "[restart-agent] pid=$p survived SIGTERM — sending SIGKILL"
+                kill -KILL "$p" 2>/dev/null || true
+            fi
+        done
+    fi
+
     # Wait for acc-server's Rust supervisor to respawn at least one worker.
     new_worker=""
     for _ in 1 2 3 4 5 6 7 8 9 10; do
