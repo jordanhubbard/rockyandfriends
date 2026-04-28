@@ -22,6 +22,8 @@ version = "0.1.0"
 dependencies = [
  "acc-client",
  "acc-model",
+ "acc-qdrant",
+ "acc-tools",
  "axum",
  "base64",
  "bytes",
@@ -31,6 +33,7 @@ dependencies = [
  "hmac",
  "http",
  "http-body-util",
+ "md5",
  "reqwest",
  "serde",
  "serde_json",
