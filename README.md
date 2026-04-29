@@ -182,6 +182,10 @@ Agent: `cp deploy/.env.template ~/.ccc/.env`
 | `CCC_MINIO_URL` | MinIO endpoint for shared file sync |
 | `TS_AUTHKEY` | Tailscale pre-auth key |
 
+When an install path brings up Tailscale, run
+`tailscale set --accept-dns=false` before `tailscale up` so agent DNS stays on
+the host resolver.
+
 Full reference: `deploy/.env.template` (agents) · `deploy/.env.server.template` (hub)
 
 ---

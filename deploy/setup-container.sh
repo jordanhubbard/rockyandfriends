@@ -468,13 +468,23 @@ if [ "$TS_REGISTERED" = false ]; then
   fi
 fi
 
-# Wait up to 10s for tailscaled to become responsive, then run tailscale up
+# Wait up to 10s for tailscaled to become responsive, then run tailscale up.
 _ts_wait=0
 while [ "$_ts_wait" -lt 10 ]; do
   tailscale --socket="$TS_SOCK" status &>/dev/null 2>&1 && break
   sleep 1
   _ts_wait=$((_ts_wait + 1))
 done
+
+disable_tailscale_dns() {
+  info "Disabling Tailscale DNS override..."
+  if tailscale --socket="$TS_SOCK" set --accept-dns=false >> "$TS_LOG" 2>&1; then
+    success "Tailscale DNS override disabled"
+  else
+    warn "Could not set --accept-dns=false automatically"
+    warn "  Before tailscale up, run: tailscale --socket=${TS_SOCK} set --accept-dns=false"
+  fi
+}
 
 if tailscale --socket="$TS_SOCK" status &>/dev/null 2>&1; then
   TS_BACKEND=$(tailscale --socket="$TS_SOCK" status --json 2>/dev/null \
@@ -484,18 +494,19 @@ if tailscale --socket="$TS_SOCK" status &>/dev/null 2>&1; then
     TS_IP=$(tailscale --socket="$TS_SOCK" ip -4 2>/dev/null || echo "unknown")
     success "Tailscale connected (IP: $TS_IP)"
   else
+    disable_tailscale_dns
     info "Running tailscale up..."
-    TS_UP_CMD="tailscale --socket=${TS_SOCK} up"
+    TS_UP_CMD="tailscale --socket=${TS_SOCK} up --accept-dns=false"
     [ -n "$TS_AUTHKEY" ] && TS_UP_CMD="$TS_UP_CMD --authkey=${TS_AUTHKEY}"
     $TS_UP_CMD 2>&1 | tee -a "$TS_LOG" || \
       warn "tailscale up incomplete — if an auth URL was printed, visit it to authorize"
-    warn "  Or run manually: tailscale --socket=${TS_SOCK} up"
+    warn "  Or run manually: tailscale --socket=${TS_SOCK} set --accept-dns=false && tailscale --socket=${TS_SOCK} up --accept-dns=false"
     [ -z "$TS_AUTHKEY" ] && \
       warn "  For unattended setup, set TS_AUTHKEY in ~/.ccc/.env and re-run this script"
   fi
 else
   warn "tailscaled not yet responding — supervisord will start it on next boot"
-  warn "  Then run: tailscale --socket=${TS_SOCK} up"
+  warn "  Then run: tailscale --socket=${TS_SOCK} set --accept-dns=false && tailscale --socket=${TS_SOCK} up --accept-dns=false"
 fi
 
 # ── Step 7: Claude tmux session ─────────────────────────────────────────────

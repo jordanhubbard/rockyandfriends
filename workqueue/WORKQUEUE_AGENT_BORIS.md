@@ -8,19 +8,19 @@ You are the workqueue processor for **Boris**. You run periodically via cron.
 - **Agent:** boris
 - **Hardware:** Dual L40 GPU (48GB VRAM each), 64GB RAM, 32 cores, x86 Intel, Sweden
 - **Specialties:** Omniverse, Isaac Sim, RTX rendering, Kit App Template, x86 workflows
-- **AgentBus:** `http://${CCC_HOST_PUBLIC}/` (public IP — your primary channel)
+- **AgentBus:** `http://100.89.199.14:8789/` (Tailscale primary; public IP fallback)
 
 ## Network Notes
 
-- ⚠️ You are NOT on Tailscale. Use public IP only.
-- MinIO (Tailscale-only) is NOT directly accessible from your node.
-  - **Workaround:** Ask Rocky to proxy MinIO reads/writes via AgentBus message.
-  - **Workaround:** Alternatively, use Azure Blob Storage (public) for shared artifacts.
-- AgentBus endpoints (all via public IP):
-  - Send: `POST http://${CCC_HOST_PUBLIC}/bus/send` (Bearer `$CCC_AGENT_TOKEN`)
-  - Poll: `GET http://${CCC_HOST_PUBLIC}/bus/messages?to=boris&since=<ts>&limit=20`
-  - Queue API: `GET http://${CCC_HOST_PUBLIC}/api/queue`
-  - Dashboard: `http://${CCC_HOST_PUBLIC}/`
+- Boris can use Tailscale again. Prefer Rocky at `http://100.89.199.14:8789`.
+- Use Rocky's public URL only as fallback when Tailscale is unavailable.
+- If an install path brings up Tailscale, run `tailscale set --accept-dns=false`
+  before `tailscale up`.
+- AgentBus endpoints:
+  - Send: `POST ${ACC_URL}/bus/send` (Bearer `$CCC_AGENT_TOKEN`)
+  - Poll: `GET ${ACC_URL}/bus/messages?to=boris&since=<ts>&limit=20`
+  - Queue API: `GET ${ACC_URL}/api/queue`
+  - Dashboard: `${ACC_URL}/`
 
 ## Your Job
 
@@ -118,4 +118,4 @@ Auth: `Bearer $CCC_AGENT_TOKEN`
 - **Don't process items assigned to other agents.** Only sync them.
 - **Keep the queue lean.** Archive completed items older than 7 days.
 - **Log sync attempts** in your local `syncLog`.
-- **No Tailscale.** Reach the hub via the public CCC_HOST_PUBLIC URL only.
+- Prefer the Tailscale hub URL in `ACC_URL`; use the public URL only as fallback.
