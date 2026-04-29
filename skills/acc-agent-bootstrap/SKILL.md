@@ -65,6 +65,21 @@ ssh -o StrictHostKeyChecking=no USER@HOST \
 This is also the preferred repair path for stale Slack gateways because it kills
 old `hermes gateway` processes and restarts `acc-agent hermes --gateway`.
 
+If the host setup touches Tailscale, disable Tailscale DNS before `tailscale up`:
+
+```bash
+tailscale set --accept-dns=false
+tailscale up --accept-dns=false
+```
+
+For Boris specifically, do not use the Bullwinkle `100.100.100.100`
+systemd-resolved override. If Slack DNS fails on Boris, repair it with:
+
+```bash
+ssh -o StrictHostKeyChecking=no USER@BORIS \
+  'cd ~/.acc/workspace && bash deploy/fix-dns-boris.sh'
+```
+
 ---
 
 ## Step 3 — Verify gateway and worker modes
@@ -74,6 +89,12 @@ Gateway:
 ```bash
 ssh -o StrictHostKeyChecking=no USER@HOST \
   'pgrep -af "acc-agent hermes --gateway" || true'
+```
+
+Fleet-wide read-only health check:
+
+```bash
+bash deploy/slack-gateway-health.sh
 ```
 
 Worker:

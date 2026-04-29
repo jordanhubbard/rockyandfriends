@@ -18,7 +18,12 @@
 
 use acc_client::Client;
 use acc_model::HeartbeatRequest;
+use chrono::{DateTime, Utc};
+use serde::Serialize;
+use serde_json::{json, Value};
+use std::collections::BTreeMap;
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tokio::signal::unix::{signal, Signal, SignalKind};
 use tokio::sync::watch;
@@ -31,6 +36,48 @@ const HEALTHY_UPTIME: Duration = Duration::from_secs(300);
 const MAX_BACKOFF: Duration = Duration::from_secs(60);
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(10);
 const SUPERVISOR_HEARTBEAT_INTERVAL: Duration = Duration::from_secs(60);
+
+type ChildHealthMap = Arc<Mutex<BTreeMap<String, ChildHealth>>>;
+
+#[derive(Debug, Clone, Serialize)]
+struct ChildHealth {
+    name: String,
+    workspace: Option<String>,
+    command: String,
+    status: String,
+    running: bool,
+    pid: Option<u32>,
+    restart_count: u64,
+    last_started_at: Option<DateTime<Utc>>,
+    last_exit_at: Option<DateTime<Utc>>,
+    last_exit_status: Option<String>,
+    last_uptime_ms: Option<u128>,
+    next_restart_backoff_secs: Option<u64>,
+    last_error: Option<String>,
+}
+
+impl ChildHealth {
+    fn configured(name: &str, exe: &std::path::Path, args: &[String]) -> Self {
+        Self {
+            name: name.to_string(),
+            workspace: gateway_workspace(name, args),
+            command: std::iter::once(exe.display().to_string())
+                .chain(args.iter().cloned())
+                .collect::<Vec<_>>()
+                .join(" "),
+            status: "configured".to_string(),
+            running: false,
+            pid: None,
+            restart_count: 0,
+            last_started_at: None,
+            last_exit_at: None,
+            last_exit_status: None,
+            last_uptime_ms: None,
+            next_restart_backoff_secs: None,
+            last_error: None,
+        }
+    }
+}
 
 // ── Static child spec (compile-time default set) ──────────────────────────────
 
@@ -120,6 +167,46 @@ fn slack_ingest_enabled(_: &Config) -> bool {
     std::env::var("IS_HUB")
         .map(|v| v.eq_ignore_ascii_case("true") || v == "1")
         .unwrap_or(false)
+}
+
+fn gateway_workspace(name: &str, args: &[String]) -> Option<String> {
+    if !name.starts_with("gateway") {
+        return None;
+    }
+    args.windows(2)
+        .find(|w| w[0] == "--workspace")
+        .map(|w| w[1].to_lowercase())
+        .or_else(|| Some("omgjkh".to_string()))
+}
+
+fn update_child_health<F>(health: &ChildHealthMap, child: &str, update: F)
+where
+    F: FnOnce(&mut ChildHealth),
+{
+    if let Ok(mut map) = health.lock() {
+        if let Some(entry) = map.get_mut(child) {
+            update(entry);
+        }
+    }
+}
+
+fn gateway_health_snapshot(health: Option<&ChildHealthMap>) -> Option<Value> {
+    let health = health?;
+    let map = health.lock().ok()?;
+    let gateways: serde_json::Map<String, Value> = map
+        .iter()
+        .filter(|(name, entry)| name.starts_with("gateway") || entry.workspace.is_some())
+        .filter_map(|(name, entry)| serde_json::to_value(entry).ok().map(|v| (name.clone(), v)))
+        .collect();
+    if gateways.is_empty() {
+        None
+    } else {
+        Some(json!({
+            "version": 1,
+            "updated_at": Utc::now(),
+            "children": gateways,
+        }))
+    }
 }
 
 static CHILDREN: &[ChildSpec] = &[
@@ -229,7 +316,13 @@ mod tests {
             ssh_port: 2222,
         };
 
-        let req = build_supervisor_heartbeat_request(&cfg);
+        let gateway_health = json!({
+            "version": 1,
+            "children": {
+                "gateway": {"status": "running", "running": true}
+            }
+        });
+        let req = build_supervisor_heartbeat_request(&cfg, Some(gateway_health.clone()));
 
         assert_eq!(req.status.as_deref(), Some("ok"));
         assert_eq!(req.note.as_deref(), Some("supervisor idle"));
@@ -242,6 +335,7 @@ mod tests {
         assert!(req.ccc_version.is_none());
         assert!(req.executors.is_empty());
         assert!(req.sessions.is_empty());
+        assert_eq!(req.gateway_health, Some(gateway_health));
 
         std::env::remove_var("ACC_MAX_TASKS_PER_AGENT");
     }
@@ -347,18 +441,38 @@ pub async fn run(args: &[String]) {
         ),
     );
 
+    let child_health: ChildHealthMap = Arc::new(Mutex::new(
+        processes
+            .iter()
+            .map(|(name, child_exe, child_args, _)| {
+                (
+                    name.clone(),
+                    ChildHealth::configured(name, child_exe, child_args),
+                )
+            })
+            .collect(),
+    ));
+
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
 
     let mut join_handles = Vec::new();
-    join_handles.push(spawn_supervisor_heartbeat(cfg.clone(), shutdown_rx.clone()));
+    join_handles.push(spawn_supervisor_heartbeat(
+        cfg.clone(),
+        child_health.clone(),
+        shutdown_rx.clone(),
+    ));
     for (name, child_exe, child_args, _direct) in processes {
         let child_name = name;
         let rx = shutdown_rx.clone();
         let agent_name = cfg.agent_name.clone();
         let acc_dir = cfg.acc_dir.clone();
+        let health = child_health.clone();
 
         join_handles.push(tokio::spawn(async move {
-            child_loop(child_exe, child_name, child_args, rx, agent_name, acc_dir).await;
+            child_loop(
+                child_exe, child_name, child_args, rx, agent_name, acc_dir, health,
+            )
+            .await;
         }));
     }
     // Await a signal (handlers were already registered above)
@@ -388,6 +502,7 @@ pub async fn run(args: &[String]) {
 
 fn spawn_supervisor_heartbeat(
     cfg: Config,
+    health: ChildHealthMap,
     mut shutdown: watch::Receiver<bool>,
 ) -> tokio::task::JoinHandle<()> {
     tokio::spawn(async move {
@@ -403,7 +518,7 @@ fn spawn_supervisor_heartbeat(
         };
 
         log(&cfg, "supervisor heartbeat started");
-        post_supervisor_heartbeat(&cfg, &client).await;
+        post_supervisor_heartbeat(&cfg, &client, &health).await;
 
         let mut interval = tokio::time::interval(SUPERVISOR_HEARTBEAT_INTERVAL);
         interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -412,7 +527,7 @@ fn spawn_supervisor_heartbeat(
         loop {
             tokio::select! {
                 _ = interval.tick() => {
-                    post_supervisor_heartbeat(&cfg, &client).await;
+                    post_supervisor_heartbeat(&cfg, &client, &health).await;
                 }
                 _ = shutdown.changed() => break,
             }
@@ -422,8 +537,8 @@ fn spawn_supervisor_heartbeat(
     })
 }
 
-async fn post_supervisor_heartbeat(cfg: &Config, client: &Client) {
-    let mut req = build_supervisor_heartbeat_request(cfg);
+async fn post_supervisor_heartbeat(cfg: &Config, client: &Client, health: &ChildHealthMap) {
+    let mut req = build_supervisor_heartbeat_request(cfg, gateway_health_snapshot(Some(health)));
     session_registry::augment_heartbeat(cfg, &mut req).await;
 
     match tokio::time::timeout(
@@ -438,7 +553,10 @@ async fn post_supervisor_heartbeat(cfg: &Config, client: &Client) {
     }
 }
 
-fn build_supervisor_heartbeat_request(cfg: &Config) -> HeartbeatRequest {
+fn build_supervisor_heartbeat_request(
+    cfg: &Config,
+    gateway_health: Option<Value>,
+) -> HeartbeatRequest {
     HeartbeatRequest {
         ts: Some(chrono::Utc::now()),
         status: Some("ok".into()),
@@ -457,6 +575,7 @@ fn build_supervisor_heartbeat_request(cfg: &Config) -> HeartbeatRequest {
         runtime_version: None,
         executors: vec![],
         sessions: vec![],
+        gateway_health,
     }
 }
 
@@ -475,6 +594,7 @@ async fn child_loop(
     mut shutdown: watch::Receiver<bool>,
     agent_name: String,
     acc_dir: PathBuf,
+    health: ChildHealthMap,
 ) {
     let mut backoff = Duration::from_secs(1);
 
@@ -485,11 +605,34 @@ async fn child_loop(
 
         let started = Instant::now();
         child_log(&agent_name, &acc_dir, &name, "starting");
+        update_child_health(&health, &name, |entry| {
+            entry.status = "starting".to_string();
+            entry.running = false;
+            entry.pid = None;
+            entry.last_started_at = Some(Utc::now());
+            entry.next_restart_backoff_secs = None;
+            entry.last_error = None;
+        });
 
         let mut child = match tokio::process::Command::new(&exe).args(&args).spawn() {
-            Ok(c) => c,
+            Ok(c) => {
+                let pid = c.id();
+                update_child_health(&health, &name, |entry| {
+                    entry.status = "running".to_string();
+                    entry.running = true;
+                    entry.pid = pid;
+                });
+                c
+            }
             Err(e) => {
                 child_log(&agent_name, &acc_dir, &name, &format!("spawn failed: {e}"));
+                update_child_health(&health, &name, |entry| {
+                    entry.status = "spawn_failed".to_string();
+                    entry.running = false;
+                    entry.pid = None;
+                    entry.last_error = Some(e.to_string());
+                    entry.next_restart_backoff_secs = Some(backoff.as_secs());
+                });
                 backoff = sleep_or_shutdown(backoff, &mut shutdown).await;
                 if *shutdown.borrow() {
                     break;
@@ -506,11 +649,21 @@ async fn child_loop(
 
         if exit_status.is_none() {
             child_log(&agent_name, &acc_dir, &name, "stopping on shutdown signal");
+            update_child_health(&health, &name, |entry| {
+                entry.status = "stopping".to_string();
+                entry.running = false;
+                entry.pid = None;
+                entry.next_restart_backoff_secs = None;
+            });
             graceful_kill(&mut child).await;
             break;
         }
 
         let uptime = started.elapsed();
+        let exit_label = match exit_status.as_ref().unwrap() {
+            Ok(s) => s.to_string(),
+            Err(e) => e.to_string(),
+        };
         match exit_status.unwrap() {
             Ok(s) => child_log(
                 &agent_name,
@@ -520,9 +673,22 @@ async fn child_loop(
             ),
             Err(e) => child_log(&agent_name, &acc_dir, &name, &format!("wait error: {e}")),
         }
+        update_child_health(&health, &name, |entry| {
+            entry.status = "restarting".to_string();
+            entry.running = false;
+            entry.pid = None;
+            entry.restart_count = entry.restart_count.saturating_add(1);
+            entry.last_exit_at = Some(Utc::now());
+            entry.last_exit_status = Some(exit_label);
+            entry.last_uptime_ms = Some(uptime.as_millis());
+            entry.next_restart_backoff_secs = Some(backoff.as_secs());
+        });
 
         if uptime >= HEALTHY_UPTIME {
             backoff = Duration::from_secs(1);
+            update_child_health(&health, &name, |entry| {
+                entry.next_restart_backoff_secs = Some(backoff.as_secs());
+            });
         }
 
         child_log(
@@ -537,6 +703,12 @@ async fn child_loop(
         }
     }
 
+    update_child_health(&health, &name, |entry| {
+        entry.status = "stopped".to_string();
+        entry.running = false;
+        entry.pid = None;
+        entry.next_restart_backoff_secs = None;
+    });
     child_log(&agent_name, &acc_dir, &name, "stopped");
 }
 

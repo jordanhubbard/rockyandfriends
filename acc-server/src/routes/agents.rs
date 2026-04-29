@@ -355,6 +355,7 @@ async fn get_agent_health(
                 "ccc_version",
                 "workspace_revision",
                 "runtime_version",
+                "gateway_health",
             ];
             let mut health = serde_json::Map::new();
             health.insert("agent".into(), json!(agent_name));
@@ -412,6 +413,7 @@ async fn agent_heartbeat(
         "ccc_version",
         "workspace_revision",
         "runtime_version",
+        "gateway_health",
         "ssh_user",
         "ssh_host",
         "ssh_port",
@@ -453,6 +455,13 @@ async fn agent_heartbeat(
             "capabilities": body.get("capabilities").cloned().unwrap_or(json!({})),
             "billing": {"claude_cli": "fixed", "inference_key": "metered", "gpu": "fixed"},
         });
+        if let Some(obj) = record.as_object_mut() {
+            for key in &telemetry_keys {
+                if let Some(val) = body.get(*key) {
+                    obj.insert((*key).to_string(), val.clone());
+                }
+            }
+        }
         refresh_canonical_agent_shape(&mut record, &body);
         agents_map.insert(agent_name.clone(), record);
     }
@@ -749,6 +758,7 @@ async fn post_heartbeat(
         "ccc_version",
         "workspace_revision",
         "runtime_version",
+        "gateway_health",
         "ssh_user",
         "ssh_host",
         "ssh_port",

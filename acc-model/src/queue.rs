@@ -177,6 +177,11 @@ pub struct HeartbeatRequest {
     pub executors: Vec<AgentExecutor>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub sessions: Vec<AgentSession>,
+    /// Supervisor-reported child process health, currently used for Slack
+    /// gateway visibility. Kept as JSON so new child fields can roll out
+    /// without coupling every client to a strict telemetry schema.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gateway_health: Option<Value>,
 }
 
 #[cfg(test)]

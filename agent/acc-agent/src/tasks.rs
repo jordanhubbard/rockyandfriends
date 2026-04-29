@@ -82,6 +82,7 @@ fn spawn_keepalive(cfg: Config, client: Client, note: String) -> tokio::sync::on
                         runtime_version: None,
                         executors: vec![],
                         sessions: vec![],
+                        gateway_health: None,
                     };
                     let mut req = req;
                     session_registry::augment_heartbeat(&cfg, &mut req).await;
@@ -455,30 +456,33 @@ pub async fn run(args: &[String]) {
 // ── Startup recovery — release stale claims from previous process ───────────
 
 async fn cleanup_stale_claims(cfg: &Config, client: &Client) {
-    let stale = match client
-        .tasks()
-        .list()
-        .status(TaskStatus::Claimed)
-        .agent(cfg.agent_name.clone())
-        .send()
-        .await
-    {
-        Ok(v) => v,
-        Err(e) => {
-            log(
-                cfg,
-                &format!("startup recovery: failed to list own claims: {e}"),
-            );
-            return;
+    let mut stale = Vec::new();
+    for status in [TaskStatus::Claimed, TaskStatus::InProgress] {
+        match client
+            .tasks()
+            .list()
+            .status(status)
+            .agent(cfg.agent_name.clone())
+            .send()
+            .await
+        {
+            Ok(mut v) => stale.append(&mut v),
+            Err(e) => {
+                log(
+                    cfg,
+                    &format!("startup recovery: failed to list own {status:?} tasks: {e}"),
+                );
+                return;
+            }
         }
-    };
+    }
     if stale.is_empty() {
         return;
     }
     log(
         cfg,
         &format!(
-            "startup recovery: releasing {} stale claim(s) from previous process",
+            "startup recovery: releasing {} stale claimed/in-progress task(s) from previous process",
             stale.len()
         ),
     );
@@ -570,17 +574,21 @@ async fn fetch_open_tasks(
 }
 
 async fn count_active_tasks(cfg: &Config, client: &Client) -> usize {
-    match client
-        .tasks()
-        .list()
-        .status(TaskStatus::Claimed)
-        .agent(cfg.agent_name.clone())
-        .send()
-        .await
-    {
-        Ok(tasks) => tasks.len(),
-        Err(_) => 0,
+    let mut active = 0;
+    for status in [TaskStatus::Claimed, TaskStatus::InProgress] {
+        match client
+            .tasks()
+            .list()
+            .status(status)
+            .agent(cfg.agent_name.clone())
+            .send()
+            .await
+        {
+            Ok(tasks) => active += tasks.len(),
+            Err(_) => {}
+        }
     }
+    active
 }
 
 async fn claim_task(cfg: &Config, client: &Client, task_id: &str) -> Result<Value, u16> {
@@ -1459,11 +1467,12 @@ mod tests {
     // ── count_active_tasks ────────────────────────────────────────────────────
 
     #[tokio::test]
-    async fn test_count_active_tasks_returns_claimed_count() {
+    async fn test_count_active_tasks_returns_claimed_and_in_progress_count() {
         let mock = HubMock::with_state(HubState {
             tasks: vec![
                 json!({"id": "c1", "status": "claimed"}),
                 json!({"id": "c2", "status": "claimed"}),
+                json!({"id": "i1", "status": "in_progress"}),
                 json!({"id": "o1", "status": "open"}),
             ],
             ..Default::default()
@@ -1471,7 +1480,7 @@ mod tests {
         .await;
         let client = test_client(&mock.url);
         let count = count_active_tasks(&test_cfg(&mock.url), &client).await;
-        assert_eq!(count, 2);
+        assert_eq!(count, 3);
     }
 
     #[tokio::test]

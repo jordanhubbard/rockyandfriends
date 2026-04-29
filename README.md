@@ -192,7 +192,10 @@ Agent: `cp deploy/.env.template ~/.ccc/.env`
 
 When an install path brings up Tailscale, run
 `tailscale set --accept-dns=false` before `tailscale up` so agent DNS stays on
-the host resolver.
+the host resolver. Boris is the concrete failure mode to remember: do not point
+systemd-resolved at `100.100.100.100` as a global resolver when
+`accept-dns=false`, because Slack public DNS can fail. Use
+`deploy/fix-dns-boris.sh` on Boris if Slack gateway DNS breaks.
 
 Full reference: `deploy/.env.template` (agents) · `deploy/.env.server.template` (hub)
 

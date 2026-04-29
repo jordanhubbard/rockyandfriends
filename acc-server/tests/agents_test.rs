@@ -225,6 +225,12 @@ async fn alternate_heartbeat_updates_capacity_and_sessions() {
                 "ccc_version": "d30dfa5",
                 "workspace_revision": "d30dfa5",
                 "runtime_version": "0.1.0",
+                "gateway_health": {
+                    "version": 1,
+                    "children": {
+                        "gateway": {"status": "running", "running": true}
+                    }
+                },
                 "executors": [{"executor": "claude_cli", "ready": true, "auth_state": "ready"}],
                 "sessions": [{"name": "proj-a", "executor": "claude_cli", "state": "busy"}]
             }),
@@ -242,6 +248,10 @@ async fn alternate_heartbeat_updates_capacity_and_sessions() {
     assert_eq!(body["agent"]["ccc_version"], "d30dfa5");
     assert_eq!(body["agent"]["workspace_revision"], "d30dfa5");
     assert_eq!(body["agent"]["runtime_version"], "0.1.0");
+    assert_eq!(
+        body["agent"]["gateway_health"]["children"]["gateway"]["status"],
+        "running"
+    );
     assert_eq!(body["agent"]["sessions"][0]["name"], "proj-a");
 }
 
@@ -324,6 +334,12 @@ async fn get_agent_health_after_heartbeat() {
             &json!({
                 "gpu": "RTX 4090",
                 "gpu_temp_c": 72.0,
+                "gateway_health": {
+                    "version": 1,
+                    "children": {
+                        "gateway": {"status": "restarting", "running": false}
+                    }
+                },
             }),
         ),
     )
@@ -335,6 +351,10 @@ async fn get_agent_health_after_heartbeat() {
     assert_eq!(body["health"]["agent"], "sherman");
     assert!(body["health"]["online"].is_boolean());
     assert_eq!(body["health"]["gpu"], "RTX 4090");
+    assert_eq!(
+        body["health"]["gateway_health"]["children"]["gateway"]["status"],
+        "restarting"
+    );
 }
 
 #[tokio::test]

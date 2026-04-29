@@ -824,6 +824,7 @@ async fn post_heartbeat(cfg: &Config, client: &Client, note: &str) {
         runtime_version: None,
         executors: vec![],
         sessions: vec![],
+        gateway_health: None,
     };
     let mut req = req;
     session_registry::augment_heartbeat(cfg, &mut req).await;
