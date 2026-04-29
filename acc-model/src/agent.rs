@@ -65,6 +65,35 @@ pub struct AgentCapacity {
     pub extra: BTreeMap<String, Value>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AgentRegistrationRequest {
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub host: Option<String>,
+    #[serde(default, rename = "type", skip_serializing_if = "Option::is_none")]
+    pub agent_type: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ccc_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capabilities: Option<Value>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tool_capabilities: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub executors: Vec<AgentExecutor>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub sessions: Vec<AgentSession>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capacity: Option<AgentCapacity>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+pub struct AgentCapabilitiesRequest {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub capabilities: Vec<String>,
+}
+
 /// Agent as emitted by `/api/agents` and `/api/agents/{name}`.
 ///
 /// The server emits ~30 fields, many of which are GPU / VRAM telemetry
@@ -85,6 +114,10 @@ pub struct Agent {
     pub version: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub ccc_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace_revision: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_version: Option<String>,
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub vllm_port: Option<u64>,
@@ -160,6 +193,8 @@ mod tests {
             "lastSeen": "2026-04-23T00:00:00Z",
             "online": true,
             "onlineStatus": "online",
+            "workspace_revision": "d30dfa5",
+            "runtime_version": "0.1.0",
             "tool_capabilities": ["bash", "read_file"],
             "executors": [{"executor": "claude_cli", "ready": true, "auth_state": "ready"}],
             "sessions": [{"name": "proj-main", "executor": "claude_cli", "state": "idle"}],
@@ -171,6 +206,8 @@ mod tests {
         let a: Agent = serde_json::from_str(json).unwrap();
         assert_eq!(a.name, "natasha");
         assert_eq!(a.online, Some(true));
+        assert_eq!(a.workspace_revision.as_deref(), Some("d30dfa5"));
+        assert_eq!(a.runtime_version.as_deref(), Some("0.1.0"));
         assert_eq!(a.online_status, Some(AgentOnlineStatus::Online));
         assert_eq!(a.tool_capabilities, vec!["bash", "read_file"]);
         assert_eq!(a.executors.len(), 1);

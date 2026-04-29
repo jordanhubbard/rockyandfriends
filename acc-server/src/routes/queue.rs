@@ -39,7 +39,17 @@ fn stale_threshold(preferred_executor: Option<&str>) -> u64 {
     }
 }
 
+fn warn_legacy_queue_usage(operation: &str) {
+    tracing::warn!(
+        target: "acc.compat",
+        path = "/api/queue",
+        operation,
+        "legacy queue compatibility path used; new durable scheduling must use /api/tasks"
+    );
+}
+
 async fn get_queue(State(state): State<Arc<AppState>>) -> Json<Value> {
+    warn_legacy_queue_usage("list");
     let q = state.queue.read().await;
     Json(json!({
         "items": q.items,
@@ -48,6 +58,7 @@ async fn get_queue(State(state): State<Arc<AppState>>) -> Json<Value> {
 }
 
 async fn get_stale(State(state): State<Arc<AppState>>) -> Json<Value> {
+    warn_legacy_queue_usage("stale");
     let q = state.queue.read().await;
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -84,6 +95,7 @@ async fn get_stale(State(state): State<Arc<AppState>>) -> Json<Value> {
 }
 
 async fn get_claimed(State(state): State<Arc<AppState>>, headers: HeaderMap) -> impl IntoResponse {
+    warn_legacy_queue_usage("claimed");
     if !state.is_authed(&headers) {
         return (
             StatusCode::UNAUTHORIZED,
@@ -104,6 +116,7 @@ async fn get_claimed(State(state): State<Arc<AppState>>, headers: HeaderMap) -> 
 }
 
 async fn get_item(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> impl IntoResponse {
+    warn_legacy_queue_usage("get_item");
     let q = state.queue.read().await;
     let item = q
         .items
@@ -125,6 +138,7 @@ async fn post_queue(
     _headers: HeaderMap,
     Json(body): Json<Value>,
 ) -> impl IntoResponse {
+    warn_legacy_queue_usage("create");
     let title = match body.get("title").and_then(|t| t.as_str()) {
         Some(t) => t.to_string(),
         None => {
@@ -309,6 +323,7 @@ async fn post_queue(
         "description": body.get("description").and_then(|s| s.as_str()).unwrap_or(""),
         "notes": body.get("notes").and_then(|s| s.as_str()).unwrap_or(""),
         "preferred_executor": preferred_executor,
+        "preferred_agent": body.get("preferred_agent").cloned().unwrap_or(json!(null)),
         "journal": [],
         "choices": body.get("choices").cloned().unwrap_or(json!([])),
         "choiceRecorded": null,
@@ -343,7 +358,14 @@ async fn post_queue(
             .and_then(|s| s.as_str())
             .unwrap_or("all");
         let tags_val = body.get("tags").cloned().unwrap_or(serde_json::json!([]));
-        let meta = serde_json::json!({"tags": tags_val, "assignee": assignee_str});
+        let mut meta = serde_json::json!({"tags": tags_val, "assignee": assignee_str});
+        if let Some(preferred_agent) = body
+            .get("preferred_agent")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+        {
+            meta["preferred_agent"] = json!(preferred_agent);
+        }
         let conn = state.fleet_db.lock().await;
         let _ = crate::db::db_create_fleet_task_from_queue(
             &conn,
@@ -369,6 +391,7 @@ async fn patch_item(
     headers: HeaderMap,
     Json(body): Json<Value>,
 ) -> impl IntoResponse {
+    warn_legacy_queue_usage("patch_item");
     if !state.is_authed(&headers) {
         return (
             StatusCode::UNAUTHORIZED,
@@ -437,6 +460,7 @@ async fn delete_item(
     headers: HeaderMap,
     Json(body): Json<Value>,
 ) -> impl IntoResponse {
+    warn_legacy_queue_usage("delete_item");
     if !state.is_authed(&headers) {
         return (
             StatusCode::UNAUTHORIZED,
@@ -493,6 +517,7 @@ async fn claim_item(
     Path(id): Path<String>,
     Json(body): Json<Value>,
 ) -> impl IntoResponse {
+    warn_legacy_queue_usage("claim_item");
     let agent = match body
         .get("agent")
         .or_else(|| body.get("_author"))
@@ -625,6 +650,7 @@ async fn complete_item(
     Path(id): Path<String>,
     Json(body): Json<Value>,
 ) -> impl IntoResponse {
+    warn_legacy_queue_usage("complete_item");
     let agent = body
         .get("agent")
         .or_else(|| body.get("_author"))
@@ -701,6 +727,7 @@ async fn fail_item(
     Path(id): Path<String>,
     Json(body): Json<Value>,
 ) -> impl IntoResponse {
+    warn_legacy_queue_usage("fail_item");
     let agent = body
         .get("agent")
         .or_else(|| body.get("_author"))
@@ -790,6 +817,7 @@ async fn keepalive_item(
     Path(id): Path<String>,
     Json(body): Json<Value>,
 ) -> impl IntoResponse {
+    warn_legacy_queue_usage("keepalive_item");
     let mut q = state.queue.write().await;
     let now = chrono::Utc::now().to_rfc3339();
 
@@ -829,6 +857,7 @@ async fn stale_reset_item(
     Path(id): Path<String>,
     headers: HeaderMap,
 ) -> impl IntoResponse {
+    warn_legacy_queue_usage("stale_reset_item");
     if !state.is_authed(&headers) {
         return (
             StatusCode::UNAUTHORIZED,

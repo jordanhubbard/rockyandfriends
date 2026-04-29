@@ -50,6 +50,8 @@ pub struct QueueItem {
 
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub preferred_executor: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub preferred_agent: Option<String>,
 
     #[serde(default, rename = "claimedBy", skip_serializing_if = "Option::is_none")]
     pub claimed_by: Option<String>,
@@ -164,6 +166,13 @@ pub struct HeartbeatRequest {
     pub max_sessions: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub session_spawn_denied_reason: Option<String>,
+    /// Legacy field consumed by existing dashboards. Mirrors workspace_revision.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ccc_version: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub workspace_revision: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub runtime_version: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub executors: Vec<AgentExecutor>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

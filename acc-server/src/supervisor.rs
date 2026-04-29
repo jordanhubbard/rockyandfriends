@@ -15,6 +15,9 @@ pub struct ProcessStatus {
     pub name: String,
     pub pid: Option<u32>,
     pub healthy: bool,
+    pub health_status: String,
+    pub health_reason: Option<String>,
+    pub health_url: Option<String>,
     pub restarts: u32,
     pub started_at: Option<chrono::DateTime<chrono::Utc>>,
 }
@@ -36,6 +39,9 @@ impl Supervisor {
                 name: p.name.clone(),
                 pid: None,
                 healthy: false,
+                health_status: "not_started".to_string(),
+                health_reason: None,
+                health_url: p.health_url.clone(),
                 restarts: 0,
                 started_at: None,
             })
@@ -64,17 +70,18 @@ impl Supervisor {
         }
     }
 
-    async fn is_healthy(url: &str) -> bool {
+    async fn check_health(url: &str) -> (bool, Option<String>) {
         let client = match reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(5))
             .build()
         {
             Ok(c) => c,
-            Err(_) => return false,
+            Err(e) => return (false, Some(format!("client_build_failed:{e}"))),
         };
         match client.get(url).send().await {
-            Ok(resp) => resp.status().as_u16() == 200,
-            Err(_) => false,
+            Ok(resp) if resp.status().as_u16() == 200 => (true, None),
+            Ok(resp) => (false, Some(format!("http_status:{}", resp.status()))),
+            Err(e) => (false, Some(format!("request_failed:{e}"))),
         }
     }
 }
@@ -109,7 +116,16 @@ async fn run_process(
                         entry.pid = pid;
                         entry.started_at = Some(started_at);
                         entry.restarts = restart_count;
-                        entry.healthy = false;
+                        entry.health_url = process.health_url.clone();
+                        if process.health_url.is_some() {
+                            entry.healthy = false;
+                            entry.health_status = "starting".to_string();
+                            entry.health_reason = Some("healthcheck_pending".to_string());
+                        } else {
+                            entry.healthy = true;
+                            entry.health_status = "running_no_healthcheck".to_string();
+                            entry.health_reason = Some("no health_url configured".to_string());
+                        }
                     }
                 }
                 tracing::info!("[supervisor] '{}' started (pid={:?})", process.name, pid);
@@ -120,7 +136,7 @@ async fn run_process(
                     let statuses2 = statuses.clone();
                     tokio::spawn(async move {
                         tokio::time::sleep(std::time::Duration::from_secs(10)).await;
-                        let healthy = Supervisor::is_healthy(&url).await;
+                        let (healthy, reason) = Supervisor::check_health(&url).await;
                         if healthy {
                             tracing::info!("[supervisor] '{}' health check OK at {}", name, url);
                         } else {
@@ -133,6 +149,12 @@ async fn run_process(
                         let mut s = statuses2.write().await;
                         if let Some(entry) = s.get_mut(idx) {
                             entry.healthy = healthy;
+                            entry.health_status = if healthy {
+                                "healthy".to_string()
+                            } else {
+                                "unhealthy".to_string()
+                            };
+                            entry.health_reason = reason;
                         }
                     });
                 }
@@ -158,6 +180,8 @@ async fn run_process(
             if let Some(entry) = s.get_mut(idx) {
                 entry.pid = None;
                 entry.healthy = false;
+                entry.health_status = "exited".to_string();
+                entry.health_reason = Some("process exited".to_string());
             }
         }
 

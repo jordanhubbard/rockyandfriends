@@ -353,6 +353,8 @@ async fn get_agent_health(
                 "ollama_status",
                 "ollama_models",
                 "ccc_version",
+                "workspace_revision",
+                "runtime_version",
             ];
             let mut health = serde_json::Map::new();
             health.insert("agent".into(), json!(agent_name));
@@ -408,6 +410,8 @@ async fn agent_heartbeat(
         "ollama_status",
         "ollama_models",
         "ccc_version",
+        "workspace_revision",
+        "runtime_version",
         "ssh_user",
         "ssh_host",
         "ssh_port",
@@ -743,6 +747,8 @@ async fn post_heartbeat(
         "ollama_status",
         "ollama_models",
         "ccc_version",
+        "workspace_revision",
+        "runtime_version",
         "ssh_user",
         "ssh_host",
         "ssh_port",

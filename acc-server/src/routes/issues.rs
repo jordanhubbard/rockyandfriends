@@ -41,7 +41,10 @@ pub async fn load_issues() {
     match tokio::fs::read_to_string(path).await {
         Ok(content) => {
             if let Ok(data) = serde_json::from_str::<Value>(&content) {
-                if let Some(issues) = data.get("issues").and_then(|v| v.as_array()).cloned() {
+                if let Some(mut issues) = data.get("issues").and_then(|v| v.as_array()).cloned() {
+                    for issue in &mut issues {
+                        normalize_github_link_fields(issue);
+                    }
                     let count = issues.len();
                     *issues_store().write().await = issues;
                     tracing::info!("issues: loaded {} from {}", count, path);
@@ -57,6 +60,35 @@ pub async fn load_issues() {
         }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(e) => tracing::warn!("issues: failed to load: {}", e),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_issue_exposes_github_metadata_schema() {
+        let issue = normalized_issue(json!({
+            "repo": "jordanhubbard/ACC",
+            "number": 42,
+            "url": "https://github.com/jordanhubbard/ACC/issues/42",
+            "labels": [{"name": "bug"}, {"name": "agent-ready"}],
+            "wq_id": "task-abc123"
+        }));
+
+        assert_eq!(issue["source"], "github");
+        assert_eq!(issue["github_number"], 42);
+        assert_eq!(issue["github_repo"], "jordanhubbard/ACC");
+        assert_eq!(
+            issue["github_url"],
+            "https://github.com/jordanhubbard/ACC/issues/42"
+        );
+        assert_eq!(issue["fleet_task_id"], "task-abc123");
+        assert_eq!(issue["github_labels"], json!(["bug", "agent-ready"]));
+        assert_eq!(issue["metadata"]["source"], "github");
+        assert_eq!(issue["metadata"]["github_number"], 42);
+        assert_eq!(issue["metadata"]["fleet_task_id"], "task-abc123");
     }
 }
 
@@ -76,6 +108,106 @@ async fn save_issues() {
             let _ = tokio::fs::rename(&tmp, path).await;
         }
     }
+}
+
+fn label_names(value: &Value) -> Vec<String> {
+    value
+        .as_array()
+        .map(|labels| {
+            labels
+                .iter()
+                .filter_map(|label| {
+                    label
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .or_else(|| label.as_str())
+                        .map(str::to_owned)
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn issue_number_from_url(url: &str) -> Option<u64> {
+    url.trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .and_then(|s| s.parse::<u64>().ok())
+}
+
+fn normalize_github_link_fields(issue: &mut Value) {
+    let Some(obj) = issue.as_object_mut() else {
+        return;
+    };
+    let repo = obj
+        .get("repo")
+        .or_else(|| obj.get("github_repo"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let number = obj
+        .get("number")
+        .or_else(|| obj.get("github_number"))
+        .and_then(|v| v.as_u64())
+        .or_else(|| {
+            obj.get("url")
+                .or_else(|| obj.get("html_url"))
+                .or_else(|| obj.get("github_url"))
+                .and_then(|v| v.as_str())
+                .and_then(issue_number_from_url)
+        });
+    let Some(number) = number else {
+        return;
+    };
+    if repo.is_empty() {
+        return;
+    }
+    let url = obj
+        .get("url")
+        .or_else(|| obj.get("html_url"))
+        .or_else(|| obj.get("github_url"))
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned)
+        .unwrap_or_else(|| format!("https://github.com/{repo}/issues/{number}"));
+    let labels = obj.get("labels").map(label_names).unwrap_or_default();
+    let fleet_task_id = obj
+        .get("fleet_task_id")
+        .or_else(|| obj.get("wq_id"))
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned);
+
+    let mut metadata = obj
+        .get("metadata")
+        .and_then(|v| v.as_object())
+        .cloned()
+        .unwrap_or_default();
+    metadata.insert("source".into(), json!("github"));
+    metadata.insert("github_number".into(), json!(number));
+    metadata.insert("github_repo".into(), json!(repo));
+    metadata.insert("github_url".into(), json!(url));
+    metadata.insert(
+        "fleet_task_id".into(),
+        fleet_task_id
+            .as_ref()
+            .map(|v| json!(v))
+            .unwrap_or(Value::Null),
+    );
+    metadata.insert("github_labels".into(), json!(labels));
+
+    obj.insert("source".into(), json!("github"));
+    obj.insert("github_number".into(), json!(number));
+    obj.insert("github_repo".into(), metadata["github_repo"].clone());
+    obj.insert("github_url".into(), metadata["github_url"].clone());
+    obj.insert("fleet_task_id".into(), metadata["fleet_task_id"].clone());
+    obj.insert("github_labels".into(), metadata["github_labels"].clone());
+    obj.insert("metadata".into(), Value::Object(metadata));
+}
+
+fn normalized_issue(mut issue: Value) -> Value {
+    normalize_github_link_fields(&mut issue);
+    issue
 }
 
 pub fn router() -> Router<Arc<AppState>> {
@@ -133,7 +265,7 @@ async fn list_issues(
         .into_iter()
         .skip(offset)
         .take(limit)
-        .cloned()
+        .map(|issue| normalized_issue(issue.clone()))
         .collect();
     drop(issues);
 
@@ -177,7 +309,7 @@ async fn get_issue(
                 true
             }
         })
-        .cloned();
+        .map(|issue| normalized_issue(issue.clone()));
 
     match found {
         Some(issue) => (
@@ -234,6 +366,7 @@ async fn patch_issue(
                     obj.insert("assignee".into(), json!(assignee));
                 }
                 obj.insert("updatedAt".into(), json!(chrono::Utc::now().to_rfc3339()));
+                normalize_github_link_fields(issue);
                 Some(issue.clone())
             }
         }
@@ -351,6 +484,7 @@ async fn do_sync_repo(repo: &str, state_filter: &str) -> Result<usize, String> {
                     }
                 }
             }
+            normalize_github_link_fields(&mut issue);
             let number = issue.get("number").and_then(|v| v.as_u64());
             if let Some(num) = number {
                 if let Some(pos) = store.iter().position(|e| {
@@ -361,6 +495,7 @@ async fn do_sync_repo(repo: &str, state_filter: &str) -> Result<usize, String> {
                     let existing_wq = store[pos].get("wq_id").cloned();
                     if let (Some(obj), Some(wq)) = (issue.as_object_mut(), existing_wq) {
                         obj.insert("wq_id".to_string(), wq);
+                        normalize_github_link_fields(&mut issue);
                     }
                     store[pos] = issue;
                 } else {
@@ -397,7 +532,9 @@ async fn link_issue(
             None => None,
             Some(issue) => {
                 if let Some(obj) = issue.as_object_mut() {
-                    obj.insert("wq_id".to_string(), json!(body.wq_id));
+                    obj.insert("wq_id".to_string(), json!(&body.wq_id));
+                    obj.insert("fleet_task_id".to_string(), json!(&body.wq_id));
+                    normalize_github_link_fields(issue);
                 }
                 Some(issue.clone())
             }

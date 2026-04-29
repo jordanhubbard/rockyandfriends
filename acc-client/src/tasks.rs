@@ -175,7 +175,7 @@ impl<'a> ListTasksBuilder<'a> {
             q.push(("task_type", serde_plain(&t)));
         }
         if let Some(p) = self.project {
-            q.push(("project", p));
+            q.push(("project_id", p));
         }
         if let Some(a) = self.agent {
             q.push(("agent", a));

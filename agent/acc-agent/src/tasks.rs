@@ -1,7 +1,7 @@
 //! Fleet task worker — polls /api/tasks, claims atomically, executes in AgentFS workspace.
 //!
-//! Work tasks and review tasks are executed via the native Anthropic agentic loop in sdk.rs.
-//! Phase_commit tasks run git to push approved work to a branch.
+//! Work tasks prefer persistent local CLI sessions. Review tasks still use the
+//! lighter API-backed agent loop. Phase_commit tasks run git to push approved work.
 //! Multiple agents run this concurrently; the server's SQL atomic claim prevents double-work.
 
 use crate::cli_tmux_adapter;
@@ -9,7 +9,10 @@ use crate::config::Config;
 use crate::peers;
 use crate::session_registry;
 use acc_client::Client;
-use acc_model::{CreateTaskRequest, HeartbeatRequest, ReviewResult, TaskStatus, TaskType};
+use acc_model::{
+    AgentExecutor, AgentSession, CreateTaskRequest, HeartbeatRequest, ReviewResult, TaskStatus,
+    TaskType,
+};
 use serde_json::Value;
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -50,10 +53,7 @@ const CLI_TASK_EXECUTORS: &[&str] = &["claude_cli", "codex_cli", "cursor_cli"];
 /// signaled. Fire-and-forget on the network: if a heartbeat POST
 /// fails, the next interval tries again.
 fn spawn_keepalive(cfg: Config, client: Client, note: String) -> tokio::sync::oneshot::Sender<()> {
-    let max_slots: u32 = std::env::var("ACC_MAX_TASKS_PER_AGENT")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(2);
+    let max_slots = cfg.max_tasks_per_agent();
     let free_slots = max_slots.saturating_sub(1);
     let (stop_tx, mut stop_rx) = tokio::sync::oneshot::channel::<()>();
     tokio::spawn(async move {
@@ -77,6 +77,9 @@ fn spawn_keepalive(cfg: Config, client: Client, note: String) -> tokio::sync::on
                         free_session_slots: None,
                         max_sessions: None,
                         session_spawn_denied_reason: None,
+                        ccc_version: None,
+                        workspace_revision: None,
+                        runtime_version: None,
                         executors: vec![],
                         sessions: vec![],
                     };
@@ -150,6 +153,65 @@ fn select_cli_executor(task: &Value) -> Option<&str> {
                 .filter_map(|v| v.as_str())
                 .find(|executor| CLI_TASK_EXECUTORS.contains(executor))
         })
+}
+
+async fn select_cli_executor_for_task(cfg: &Config, task: &Value) -> Option<String> {
+    if let Some(executor) = select_cli_executor(task) {
+        return Some(executor.to_string());
+    }
+    let snapshot = session_registry::snapshot(cfg).await;
+    select_default_cli_executor_from_snapshot(task, &snapshot)
+}
+
+fn select_default_cli_executor_from_snapshot(
+    task: &Value,
+    snapshot: &session_registry::HeartbeatFragment,
+) -> Option<String> {
+    let project_id = task["project_id"].as_str().filter(|s| !s.is_empty());
+    for require_project_match in [true, false] {
+        for executor in CLI_TASK_EXECUTORS {
+            if snapshot.sessions.iter().any(|session| {
+                session_ready_for_executor(session, executor)
+                    && (!require_project_match
+                        || project_id
+                            .is_some_and(|project| session.project_id.as_deref() == Some(project)))
+            }) {
+                return Some((*executor).to_string());
+            }
+        }
+    }
+
+    if snapshot.free_session_slots == Some(0) {
+        return None;
+    }
+
+    CLI_TASK_EXECUTORS
+        .iter()
+        .find(|executor| {
+            snapshot
+                .executors
+                .iter()
+                .any(|entry| executor_ready(entry, executor))
+        })
+        .map(|executor| (*executor).to_string())
+}
+
+fn session_ready_for_executor(session: &AgentSession, executor: &str) -> bool {
+    session.executor.as_deref() == Some(executor)
+        && session.state.as_deref().unwrap_or("idle") == "idle"
+        && session.auth_state.as_deref().unwrap_or("ready") != "unauthenticated"
+        && !session.busy.unwrap_or(false)
+        && !session.stuck.unwrap_or(false)
+}
+
+fn executor_ready(entry: &AgentExecutor, executor: &str) -> bool {
+    entry.executor == executor
+        && entry.installed.unwrap_or(true)
+        && entry.ready.unwrap_or(true)
+        && !matches!(
+            entry.auth_state.as_deref(),
+            Some("unauthenticated" | "missing")
+        )
 }
 
 pub async fn run(args: &[String]) {
@@ -575,12 +637,12 @@ async fn execute_task(cfg: &Config, client: &Client, task: &Value, online_peers:
         client.clone(),
         format!("working task {task_id}"),
     );
-    let result = if let Some(executor) = select_cli_executor(task) {
+    let result = if let Some(executor) = select_cli_executor_for_task(cfg, task).await {
         log(
             cfg,
             &format!("task {task_id}: using persistent {executor} session"),
         );
-        match cli_tmux_adapter::adapter_for_executor(executor) {
+        match cli_tmux_adapter::adapter_for_executor(&executor) {
             Some(adapter) => cli_tmux_adapter::run_task(
                 cfg,
                 &adapter,
@@ -1540,6 +1602,76 @@ mod tests {
             "metadata": {}
         });
         assert_eq!(select_cli_executor(&task), None);
+    }
+
+    #[test]
+    fn default_cli_executor_prefers_project_ready_session() {
+        let task = json!({"project_id": "proj-a", "metadata": {}});
+        let snapshot = session_registry::HeartbeatFragment {
+            sessions: vec![
+                AgentSession {
+                    name: "other".into(),
+                    executor: Some("claude_cli".into()),
+                    project_id: Some("proj-b".into()),
+                    state: Some("idle".into()),
+                    auth_state: Some("ready".into()),
+                    ..Default::default()
+                },
+                AgentSession {
+                    name: "project".into(),
+                    executor: Some("codex_cli".into()),
+                    project_id: Some("proj-a".into()),
+                    state: Some("idle".into()),
+                    auth_state: Some("ready".into()),
+                    ..Default::default()
+                },
+            ],
+            ..Default::default()
+        };
+
+        assert_eq!(
+            select_default_cli_executor_from_snapshot(&task, &snapshot).as_deref(),
+            Some("codex_cli")
+        );
+    }
+
+    #[test]
+    fn default_cli_executor_uses_ready_executor_when_spawn_capacity_exists() {
+        let task = json!({"project_id": "proj-a", "metadata": {}});
+        let snapshot = session_registry::HeartbeatFragment {
+            executors: vec![AgentExecutor {
+                executor: "claude_cli".into(),
+                installed: Some(true),
+                ready: Some(true),
+                auth_state: Some("ready".into()),
+                ..Default::default()
+            }],
+            free_session_slots: Some(1),
+            ..Default::default()
+        };
+
+        assert_eq!(
+            select_default_cli_executor_from_snapshot(&task, &snapshot).as_deref(),
+            Some("claude_cli")
+        );
+    }
+
+    #[test]
+    fn default_cli_executor_does_not_spawn_when_saturated() {
+        let task = json!({"project_id": "proj-a", "metadata": {}});
+        let snapshot = session_registry::HeartbeatFragment {
+            executors: vec![AgentExecutor {
+                executor: "claude_cli".into(),
+                installed: Some(true),
+                ready: Some(true),
+                auth_state: Some("ready".into()),
+                ..Default::default()
+            }],
+            free_session_slots: Some(0),
+            ..Default::default()
+        };
+
+        assert!(select_default_cli_executor_from_snapshot(&task, &snapshot).is_none());
     }
 
     // ── submit_for_review ─────────────────────────────────────────────────────

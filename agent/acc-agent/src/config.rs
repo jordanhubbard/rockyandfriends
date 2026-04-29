@@ -62,18 +62,23 @@ impl Config {
 
         load_env_file(&acc_dir.join(".env"));
 
-        let acc_url = std::env::var("ACC_URL")
+        let acc_url = first_nonempty_env(&["ACC_URL", "CCC_URL"])
             .unwrap_or_default()
             .trim_end_matches('/')
             .to_string();
 
-        let acc_token = std::env::var("ACC_AGENT_TOKEN").unwrap_or_default();
+        let acc_token =
+            first_nonempty_env(&["ACC_AGENT_TOKEN", "CCC_AGENT_TOKEN"]).unwrap_or_default();
 
         let agent_name = std::env::var("AGENT_NAME").unwrap_or_default();
 
-        let agentbus_token = std::env::var("AGENTBUS_TOKEN")
-            .or_else(|_| std::env::var("SQUIRRELBUS_TOKEN"))
-            .unwrap_or_default();
+        let agentbus_token = first_nonempty_env(&[
+            "AGENTBUS_TOKEN",
+            "SQUIRRELBUS_TOKEN",
+            "ACC_AGENT_TOKEN",
+            "CCC_AGENT_TOKEN",
+        ])
+        .unwrap_or_default();
 
         let pair_programming = std::env::var("ACC_PAIR_PROGRAMMING")
             .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
@@ -90,7 +95,7 @@ impl Config {
             .unwrap_or(22);
 
         if acc_url.is_empty() {
-            return Err("ACC_URL not set in environment or ~/.acc/.env".into());
+            return Err("ACC_URL/CCC_URL not set in environment or ~/.acc/.env".into());
         }
 
         Ok(Config {
@@ -131,6 +136,26 @@ impl Config {
             .unwrap_or(4)
     }
 
+    pub fn max_cli_sessions_per_executor(&self, executor: &str) -> u32 {
+        let executor_key = format!(
+            "ACC_MAX_{}_SESSIONS",
+            executor.to_ascii_uppercase().replace('-', "_")
+        );
+        std::env::var(&executor_key)
+            .or_else(|_| std::env::var("ACC_MAX_SESSIONS_PER_EXECUTOR"))
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or_else(|| self.max_cli_sessions())
+    }
+
+    pub fn max_tasks_per_agent(&self) -> u32 {
+        std::env::var("ACC_MAX_TASKS_PER_AGENT")
+            .or_else(|_| std::env::var("AGENT_MAX_TASKS"))
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(2)
+    }
+
     pub fn session_busy_window_secs(&self) -> i64 {
         std::env::var("ACC_SESSION_BUSY_WINDOW_SECS")
             .ok()
@@ -151,6 +176,15 @@ impl Config {
             .and_then(|v| v.parse().ok())
             .unwrap_or(2048)
     }
+}
+
+fn first_nonempty_env(keys: &[&str]) -> Option<String> {
+    keys.iter().find_map(|key| {
+        std::env::var(key)
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+    })
 }
 
 pub fn load_env_file(path: &PathBuf) {

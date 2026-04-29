@@ -750,6 +750,9 @@ async fn post_heartbeat(cfg: &Config, client: &Client, note: &str) {
         free_session_slots: None,
         max_sessions: None,
         session_spawn_denied_reason: None,
+        ccc_version: None,
+        workspace_revision: None,
+        runtime_version: None,
         executors: vec![],
         sessions: vec![],
     };

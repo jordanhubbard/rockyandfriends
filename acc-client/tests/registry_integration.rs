@@ -1,8 +1,14 @@
 //! Integration tests for project + agent registry endpoints.
 
-use acc_client::Client;
+use acc_client::{
+    model::{
+        AgentCapabilitiesRequest, AgentCapacity, AgentExecutor, AgentRegistrationRequest,
+        AgentSession,
+    },
+    Client,
+};
 use serde_json::json;
-use wiremock::matchers::{method, path, query_param};
+use wiremock::matchers::{body_partial_json, header, method, path, query_param};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
 async fn client_for(server: &MockServer) -> Client {
@@ -70,4 +76,107 @@ async fn agents_list_filters_by_online() {
     // GPU telemetry rode in via `extra`
     let natasha = agents.iter().find(|a| a.name == "natasha").unwrap();
     assert!(natasha.extra.contains_key("gpu_temp_c"));
+}
+
+#[tokio::test]
+async fn agent_register_sends_canonical_executor_session_shape() {
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/api/agents/register"))
+        .and(header("authorization", "Bearer t"))
+        .and(body_partial_json(json!({
+            "name": "codex-node",
+            "host": "desk",
+            "type": "partial",
+            "tool_capabilities": ["bash", "read_file"],
+            "executors": [{"executor": "codex_cli", "ready": true, "auth_state": "ready"}],
+            "sessions": [{"name": "main", "executor": "codex_cli", "state": "idle"}],
+            "capacity": {"tasks_in_flight": 1, "estimated_free_slots": 2}
+        })))
+        .respond_with(ResponseTemplate::new(201).set_body_json(json!({
+            "ok": true,
+            "agent": {
+                "name": "codex-node",
+                "host": "desk",
+                "type": "partial",
+                "tool_capabilities": ["bash", "read_file"],
+                "executors": [{"type": "codex_cli", "ready": true, "auth_state": "ready"}],
+                "sessions": [{"name": "main", "executor": "codex_cli", "state": "idle"}],
+                "capacity": {"tasks_in_flight": 1, "estimated_free_slots": 2}
+            }
+        })))
+        .mount(&server)
+        .await;
+
+    let client = client_for(&server).await;
+    let agent = client
+        .agents()
+        .register(&AgentRegistrationRequest {
+            name: "codex-node".into(),
+            host: Some("desk".into()),
+            agent_type: Some("partial".into()),
+            tool_capabilities: vec!["bash".into(), "read_file".into()],
+            executors: vec![AgentExecutor {
+                executor: "codex_cli".into(),
+                ready: Some(true),
+                auth_state: Some("ready".into()),
+                ..Default::default()
+            }],
+            sessions: vec![AgentSession {
+                name: "main".into(),
+                executor: Some("codex_cli".into()),
+                state: Some("idle".into()),
+                ..Default::default()
+            }],
+            capacity: Some(AgentCapacity {
+                tasks_in_flight: Some(1),
+                estimated_free_slots: Some(2),
+                ..Default::default()
+            }),
+            ..Default::default()
+        })
+        .await
+        .unwrap();
+
+    assert_eq!(agent.name, "codex-node");
+    assert_eq!(agent.agent_type.as_deref(), Some("partial"));
+    assert_eq!(agent.executors[0].executor, "codex_cli");
+    assert_eq!(agent.sessions[0].name, "main");
+    assert_eq!(
+        agent.capacity.unwrap().estimated_free_slots,
+        Some(2),
+        "capacity should round-trip as typed telemetry"
+    );
+}
+
+#[tokio::test]
+async fn agent_put_capabilities_decodes_capabilities_envelope() {
+    let server = MockServer::start().await;
+    Mock::given(method("PUT"))
+        .and(path("/api/agents/codex-node/capabilities"))
+        .and(header("authorization", "Bearer t"))
+        .and(body_partial_json(json!({
+            "capabilities": ["bash", "codex_cli"]
+        })))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "ok": true,
+            "name": "codex-node",
+            "capabilities": ["bash", "codex_cli"]
+        })))
+        .mount(&server)
+        .await;
+
+    let client = client_for(&server).await;
+    let caps = client
+        .agents()
+        .put_capabilities(
+            "codex-node",
+            &AgentCapabilitiesRequest {
+                capabilities: vec!["bash".into(), "codex_cli".into()],
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(caps, vec!["bash", "codex_cli"]);
 }

@@ -18,6 +18,9 @@ async fn status_handler(State(state): State<Arc<AppState>>) -> Json<Value> {
                         "name": s.name,
                         "pid": s.pid,
                         "healthy": s.healthy,
+                        "health_status": s.health_status,
+                        "health_reason": s.health_reason,
+                        "health_url": s.health_url,
                         "restarts": s.restarts,
                         "started_at": s.started_at,
                     })

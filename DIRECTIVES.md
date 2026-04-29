@@ -70,16 +70,18 @@ least once every 10 minutes. Loss of heartbeat triggers an offline alert.
 
 ---
 
-## D-004 — Work Queue First
+## D-004 — Durable Tasks First
 
-Before starting unsolicited work, check the CCC work queue:
+Before starting unsolicited durable work, check the ACC task plane:
 
 ```bash
-curl -sf -H "Authorization: Bearer $CCC_AGENT_TOKEN" "$CCC_URL/api/queue"
+curl -sf -H "Authorization: Bearer $CCC_AGENT_TOKEN" "$CCC_URL/api/tasks?status=open"
 ```
 
-Claim items before working. Update status to `in-progress` on claim, then
-`completed` (or `failed`) when done. Do not abandon claimed items silently.
+Claim tasks before working. Keep claimed tasks alive during long runs, then mark
+them `completed` or release/fail them explicitly. `/api/queue` is legacy
+compatibility ingress; `/api/exec` is operator-only remote execution and must
+not become normal durable scheduling.
 
 ---
 

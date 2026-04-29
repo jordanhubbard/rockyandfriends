@@ -37,6 +37,7 @@ pub fn router() -> Router<Arc<AppState>> {
 #[derive(Deserialize)]
 struct TaskQuery {
     status: Option<String>,
+    project: Option<String>,
     project_id: Option<String>,
     agent: Option<String>,
     task_type: Option<String>,
@@ -188,12 +189,14 @@ async fn list_tasks(
         sql.push_str(" AND status=?");
         binds.push(s.clone());
     }
-    if let Some(p) = &q.project_id {
+    let project_filter = q.project_id.as_ref().or(q.project.as_ref());
+    if let Some(p) = project_filter {
         sql.push_str(" AND project_id=?");
         binds.push(p.clone());
     }
     if let Some(a) = &q.agent {
-        sql.push_str(" AND claimed_by=?");
+        sql.push_str(" AND (claimed_by=? OR json_extract(metadata, '$.assigned_agent')=?)");
+        binds.push(a.clone());
         binds.push(a.clone());
     }
     if let Some(tt) = &q.task_type {
@@ -432,6 +435,12 @@ async fn create_task(
         .filter(|s| !s.is_empty())
         .map(|s| s.to_string())
         .unwrap_or_else(|| "build".to_string());
+    let source: String = body
+        .get("source")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .unwrap_or_else(|| "fleet".to_string());
     let blocked_by_vec: Vec<String> = body
         .get("blocked_by")
         .and_then(|v| v.as_array())
@@ -465,9 +474,9 @@ async fn create_task(
     let insert_result: Result<Value, String> = {
         let db = state.fleet_db.lock().await;
         match db.execute(
-            "INSERT INTO fleet_tasks (id,project_id,title,description,priority,metadata,task_type,review_of,phase,blocked_by)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
-            params![id, project_id, title, description, priority, metadata, task_type, review_of, phase, blocked_by],
+            "INSERT INTO fleet_tasks (id,project_id,title,description,priority,metadata,task_type,review_of,phase,blocked_by,source)
+             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",
+            params![id, project_id, title, description, priority, metadata, task_type, review_of, phase, blocked_by, source],
         ) {
             Ok(_) => {
                 if let Some(chain_id) = task_chain_id_from_metadata(&metadata) {
@@ -2417,5 +2426,29 @@ mod tests {
         assert_eq!(resp.status(), StatusCode::OK);
         let data = testing::body_json(resp).await;
         assert_eq!(data["count"].as_u64().unwrap_or(0), 0);
+    }
+
+    #[tokio::test]
+    async fn test_create_task_accepts_explicit_source() {
+        let server = TestServer::new().await;
+        let body = json!({
+            "project_id": "proj-src",
+            "title": "GitHub mirrored task",
+            "description": "test",
+            "priority": 2,
+            "task_type": "work",
+            "source": "github",
+            "metadata": {"source": "github", "github_number": 42}
+        });
+        let resp = testing::call(&server.app, post_json("/api/tasks", &body)).await;
+        assert_eq!(resp.status(), StatusCode::CREATED);
+        let created = testing::body_json(resp).await;
+        assert_eq!(created["task"]["source"], "github");
+
+        let resp = testing::call(&server.app, testing::get("/api/tasks?source=github")).await;
+        assert_eq!(resp.status(), StatusCode::OK);
+        let data = testing::body_json(resp).await;
+        assert_eq!(data["count"], 1);
+        assert_eq!(data["tasks"][0]["metadata"]["github_number"], 42);
     }
 }

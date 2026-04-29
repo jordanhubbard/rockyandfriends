@@ -18,6 +18,30 @@ struct Args {
     /// No writes (dry-run mode)
     #[arg(long)]
     dry_run: bool,
+    /// Backfill structured GitHub metadata onto already-linked beads issues
+    #[arg(long)]
+    migrate_metadata: bool,
+    /// Create both a GitHub issue and a linked beads issue
+    #[arg(long)]
+    mirror: bool,
+    /// GitHub repo for --mirror, owner/repo
+    #[arg(long)]
+    mirror_repo: Option<String>,
+    /// Issue title for --mirror
+    #[arg(long)]
+    title: Option<String>,
+    /// Issue description/body for --mirror
+    #[arg(long)]
+    description: Option<String>,
+    /// Issue labels for --mirror, comma-separated or repeated
+    #[arg(long, value_delimiter = ',')]
+    labels: Vec<String>,
+    /// Beads issue type for --mirror
+    #[arg(long, default_value = "task")]
+    issue_type: String,
+    /// Beads priority for --mirror
+    #[arg(long, default_value = "2")]
+    priority: String,
     /// owner/repo overrides (space-separated; falls back to GITHUB_REPOS env)
     #[arg(value_name = "REPO")]
     repos: Vec<String>,
@@ -104,6 +128,67 @@ fn gh_issue_list(repo: &str) -> Vec<Value> {
             vec![]
         }
     }
+}
+
+fn gh_issue_create(
+    repo: &str,
+    title: &str,
+    body: &str,
+    labels: &[String],
+    dry_run: bool,
+) -> Option<String> {
+    if dry_run {
+        println!(
+            "  [dry-run] would create GitHub issue in {repo}: {}",
+            title.chars().take(80).collect::<String>()
+        );
+        return Some(format!("https://github.com/{repo}/issues/0"));
+    }
+
+    let mut cmd = Command::new("gh");
+    cmd.args([
+        "issue", "create", "--repo", repo, "--title", title, "--body", body,
+    ]);
+    if !labels.is_empty() {
+        cmd.args(["--label", &labels.join(",")]);
+    }
+    let out = cmd.output().ok()?;
+    if !out.status.success() {
+        eprintln!(
+            "WARN gh issue create failed for {repo}: {}",
+            String::from_utf8_lossy(&out.stderr).trim()
+        );
+        return None;
+    }
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .last()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned)
+}
+
+fn gh_issue_edit_body(repo: &str, number: i64, body: &str, dry_run: bool) -> bool {
+    if dry_run {
+        println!(
+            "  [dry-run] would edit body for {repo}#{number}: {}",
+            body.chars().take(80).collect::<String>()
+        );
+        return true;
+    }
+    Command::new("gh")
+        .args([
+            "issue",
+            "edit",
+            &number.to_string(),
+            "--repo",
+            repo,
+            "--body",
+            body,
+        ])
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
 }
 
 #[allow(dead_code)]
@@ -273,7 +358,18 @@ async fn find_project_for_repo(
         .map(str::to_owned)
 }
 
-fn append_fleet_task_to_notes(beads_id: &str, task_id: &str, dry_run: bool) {
+fn update_beads_metadata(beads_id: &str, metadata: &Value, dry_run: bool) {
+    bd(
+        &[
+            "update",
+            beads_id,
+            &format!("--metadata={}", compact_json(metadata)),
+        ],
+        dry_run,
+    );
+}
+
+fn update_fleet_task_metadata(beads_id: &str, task_id: &str, dry_run: bool) {
     let (_, out) = bd(&["export"], false);
     for line in out.lines() {
         let line = line.trim();
@@ -285,14 +381,27 @@ fn append_fleet_task_to_notes(beads_id: &str, task_id: &str, dry_run: bool) {
             Err(_) => continue,
         };
         if b.get("id").and_then(|v| v.as_str()) == Some(beads_id) {
-            let existing = b.get("notes").and_then(|v| v.as_str()).unwrap_or("");
-            let new_notes = format!("{existing} fleet_task_id={task_id}")
-                .trim()
-                .to_string();
-            bd(
-                &["update", beads_id, &format!("--notes={new_notes}")],
-                dry_run,
-            );
+            let (num, repo, _) = parse_link_meta(&b);
+            if let (Some(number), Some(repo)) = (num, repo) {
+                let url = b
+                    .pointer("/metadata/github_url")
+                    .and_then(|v| v.as_str())
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| format!("https://github.com/{repo}/issues/{number}"));
+                let labels: Vec<String> = b
+                    .pointer("/metadata/github_labels")
+                    .map(github_labels_from_value)
+                    .unwrap_or_default();
+                let metadata = github_metadata_from_parts(
+                    &repo,
+                    number,
+                    &url,
+                    &labels,
+                    Some(task_id),
+                    b.get("metadata"),
+                );
+                update_beads_metadata(beads_id, &metadata, dry_run);
+            }
             return;
         }
     }
@@ -300,11 +409,113 @@ fn append_fleet_task_to_notes(beads_id: &str, task_id: &str, dry_run: bool) {
 
 // ── Sync logic ────────────────────────────────────────────────────────────
 
-fn gh_key(num: i64, repo: &str) -> String {
-    format!("[gh:{repo}#{num}]")
+fn github_issue_number_from_url(url: &str) -> Option<i64> {
+    url.trim_end_matches('/')
+        .rsplit('/')
+        .next()
+        .and_then(|s| s.parse::<i64>().ok())
 }
 
-fn parse_notes_meta(b: &Value) -> (Option<i64>, Option<String>) {
+fn github_labels_from_value(value: &Value) -> Vec<String> {
+    value
+        .as_array()
+        .map(|labels| {
+            labels
+                .iter()
+                .filter_map(|label| {
+                    label
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .or_else(|| label.as_str())
+                        .map(str::to_owned)
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn gh_link_metadata(issue: &Value, base: Option<&Value>, fleet_task_id: Option<&str>) -> Value {
+    let mut obj = base
+        .and_then(|v| v.as_object())
+        .cloned()
+        .unwrap_or_default();
+    let repo = issue
+        .get("repo")
+        .or_else(|| issue.get("github_repo"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let number = issue
+        .get("number")
+        .or_else(|| issue.get("github_number"))
+        .and_then(|v| v.as_i64())
+        .or_else(|| {
+            issue
+                .get("url")
+                .or_else(|| issue.get("github_url"))
+                .and_then(|v| v.as_str())
+                .and_then(github_issue_number_from_url)
+        })
+        .unwrap_or(0);
+    let url = issue
+        .get("url")
+        .or_else(|| issue.get("html_url"))
+        .or_else(|| issue.get("github_url"))
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned)
+        .unwrap_or_else(|| format!("https://github.com/{repo}/issues/{number}"));
+    let labels = issue
+        .get("labels")
+        .map(github_labels_from_value)
+        .unwrap_or_default();
+    let author = issue
+        .pointer("/author/login")
+        .or_else(|| issue.get("author"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    let fleet_value = fleet_task_id
+        .filter(|s| !s.is_empty())
+        .map(|s| json!(s))
+        .or_else(|| obj.get("fleet_task_id").cloned())
+        .unwrap_or(Value::Null);
+    obj.insert("source".into(), json!("github"));
+    obj.insert("github_number".into(), json!(number));
+    obj.insert("github_repo".into(), json!(repo));
+    obj.insert("github_url".into(), json!(url));
+    obj.insert("fleet_task_id".into(), fleet_value);
+    obj.insert("github_labels".into(), json!(labels));
+    if !author.is_empty() {
+        obj.insert("github_author".into(), json!(author));
+    }
+    Value::Object(obj)
+}
+
+fn github_metadata_from_parts(
+    repo: &str,
+    number: i64,
+    url: &str,
+    labels: &[String],
+    fleet_task_id: Option<&str>,
+    base: Option<&Value>,
+) -> Value {
+    gh_link_metadata(
+        &json!({
+            "repo": repo,
+            "number": number,
+            "url": url,
+            "labels": labels,
+        }),
+        base,
+        fleet_task_id,
+    )
+}
+
+fn compact_json(value: &Value) -> String {
+    serde_json::to_string(value).unwrap_or_else(|_| "{}".to_string())
+}
+
+fn parse_link_meta(b: &Value) -> (Option<i64>, Option<String>, Option<String>) {
     // Check structured metadata
     if let Some(meta) = b.get("metadata").and_then(|v| v.as_object()) {
         let num = meta.get("github_number").and_then(|v| v.as_i64());
@@ -312,19 +523,26 @@ fn parse_notes_meta(b: &Value) -> (Option<i64>, Option<String>) {
             .get("github_repo")
             .and_then(|v| v.as_str())
             .map(str::to_owned);
+        let task = meta
+            .get("fleet_task_id")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+            .map(str::to_owned);
         if num.is_some() && r.is_some() {
-            return (num, r);
+            return (num, r, task);
         }
     }
     // Fall back to notes key=value
     let notes = b.get("notes").and_then(|v| v.as_str()).unwrap_or("");
     let mut num = None;
     let mut repo = None;
+    let mut fleet_task_id = None;
     for token in notes.split_whitespace() {
         if let Some((k, v)) = token.split_once('=') {
             match k {
                 "github_number" => num = v.parse::<i64>().ok(),
                 "github_repo" => repo = Some(v.to_string()),
+                "fleet_task_id" => fleet_task_id = Some(v.to_string()),
                 _ => {}
             }
         }
@@ -338,7 +556,7 @@ fn parse_notes_meta(b: &Value) -> (Option<i64>, Option<String>) {
             num.get_or_insert(n);
         }
     }
-    (num, repo)
+    (num, repo, fleet_task_id)
 }
 
 fn regex_gh_key(title: &str) -> Option<(String, i64)> {
@@ -360,7 +578,7 @@ fn is_already_synced(issue: &Value, existing: &[Value]) -> bool {
     let num = issue.get("number").and_then(|v| v.as_i64());
     let repo = issue.get("repo").and_then(|v| v.as_str());
     existing.iter().any(|b| {
-        let (bn, br) = parse_notes_meta(b);
+        let (bn, br, _) = parse_link_meta(b);
         bn == num && br.as_deref() == repo
     })
 }
@@ -369,7 +587,7 @@ fn find_synced<'a>(issue: &Value, existing: &'a [Value]) -> Option<&'a Value> {
     let num = issue.get("number").and_then(|v| v.as_i64());
     let repo = issue.get("repo").and_then(|v| v.as_str());
     existing.iter().find(|b| {
-        let (bn, br) = parse_notes_meta(b);
+        let (bn, br, _) = parse_link_meta(b);
         bn == num && br.as_deref() == repo
     })
 }
@@ -430,6 +648,7 @@ fn build_fleet_task_payload(issue: &Value, beads_id: &str, project_id: &str) -> 
         "description": desc + &gh_ref,
         "project_id": project_id,
         "task_type": "work",
+        "source": "github",
         "phase": "build",
         "priority": map_priority(&labels),
         "metadata": {
@@ -438,6 +657,7 @@ fn build_fleet_task_payload(issue: &Value, beads_id: &str, project_id: &str) -> 
             "github_repo": repo,
             "github_url": url,
             "beads_id": beads_id,
+            "github_labels": labels,
         },
     })
 }
@@ -494,7 +714,6 @@ async fn sync_repo(
             continue;
         }
 
-        let url = issue.get("url").and_then(|v| v.as_str()).unwrap_or("");
         let title = issue
             .get("title")
             .and_then(|v| v.as_str())
@@ -505,20 +724,18 @@ async fn sync_repo(
         if existing.is_none() {
             println!(
                 "  creating beads issue for {repo}#{number}: {}",
-                &title[..title.len().min(60)]
+                title.chars().take(60).collect::<String>()
             );
-            let gk = gh_key(number, repo);
-            let full_title = format!("{title} {gk}");
-            let notes =
-                format!("source=github github_number={number} github_repo={repo} github_url={url}");
+            let metadata = gh_link_metadata(issue, None, None);
             let (rc, out) = bd(
                 &[
                     "create",
-                    &format!("--title={full_title}"),
+                    &format!("--title={title}"),
                     &format!("--description={body}"),
                     "--type=feature",
                     &format!("--priority={priority}"),
-                    &format!("--notes={notes}"),
+                    &format!("--external-ref=gh:{repo}#{number}"),
+                    &format!("--metadata={}", compact_json(&metadata)),
                 ],
                 dry_run,
             );
@@ -541,32 +758,49 @@ async fn sync_repo(
                                         .unwrap_or("");
                                     println!("    → fleet task {task_id}");
                                     fleet_created += 1;
-                                    let new_notes = format!("{notes} fleet_task_id={task_id}");
-                                    bd(&["update", &bid, &format!("--notes={new_notes}")], dry_run);
+                                    let metadata = gh_link_metadata(issue, None, Some(task_id));
+                                    update_beads_metadata(&bid, &metadata, dry_run);
                                 }
                             }
                         }
-                    } else {
-                        bd(&["update", &bid, &format!("--notes={notes}")], dry_run);
                     }
                 }
             }
         } else {
             let b = existing.unwrap();
             let existing_title = b.get("title").and_then(|v| v.as_str()).unwrap_or("");
+            let existing_description = b.get("description").and_then(|v| v.as_str()).unwrap_or("");
             let bid = b.get("id").and_then(|v| v.as_str()).unwrap_or("");
+            let existing_metadata = b.get("metadata");
+            let (_, _, existing_fleet_task_id) = parse_link_meta(b);
+            let desired_metadata =
+                gh_link_metadata(issue, existing_metadata, existing_fleet_task_id.as_deref());
+            let mut needs_update = false;
+            let mut args: Vec<String> = vec!["update".to_string(), bid.to_string()];
             if existing_title != title {
-                println!("  updating beads {bid}: title changed");
-                bd(&["update", bid, &format!("--title={title}")], dry_run);
+                args.push(format!("--title={title}"));
+                needs_update = true;
+            }
+            if existing_description != body {
+                args.push(format!("--description={body}"));
+                needs_update = true;
+            }
+            if existing_metadata != Some(&desired_metadata) {
+                args.push(format!("--metadata={}", compact_json(&desired_metadata)));
+                needs_update = true;
+            }
+            if needs_update {
+                println!("  updating beads {bid}");
+                let refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
+                bd(&refs, dry_run);
                 updated += 1;
             }
             let existing_status = b.get("status").and_then(|v| v.as_str()).unwrap_or("open");
-            let (_, _) = parse_notes_meta(b);
-            let has_fleet = b
-                .get("notes")
+            let has_fleet = desired_metadata
+                .get("fleet_task_id")
                 .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .contains("fleet_task_id=");
+                .filter(|s| !s.is_empty())
+                .is_some();
             if !matches!(existing_status, "closed" | "cancelled")
                 && has_dispatch_label(issue, &label)
                 && !has_fleet
@@ -583,7 +817,7 @@ async fn sync_repo(
                                 .unwrap_or("");
                             println!("    → fleet task {task_id} for existing beads {bid}");
                             fleet_created += 1;
-                            append_fleet_task_to_notes(bid, task_id, dry_run);
+                            update_fleet_task_metadata(bid, task_id, dry_run);
                         }
                     }
                 }
@@ -616,6 +850,179 @@ fn extract_beads_id(out: &str) -> Option<String> {
         }
     }
     None
+}
+
+fn is_closed_status(status: &str) -> bool {
+    matches!(status, "closed" | "completed" | "cancelled" | "canceled")
+}
+
+fn migrate_metadata(dry_run: bool) -> Value {
+    let beads = list_beads_issues();
+    let mut migrated = 0i64;
+    let mut skipped = 0i64;
+    for b in beads {
+        let bid = b.get("id").and_then(|v| v.as_str()).unwrap_or("");
+        let (num, repo, task_id) = parse_link_meta(&b);
+        let (Some(number), Some(repo)) = (num, repo) else {
+            skipped += 1;
+            continue;
+        };
+        let url = b
+            .pointer("/metadata/github_url")
+            .and_then(|v| v.as_str())
+            .map(str::to_owned)
+            .unwrap_or_else(|| format!("https://github.com/{repo}/issues/{number}"));
+        let labels = b
+            .pointer("/metadata/github_labels")
+            .map(github_labels_from_value)
+            .unwrap_or_default();
+        let metadata = github_metadata_from_parts(
+            &repo,
+            number,
+            &url,
+            &labels,
+            task_id.as_deref(),
+            b.get("metadata"),
+        );
+        if b.get("metadata") != Some(&metadata) {
+            println!("  backfilling GitHub metadata on {bid}");
+            update_beads_metadata(bid, &metadata, dry_run);
+            migrated += 1;
+        } else {
+            skipped += 1;
+        }
+    }
+    json!({"migrated": migrated, "skipped": skipped})
+}
+
+fn sync_closed_beads_to_github(existing_beads: &[Value], dry_run: bool) -> i64 {
+    if std::env::var("GITHUB_AUTO_CLOSE").unwrap_or_default() != "true" {
+        return 0;
+    }
+    let mut closed = 0i64;
+    for b in existing_beads {
+        let status = b.get("status").and_then(|v| v.as_str()).unwrap_or("");
+        if !is_closed_status(status) {
+            continue;
+        }
+        let (Some(number), Some(repo), _) = parse_link_meta(b) else {
+            continue;
+        };
+        if gh_issue_close(&repo, number, dry_run) {
+            closed += 1;
+        }
+    }
+    closed
+}
+
+async fn sync_completed_fleet_tasks(
+    client: &reqwest::Client,
+    acc_url: &str,
+    token: &str,
+    dry_run: bool,
+) -> i64 {
+    let Some(resp) = acc_get(
+        client,
+        acc_url,
+        token,
+        "/api/tasks?status=completed&limit=200",
+    )
+    .await
+    else {
+        return 0;
+    };
+    let tasks = resp
+        .get("tasks")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default();
+    let existing_beads = list_beads_issues();
+    let mut closed = 0i64;
+    for task in tasks {
+        let meta = task.get("metadata").unwrap_or(&Value::Null);
+        if meta.get("source").and_then(|v| v.as_str()) != Some("github") {
+            continue;
+        }
+        let Some(beads_id) = meta
+            .get("beads_id")
+            .or_else(|| meta.get("bead_id"))
+            .and_then(|v| v.as_str())
+        else {
+            continue;
+        };
+        let Some(bead) = existing_beads
+            .iter()
+            .find(|b| b.get("id").and_then(|v| v.as_str()) == Some(beads_id))
+        else {
+            continue;
+        };
+        let status = bead.get("status").and_then(|v| v.as_str()).unwrap_or("");
+        if is_closed_status(status) {
+            continue;
+        }
+        let task_id = task.get("id").and_then(|v| v.as_str()).unwrap_or("task");
+        let agent = task
+            .get("completed_by")
+            .and_then(|v| v.as_str())
+            .unwrap_or("agent");
+        let reason = format!("fleet task {task_id} completed by {agent}");
+        let (rc, _) = bd(&["close", beads_id, &format!("--reason={reason}")], dry_run);
+        if rc == 0 {
+            closed += 1;
+        }
+    }
+    closed
+}
+
+fn run_mirror(args: &Args, dry_run: bool) -> Value {
+    let repo = args
+        .mirror_repo
+        .as_deref()
+        .or_else(|| args.repos.first().map(String::as_str))
+        .unwrap_or("");
+    let title = args.title.as_deref().unwrap_or("");
+    if repo.is_empty() || title.is_empty() {
+        eprintln!("ERROR: --mirror requires --mirror-repo owner/repo and --title");
+        return json!({"ok": false, "error": "missing mirror repo or title"});
+    }
+    let body = args.description.as_deref().unwrap_or("");
+    let url = match gh_issue_create(repo, title, body, &args.labels, dry_run) {
+        Some(url) => url,
+        None => return json!({"ok": false, "error": "gh issue create failed"}),
+    };
+    let number = github_issue_number_from_url(&url).unwrap_or(0);
+    let metadata = github_metadata_from_parts(repo, number, &url, &args.labels, None, None);
+    let mut bd_args = vec![
+        "create".to_string(),
+        format!("--title={title}"),
+        format!("--description={body}"),
+        format!("--type={}", args.issue_type),
+        format!("--priority={}", args.priority),
+        format!("--external-ref=gh:{repo}#{number}"),
+        format!("--metadata={}", compact_json(&metadata)),
+    ];
+    if !args.labels.is_empty() {
+        bd_args.push(format!("--labels={}", args.labels.join(",")));
+    }
+    let refs: Vec<&str> = bd_args.iter().map(|s| s.as_str()).collect();
+    let (rc, out) = bd(&refs, dry_run);
+    if rc != 0 {
+        return json!({"ok": false, "error": "bd create failed", "github_url": url});
+    }
+    let beads_id = extract_beads_id(&out).unwrap_or_else(|| "dry-run-bead".to_string());
+    let linked_body = if body.trim().is_empty() {
+        format!("ACC beads issue: {beads_id}")
+    } else {
+        format!("{body}\n\nACC beads issue: {beads_id}")
+    };
+    let _ = gh_issue_edit_body(repo, number, &linked_body, dry_run);
+    json!({
+        "ok": true,
+        "repo": repo,
+        "github_number": number,
+        "github_url": url,
+        "beads_id": beads_id,
+    })
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────
@@ -652,6 +1059,10 @@ async fn run_once(
         results[repo] = json!({"created": c, "updated": u, "fleet_tasks": f});
         println!("  {repo}: +{c} created, ~{u} updated, {f} fleet tasks");
     }
+    let fleet_closed = sync_completed_fleet_tasks(client, acc_url, token, dry_run).await;
+    let github_closed = sync_closed_beads_to_github(&existing_beads, dry_run);
+    results["_fleet_to_beads"] = json!({"closed": fleet_closed});
+    results["_beads_to_github"] = json!({"closed": github_closed});
 
     if !dry_run {
         save_state(&sp, &state);
@@ -695,6 +1106,24 @@ async fn main() {
         args.repos = configured_repos;
     }
 
+    if args.mirror {
+        let result = run_mirror(&args, args.dry_run);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&result).unwrap_or_default()
+        );
+        return;
+    }
+
+    if args.migrate_metadata {
+        let result = migrate_metadata(args.dry_run);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&result).unwrap_or_default()
+        );
+        return;
+    }
+
     let acc_url = acc_tools::acc_url();
     let token = acc_tools::acc_token();
     let client = reqwest::Client::builder()
@@ -718,5 +1147,73 @@ async fn main() {
             "{}",
             serde_json::to_string_pretty(&result).unwrap_or_default()
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn github_metadata_schema_contains_required_link_fields() {
+        let issue = json!({
+            "repo": "jordanhubbard/ACC",
+            "number": 42,
+            "url": "https://github.com/jordanhubbard/ACC/issues/42",
+            "labels": [{"name": "bug"}, {"name": "agent-ready"}],
+            "author": {"login": "external-user"}
+        });
+        let metadata = gh_link_metadata(&issue, None, Some("task-abc"));
+
+        assert_eq!(metadata["source"], "github");
+        assert_eq!(metadata["github_number"], 42);
+        assert_eq!(metadata["github_repo"], "jordanhubbard/ACC");
+        assert_eq!(
+            metadata["github_url"],
+            "https://github.com/jordanhubbard/ACC/issues/42"
+        );
+        assert_eq!(metadata["fleet_task_id"], "task-abc");
+        assert_eq!(metadata["github_labels"], json!(["bug", "agent-ready"]));
+        assert_eq!(metadata["github_author"], "external-user");
+    }
+
+    #[test]
+    fn parse_link_meta_accepts_legacy_notes_and_title_fallbacks() {
+        let legacy = json!({
+            "id": "ACC-x",
+            "title": "legacy",
+            "notes": "source=github github_number=7 github_repo=jordanhubbard/ACC fleet_task_id=task-7"
+        });
+        assert_eq!(
+            parse_link_meta(&legacy),
+            (
+                Some(7),
+                Some("jordanhubbard/ACC".to_string()),
+                Some("task-7".to_string())
+            )
+        );
+
+        let title_fallback = json!({"title": "Thing [gh:jordanhubbard/ACC#9]"});
+        assert_eq!(
+            parse_link_meta(&title_fallback),
+            (Some(9), Some("jordanhubbard/ACC".to_string()), None)
+        );
+    }
+
+    #[test]
+    fn fleet_task_payload_marks_github_source() {
+        let issue = json!({
+            "repo": "jordanhubbard/ACC",
+            "number": 42,
+            "title": "Fix thing",
+            "body": "Details",
+            "url": "https://github.com/jordanhubbard/ACC/issues/42",
+            "labels": [{"name": "agent-ready"}],
+        });
+        let payload = build_fleet_task_payload(&issue, "ACC-abc", "proj");
+        assert_eq!(payload["source"], "github");
+        assert_eq!(payload["metadata"]["source"], "github");
+        assert_eq!(payload["metadata"]["beads_id"], "ACC-abc");
+        assert_eq!(payload["metadata"]["github_labels"], json!(["agent-ready"]));
     }
 }

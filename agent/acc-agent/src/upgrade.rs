@@ -259,7 +259,9 @@ async fn post_heartbeat(cfg: &Config) {
     let body = serde_json::json!({
         "status": "ok",
         "note": "upgrade complete",
-        "ccc_version": rev,
+        "ccc_version": rev.clone(),
+        "workspace_revision": rev,
+        "runtime_version": env!("CARGO_PKG_VERSION"),
     });
 
     match client

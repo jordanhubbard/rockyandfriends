@@ -7,6 +7,34 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use serde_json::json;
 
+#[tokio::test]
+async fn test_dashboard_includes_session_capacity_visibility() {
+    let ts = helpers::TestServer::new().await;
+    let resp = helpers::call(&ts.app, helpers::get("/")).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let html = String::from_utf8(helpers::body_bytes(resp).await.to_vec()).unwrap();
+
+    assert!(html.contains("capacitySessionText"));
+    assert!(html.contains("Executors"));
+    assert!(html.contains("Sessions"));
+    assert!(html.contains("sessionClass"));
+}
+
+#[tokio::test]
+async fn test_dashboard_includes_hermes_vt100_panes() {
+    let ts = helpers::TestServer::new().await;
+    let resp = helpers::call(&ts.app, helpers::get("/")).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let html = String::from_utf8(helpers::body_bytes(resp).await.to_vec()).unwrap();
+
+    assert!(html.contains("xterm"));
+    assert!(html.contains("Hermes Interactive Panes"));
+    assert!(html.contains("setupPaneTerminals"));
+    assert!(html.contains("/api/panes/"));
+    assert!(html.contains("new Terminal"));
+    assert!(html.contains("term.onData"));
+}
+
 // ── GET /api/bootstrap ────────────────────────────────────────────────────────
 
 #[tokio::test]

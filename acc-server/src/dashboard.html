@@ -269,7 +269,46 @@
                 <dt class="text-gray-400">Status</dt>
                 <dd class="text-gray-700" x-text="a.status"></dd>
               </div>
+              <div class="flex justify-between" x-show="a.capacity || a.tasks_in_flight !== undefined || a.free_session_slots !== undefined">
+                <dt class="text-gray-400">Task slots</dt>
+                <dd class="text-gray-700 font-mono" x-text="capacityTaskText(a)"></dd>
+              </div>
+              <div class="flex justify-between" x-show="a.capacity || a.free_session_slots !== undefined">
+                <dt class="text-gray-400">Session slots</dt>
+                <dd class="text-gray-700 font-mono" x-text="capacitySessionText(a)"></dd>
+              </div>
+              <div class="flex justify-between" x-show="capacityDenial(a)">
+                <dt class="text-gray-400">Spawn</dt>
+                <dd class="text-amber-700 truncate max-w-[170px]" x-text="capacityDenial(a)"></dd>
+              </div>
             </dl>
+            <div class="mt-3 pt-3 border-t border-gray-100" x-show="(a.executors || []).length">
+              <p class="text-[11px] uppercase tracking-wide text-gray-400 mb-1.5">Executors</p>
+              <div class="flex flex-wrap gap-1.5">
+                <template x-for="e in a.executors || []" :key="e.executor || e.type">
+                  <span class="text-[11px] px-2 py-0.5 rounded-full border"
+                    :class="executorClass(e)"
+                    x-text="(e.executor || e.type || '?') + ' · ' + (e.auth_state || e.authState || (e.ready === false ? 'not ready' : 'ready'))"></span>
+                </template>
+              </div>
+            </div>
+            <div class="mt-3 pt-3 border-t border-gray-100" x-show="(a.sessions || []).length">
+              <p class="text-[11px] uppercase tracking-wide text-gray-400 mb-1.5">Sessions</p>
+              <div class="space-y-1.5">
+                <template x-for="s in a.sessions || []" :key="s.name">
+                  <div class="flex items-center justify-between gap-2 text-xs">
+                    <div class="min-w-0">
+                      <p class="font-medium text-gray-700 truncate" x-text="s.name || 'unnamed'"></p>
+                      <p class="text-[11px] text-gray-400 truncate"
+                        x-text="(s.executor || 'executor?') + (s.project_id ? ' · ' + s.project_id : '')"></p>
+                    </div>
+                    <span class="shrink-0 text-[11px] px-2 py-0.5 rounded-full"
+                      :class="sessionClass(s)"
+                      x-text="s.state || 'unknown'"></span>
+                  </div>
+                </template>
+              </div>
+            </div>
             <div class="mt-3 pt-3 border-t border-gray-100 flex gap-2">
               <button @click="deleteAgent(a)"
                 class="text-xs text-red-400 hover:text-red-600 transition ml-auto">Remove</button>
@@ -750,6 +789,40 @@ function dashboard() {
         this.agents = Array.isArray(data) ? data : (data.agents || []);
       } catch(e) { this.notify(e.message, 'error'); }
       this.loading.agents = false;
+    },
+
+    capacityTaskText(a) {
+      const c = a.capacity || {};
+      const inFlight = c.tasks_in_flight ?? a.tasks_in_flight ?? 0;
+      const free = c.estimated_free_slots ?? a.estimated_free_slots ?? '—';
+      return `${inFlight} active / ${free} free`;
+    },
+
+    capacitySessionText(a) {
+      const c = a.capacity || {};
+      const free = c.free_session_slots ?? a.free_session_slots ?? '—';
+      const max = c.max_sessions ?? a.max_sessions ?? '—';
+      return `${free} free / ${max} max`;
+    },
+
+    capacityDenial(a) {
+      const c = a.capacity || {};
+      return c.session_spawn_denied_reason || a.session_spawn_denied_reason || '';
+    },
+
+    executorClass(e) {
+      const auth = e.auth_state || e.authState || '';
+      if (e.ready === false || auth === 'missing' || auth === 'unauthenticated') return 'border-red-200 bg-red-50 text-red-700';
+      if (auth === 'unknown') return 'border-amber-200 bg-amber-50 text-amber-700';
+      return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+    },
+
+    sessionClass(s) {
+      const state = s.state || 'unknown';
+      if (state === 'stuck' || state === 'dead' || state === 'unauthenticated') return 'bg-red-100 text-red-700';
+      if (state === 'busy') return 'bg-amber-100 text-amber-700';
+      if (state === 'idle') return 'bg-emerald-100 text-emerald-700';
+      return 'bg-gray-100 text-gray-600';
     },
 
     async deleteAgent(a) {

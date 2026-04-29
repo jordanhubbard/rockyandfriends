@@ -193,6 +193,32 @@ async fn test_double_claim_returns_409() {
 }
 
 #[tokio::test]
+async fn test_keepalive_extends_claim_expiry() {
+    let ts = helpers::TestServer::new().await;
+    let task = create_task(&ts, "p1", "Keepalive task").await;
+    let id = task["id"].as_str().unwrap();
+
+    assert_eq!(claim(&ts, id, "agent-a").await.status(), StatusCode::OK);
+
+    let resp = helpers::call(
+        &ts.app,
+        helpers::put_json(
+            &format!("/api/tasks/{id}/keepalive"),
+            &json!({"agent": "agent-a", "extend_mins": 90}),
+        ),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = helpers::body_json(resp).await;
+    assert!(body["claim_expires_at"].is_string());
+
+    let fetched =
+        helpers::body_json(helpers::call(&ts.app, helpers::get(&format!("/api/tasks/{id}"))).await)
+            .await;
+    assert_eq!(fetched["claim_expires_at"], body["claim_expires_at"]);
+}
+
+#[tokio::test]
 async fn test_same_agent_double_claim_returns_409() {
     let ts = helpers::TestServer::new().await;
     let task = create_task(&ts, "p1", "Same agent double").await;
@@ -318,6 +344,41 @@ async fn test_cancel_nonexistent_returns_404() {
     let ts = helpers::TestServer::new().await;
     let resp = helpers::call(&ts.app, helpers::delete("/api/tasks/no-such-id")).await;
     assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn test_task_turns_round_trip() {
+    let ts = helpers::TestServer::new().await;
+    let task = create_task(&ts, "p1", "Conversation task").await;
+    let id = task["id"].as_str().unwrap();
+
+    let append = helpers::call(
+        &ts.app,
+        helpers::post_json(
+            &format!("/api/tasks/{id}/turns"),
+            &json!({
+                "turn_index": 1,
+                "role": "assistant",
+                "content": [{"type": "text", "text": "hello"}],
+                "input_tokens": 10,
+                "output_tokens": 3,
+                "stop_reason": "end_turn"
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(append.status(), StatusCode::OK);
+
+    let resp = helpers::call(&ts.app, helpers::get(&format!("/api/tasks/{id}/turns"))).await;
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = helpers::body_json(resp).await;
+    assert_eq!(body["count"], 1);
+    assert_eq!(body["turns"][0]["turn_index"], 1);
+    assert_eq!(body["turns"][0]["role"], "assistant");
+    assert_eq!(body["turns"][0]["content"][0]["text"], "hello");
+    assert_eq!(body["turns"][0]["input_tokens"], 10);
+    assert_eq!(body["turns"][0]["output_tokens"], 3);
+    assert_eq!(body["turns"][0]["stop_reason"], "end_turn");
 }
 
 // ── Update ────────────────────────────────────────────────────────────────────
@@ -532,6 +593,67 @@ async fn test_list_tasks_filter_by_phase() {
     assert_eq!(tasks["tasks"].as_array().unwrap().len(), 2);
 }
 
+#[tokio::test]
+async fn test_list_tasks_accepts_project_alias_and_project_id() {
+    let ts = helpers::TestServer::new().await;
+    create_task(&ts, "proj-a", "Project A").await;
+    create_task(&ts, "proj-b", "Project B").await;
+
+    let by_project_id = helpers::body_json(
+        helpers::call(&ts.app, helpers::get("/api/tasks?project_id=proj-a")).await,
+    )
+    .await;
+    assert_eq!(by_project_id["tasks"].as_array().unwrap().len(), 1);
+    assert_eq!(by_project_id["tasks"][0]["project_id"], "proj-a");
+
+    let by_project_alias =
+        helpers::body_json(helpers::call(&ts.app, helpers::get("/api/tasks?project=proj-b")).await)
+            .await;
+    assert_eq!(by_project_alias["tasks"].as_array().unwrap().len(), 1);
+    assert_eq!(by_project_alias["tasks"][0]["project_id"], "proj-b");
+}
+
+#[tokio::test]
+async fn test_list_tasks_agent_filter_matches_claimed_or_assigned_agent() {
+    let ts = helpers::TestServer::new().await;
+    let assigned = helpers::body_json(
+        helpers::call(
+            &ts.app,
+            helpers::post_json(
+                "/api/tasks",
+                &json!({
+                    "project_id": "proj-agent",
+                    "title": "Assigned work",
+                    "assigned_agent": "natasha",
+                }),
+            ),
+        )
+        .await,
+    )
+    .await["task"]
+        .clone();
+    let claimed = create_task(&ts, "proj-agent", "Claimed work").await;
+    assert_eq!(
+        claim(&ts, claimed["id"].as_str().unwrap(), "natasha")
+            .await
+            .status(),
+        StatusCode::OK
+    );
+
+    let body =
+        helpers::body_json(helpers::call(&ts.app, helpers::get("/api/tasks?agent=natasha")).await)
+            .await;
+    let ids: Vec<&str> = body["tasks"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|task| task["id"].as_str())
+        .collect();
+
+    assert!(ids.contains(&assigned["id"].as_str().unwrap()));
+    assert!(ids.contains(&claimed["id"].as_str().unwrap()));
+}
+
 // ── Dependency blocking (423) ─────────────────────────────────────────────────
 
 async fn set_review_result(srv: &helpers::TestServer, id: &str, result: &str) {
@@ -621,6 +743,46 @@ async fn test_claim_unblocks_when_dep_completed_and_approved() {
         r.status(),
         StatusCode::OK,
         "should be claimable after blocker completes"
+    );
+}
+
+#[tokio::test]
+async fn test_completion_populates_inputs_on_unblocked_children() {
+    let ts = helpers::TestServer::new().await;
+    let blocker = create_task(&ts, "p1", "Produce output").await;
+    let blocker_id = blocker["id"].as_str().unwrap();
+
+    let resp = helpers::call(
+        &ts.app,
+        helpers::post_json(
+            "/api/tasks",
+            &json!({
+                "project_id": "p1",
+                "title": "Consume output",
+                "blocked_by": [blocker_id],
+            }),
+        ),
+    )
+    .await;
+    let child = helpers::body_json(resp).await["task"].clone();
+    let child_id = child["id"].as_str().unwrap();
+
+    helpers::call(
+        &ts.app,
+        helpers::put_json(
+            &format!("/api/tasks/{blocker_id}/complete"),
+            &json!({"agent": "agent-a", "output": {"summary": "done"}}),
+        ),
+    )
+    .await;
+
+    let fetched = helpers::body_json(
+        helpers::call(&ts.app, helpers::get(&format!("/api/tasks/{child_id}"))).await,
+    )
+    .await;
+    assert_eq!(
+        fetched["inputs"][blocker_id]["summary"], "done",
+        "child inputs should include completed blocker output"
     );
 }
 

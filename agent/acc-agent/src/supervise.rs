@@ -73,6 +73,20 @@ fn always(_: &Config) -> bool {
     true
 }
 
+fn env_flag(key: &str, default: bool) -> bool {
+    std::env::var(key)
+        .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
+        .unwrap_or(default)
+}
+
+fn legacy_queue_enabled(_: &Config) -> bool {
+    env_flag("ACC_ENABLE_LEGACY_QUEUE", false)
+}
+
+fn hermes_poll_enabled(_: &Config) -> bool {
+    env_flag("ACC_ENABLE_HERMES_POLL", false) || env_flag("ACC_ENABLE_HERMES", false)
+}
+
 fn nvidia_enabled(_: &Config) -> bool {
     std::env::var("NVIDIA_API_BASE").is_ok()
 }
@@ -115,7 +129,7 @@ static CHILDREN: &[ChildSpec] = &[
         name: "queue",
         args: &["queue"],
         direct_exe: false,
-        enabled: always,
+        enabled: legacy_queue_enabled,
     },
     ChildSpec {
         name: "tasks",
@@ -127,7 +141,7 @@ static CHILDREN: &[ChildSpec] = &[
         name: "hermes",
         args: &["hermes", "--poll"],
         direct_exe: false,
-        enabled: always,
+        enabled: hermes_poll_enabled,
     },
     ChildSpec {
         name: "gateway",
@@ -154,6 +168,45 @@ static CHILDREN: &[ChildSpec] = &[
         enabled: nvidia_enabled,
     },
 ];
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn minimal_default_runtime_gates_legacy_queue_and_hermes_poll() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        std::env::remove_var("ACC_ENABLE_LEGACY_QUEUE");
+        std::env::remove_var("ACC_ENABLE_HERMES_POLL");
+        std::env::remove_var("ACC_ENABLE_HERMES");
+        let cfg = Config {
+            acc_dir: std::env::temp_dir(),
+            acc_url: "http://example.test".into(),
+            acc_token: "tok".into(),
+            agent_name: "agent".into(),
+            agentbus_token: "bus".into(),
+            pair_programming: true,
+            host: "host".into(),
+            ssh_user: "user".into(),
+            ssh_host: "host".into(),
+            ssh_port: 22,
+        };
+
+        assert!(!legacy_queue_enabled(&cfg));
+        assert!(!hermes_poll_enabled(&cfg));
+
+        std::env::set_var("ACC_ENABLE_LEGACY_QUEUE", "true");
+        std::env::set_var("ACC_ENABLE_HERMES_POLL", "1");
+        assert!(legacy_queue_enabled(&cfg));
+        assert!(hermes_poll_enabled(&cfg));
+
+        std::env::remove_var("ACC_ENABLE_LEGACY_QUEUE");
+        std::env::remove_var("ACC_ENABLE_HERMES_POLL");
+    }
+}
 
 pub async fn run(args: &[String]) {
     let dry_run = args.iter().any(|a| a == "--dry-run");

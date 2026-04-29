@@ -37,7 +37,7 @@ Beads issue closed  →  bd export  →  git push
 
 Reverse direction (beads → GitHub):
 ```
-bd create --mirror-to-github
+github_sync --mirror
    │
    ▼
 gh issue create  →  issue number stored in beads metadata.github_number
@@ -75,9 +75,9 @@ Future edits/closes propagate via the same webhook or sync script
 - **AC:** Completing a fleet task with a GitHub link posts a comment; with `AUTO_CLOSE=true` also closes
 
 ### F5 — beads → GitHub mirror (opt-in)
-- `bd create --mirror` flag creates both a beads issue and a `gh issue create` entry
+- `github_sync --mirror` creates both a beads issue and a `gh issue create` entry
 - The returned GitHub issue number is stored as `metadata.github_number` in the beads issue
-- **AC:** `bd create --mirror` creates matching entries in both systems with linked numbers
+- **AC:** `github_sync --mirror` creates matching entries in both systems with linked numbers
 
 ### F6 — Sync state persistence
 - Sync position (last-synced timestamp per repo) stored in `~/.acc/data/github-sync-state.json`
@@ -104,7 +104,7 @@ Every beads issue that has a GitHub counterpart carries:
 ### New files
 | Path | Purpose |
 |------|---------|
-| `scripts/github-sync.py` | Poll-based sync daemon / cron script |
+| `tools/src/bin/github_sync.rs` | Poll daemon, metadata migration, and mirror command |
 | `acc-server/src/routes/github.rs` | Webhook endpoint (F3) |
 | `acc-server/src/github.rs` | GitHub API client helpers |
 

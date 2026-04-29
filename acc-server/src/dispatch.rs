@@ -20,6 +20,8 @@ use tracing::info;
 
 // ── Config ────────────────────────────────────────────────────────────────────
 
+const CLI_EXECUTORS: &[&str] = &["claude_cli", "codex_cli", "cursor_cli", "opencode"];
+
 pub struct DispatchConfig {
     pub enabled: bool,
     pub tick_secs: u64,
@@ -742,7 +744,15 @@ pub fn select_best_agent(
         .and_then(|v| v.as_str())
         .filter(|s| !s.is_empty());
 
-    let mut candidates: Vec<(String, usize, bool, bool, bool)> = agents
+    let executor_filter: Vec<&str> = preferred_executor
+        .into_iter()
+        .chain(required_executors.iter().copied())
+        .collect();
+    let cli_coding_task = executor_filter
+        .iter()
+        .any(|executor| is_cli_executor(executor));
+
+    let mut candidates: Vec<(String, usize, bool, bool, bool, bool)> = agents
         .as_object()?
         .iter()
         .filter_map(|(name, agent)| {
@@ -757,6 +767,9 @@ pub fn select_best_agent(
             }
             let load = *claimed_counts.get(name).unwrap_or(&0);
             if load >= max_per_agent {
+                return None;
+            }
+            if !agent_task_capacity_available(agent) {
                 return None;
             }
             if !required_executors.is_empty()
@@ -788,13 +801,22 @@ pub fn select_best_agent(
                 .unwrap_or(false);
             let preferred_agent_match = preferred_agent.map(|p| p == name).unwrap_or(false);
             let session_match =
-                agent_has_ready_session(agent, preferred_executor, project_id, assigned_session);
+                agent_has_ready_session(agent, &executor_filter, project_id, assigned_session);
+            if assigned_session.is_some() && !session_match {
+                return None;
+            }
+            if cli_coding_task && !agent_cli_session_capacity_available(agent, session_match) {
+                return None;
+            }
+            let can_spawn_cli_session =
+                cli_coding_task && agent_cli_session_capacity_available(agent, false);
             Some((
                 name.clone(),
                 load,
                 prefers,
                 preferred_agent_match,
                 session_match,
+                can_spawn_cli_session,
             ))
         })
         .collect();
@@ -807,11 +829,12 @@ pub fn select_best_agent(
         candidates.retain(|c| c.2);
     }
 
-    // Sort: ready affine session, preferred agent, preferred executor, least loaded, alphabetical.
+    // Sort: ready affine session, preferred agent, preferred executor, spawn room, least loaded, alphabetical.
     candidates.sort_by(|a, b| {
         b.4.cmp(&a.4)
             .then(b.3.cmp(&a.3))
             .then(b.2.cmp(&a.2))
+            .then(b.5.cmp(&a.5))
             .then(a.1.cmp(&b.1))
             .then(a.0.cmp(&b.0))
     });
@@ -857,9 +880,46 @@ fn agent_supports_executor(agent: &Value, executor: &str) -> bool {
         .unwrap_or(false)
 }
 
+fn is_cli_executor(executor: &str) -> bool {
+    CLI_EXECUTORS.contains(&executor)
+}
+
+fn agent_task_capacity_available(agent: &Value) -> bool {
+    agent
+        .get("capacity")
+        .and_then(|capacity| capacity.get("estimated_free_slots"))
+        .or_else(|| agent.get("estimated_free_slots"))
+        .and_then(|v| v.as_i64())
+        .map(|slots| slots > 0)
+        .unwrap_or(true)
+}
+
+fn agent_cli_session_capacity_available(agent: &Value, has_ready_session: bool) -> bool {
+    if has_ready_session {
+        return true;
+    }
+    if agent
+        .get("capacity")
+        .and_then(|capacity| capacity.get("session_spawn_denied_reason"))
+        .or_else(|| agent.get("session_spawn_denied_reason"))
+        .and_then(|v| v.as_str())
+        .filter(|reason| !reason.is_empty())
+        .is_some()
+    {
+        return false;
+    }
+    agent
+        .get("capacity")
+        .and_then(|capacity| capacity.get("free_session_slots"))
+        .or_else(|| agent.get("free_session_slots"))
+        .and_then(|v| v.as_i64())
+        .map(|slots| slots > 0)
+        .unwrap_or(true)
+}
+
 fn agent_has_ready_session(
     agent: &Value,
-    preferred_executor: Option<&str>,
+    executor_filter: &[&str],
     project_id: Option<&str>,
     assigned_session: Option<&str>,
 ) -> bool {
@@ -872,8 +932,12 @@ fn agent_has_ready_session(
                         return false;
                     }
                 }
-                if let Some(executor) = preferred_executor {
-                    if session.get("executor").and_then(|v| v.as_str()) != Some(executor) {
+                if !executor_filter.is_empty() {
+                    let session_executor = session.get("executor").and_then(|v| v.as_str());
+                    if !executor_filter
+                        .iter()
+                        .any(|executor| Some(*executor) == session_executor)
+                    {
                         return false;
                     }
                 }
@@ -894,7 +958,15 @@ fn agent_has_ready_session(
                     .get("auth_state")
                     .and_then(|v| v.as_str())
                     .unwrap_or("ready");
-                matches!(state, "idle" | "busy") && auth != "unauthenticated"
+                let busy = session
+                    .get("busy")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                let stuck = session
+                    .get("stuck")
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false);
+                state == "idle" && !busy && !stuck && auth != "unauthenticated" && auth != "missing"
             })
         })
         .unwrap_or(false)
@@ -1675,6 +1747,34 @@ mod tests {
         })
     }
 
+    fn make_cli_agent(
+        name: &str,
+        executor: &str,
+        free_session_slots: i64,
+        sessions: Vec<Value>,
+    ) -> (String, Value) {
+        let mut capabilities = serde_json::Map::new();
+        capabilities.insert(executor.to_string(), json!(true));
+        (
+            name.to_string(),
+            json!({
+                "lastSeen": (Utc::now() - Duration::seconds(5)).to_rfc3339(),
+                "executors": [{
+                    "executor": executor,
+                    "installed": true,
+                    "auth_state": "ready",
+                    "ready": true
+                }],
+                "capabilities": Value::Object(capabilities),
+                "sessions": sessions,
+                "capacity": {
+                    "free_session_slots": free_session_slots,
+                    "estimated_free_slots": 2
+                }
+            }),
+        )
+    }
+
     #[test]
     fn test_capability_match_no_requirement() {
         let agents = make_agents(&[("alpha", true, &[], 10), ("beta", true, &["gpu"], 10)]);
@@ -1765,6 +1865,114 @@ mod tests {
         });
         let result = select_best_agent(&task, &agents, &HashMap::new(), &[], 99);
         assert_eq!(result.as_deref(), Some("typed-agent"));
+    }
+
+    #[test]
+    fn test_coding_task_prefers_ready_cli_session() {
+        let (alpha_name, alpha) = make_cli_agent("alpha", "codex_cli", 2, vec![]);
+        let (beta_name, beta) = make_cli_agent(
+            "beta",
+            "codex_cli",
+            0,
+            vec![json!({
+                "name": "proj-main",
+                "executor": "codex_cli",
+                "project_id": "proj-1",
+                "state": "idle",
+                "auth_state": "ready"
+            })],
+        );
+        let agents = json!({alpha_name: alpha, beta_name: beta});
+        let task = json!({
+            "id": "task-cli",
+            "project_id": "proj-1",
+            "preferred_executor": "codex_cli",
+            "metadata": {"preferred_executor": "codex_cli"}
+        });
+
+        let result = select_best_agent(&task, &agents, &HashMap::new(), &[], 99);
+
+        assert_eq!(result.as_deref(), Some("beta"));
+    }
+
+    #[test]
+    fn test_generic_work_prefers_cli_session_over_gpu_only_agent() {
+        let (cli_name, cli_agent) = make_cli_agent(
+            "cli-agent",
+            "claude_cli",
+            0,
+            vec![json!({
+                "name": "claude-main",
+                "executor": "claude_cli",
+                "project_id": "proj-1",
+                "state": "idle",
+                "auth_state": "ready"
+            })],
+        );
+        let agents = json!({
+            "gpu-agent": {
+                "lastSeen": (Utc::now() - Duration::seconds(5)).to_rfc3339(),
+                "capabilities": {"gpu": true, "vllm": true},
+                "executors": [{"executor": "gpu", "ready": true}, {"executor": "vllm", "ready": true}],
+                "capacity": {"estimated_free_slots": 2}
+            },
+            cli_name: cli_agent,
+        });
+        let task = json!({
+            "id": "task-default",
+            "project_id": "proj-1",
+            "metadata": {}
+        });
+
+        let result = select_best_agent(&task, &agents, &HashMap::new(), &[], 99);
+
+        assert_eq!(result.as_deref(), Some("cli-agent"));
+    }
+
+    #[test]
+    fn test_saturated_cli_agent_without_ready_session_is_skipped() {
+        let (alpha_name, alpha) = make_cli_agent("alpha", "codex_cli", 0, vec![]);
+        let (beta_name, beta) = make_cli_agent("beta", "codex_cli", 1, vec![]);
+        let agents = json!({alpha_name: alpha, beta_name: beta});
+        let task = json!({
+            "id": "task-cli",
+            "preferred_executor": "codex_cli",
+            "metadata": {"preferred_executor": "codex_cli"}
+        });
+
+        let result = select_best_agent(&task, &agents, &HashMap::new(), &[], 99);
+
+        assert_eq!(result.as_deref(), Some("beta"));
+    }
+
+    #[test]
+    fn test_assigned_session_requires_matching_ready_session() {
+        let (alpha_name, alpha) = make_cli_agent("alpha", "codex_cli", 2, vec![]);
+        let (beta_name, beta) = make_cli_agent(
+            "beta",
+            "codex_cli",
+            2,
+            vec![json!({
+                "name": "other",
+                "executor": "codex_cli",
+                "state": "idle",
+                "auth_state": "ready"
+            })],
+        );
+        let agents = json!({alpha_name: alpha, beta_name: beta});
+        let task = json!({
+            "id": "task-cli",
+            "preferred_executor": "codex_cli",
+            "assigned_session": "proj-main",
+            "metadata": {
+                "preferred_executor": "codex_cli",
+                "assigned_session": "proj-main"
+            }
+        });
+
+        let result = select_best_agent(&task, &agents, &HashMap::new(), &[], 99);
+
+        assert!(result.is_none());
     }
 
     #[test]

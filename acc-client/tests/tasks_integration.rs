@@ -52,6 +52,32 @@ async fn list_tasks_filters_by_status() {
 }
 
 #[tokio::test]
+async fn list_tasks_uses_project_id_and_agent_filters() {
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/api/tasks"))
+        .and(query_param("project_id", "proj-a"))
+        .and(query_param("agent", "natasha"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+            "tasks": [sample_task("task-1", "open")]
+        })))
+        .mount(&server)
+        .await;
+
+    let client = client_for(&server).await;
+    let tasks = client
+        .tasks()
+        .list()
+        .project("proj-a")
+        .agent("natasha")
+        .send()
+        .await
+        .unwrap();
+
+    assert_eq!(tasks[0].id, "task-1");
+}
+
+#[tokio::test]
 async fn claim_conflict_maps_to_typed_error() {
     let server = MockServer::start().await;
     Mock::given(method("PUT"))

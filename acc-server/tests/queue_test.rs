@@ -57,6 +57,40 @@ async fn create_item_returns_id() {
 }
 
 #[tokio::test]
+async fn create_item_preserves_preferred_agent_separately_from_executor() {
+    let srv = helpers::TestServer::new().await;
+    let resp = helpers::call(
+        &srv.app,
+        helpers::post_json(
+            "/api/queue",
+            &json!({
+                "title": "Agent affinity task",
+                "description": "Verify queue compatibility keeps node affinity separate",
+                "preferred_executor": "codex_cli",
+                "preferred_agent": "natasha",
+                "_skip_dedup": true
+            }),
+        ),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::CREATED);
+    let item = helpers::body_json(resp).await["item"].clone();
+    assert_eq!(item["preferred_executor"], "codex_cli");
+    assert_eq!(item["preferred_agent"], "natasha");
+
+    let task = helpers::body_json(
+        helpers::call(
+            &srv.app,
+            helpers::get(&format!("/api/tasks/{}", item["id"].as_str().unwrap())),
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(task["preferred_agent"], "natasha");
+    assert_ne!(task["preferred_executor"], "natasha");
+}
+
+#[tokio::test]
 async fn create_requires_title() {
     let srv = helpers::TestServer::new().await;
     let resp = helpers::call(

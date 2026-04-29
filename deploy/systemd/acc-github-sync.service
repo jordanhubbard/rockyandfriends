@@ -1,0 +1,17 @@
+[Unit]
+Description=ACC GitHub issues to beads/fleet sync
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=AGENT_USER
+Group=AGENT_USER
+WorkingDirectory=AGENT_HOME/.acc/workspace
+EnvironmentFile=-AGENT_HOME/.acc/.env
+Environment=PATH=AGENT_HOME/.acc/bin:AGENT_HOME/.local/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=AGENT_HOME/.acc/bin/github_sync --once
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=acc-github-sync
+TimeoutStartSec=300

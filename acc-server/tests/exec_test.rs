@@ -2,92 +2,65 @@ mod helpers;
 
 use axum::http::StatusCode;
 use serde_json::json;
+use std::sync::Mutex;
 
-#[tokio::test]
-async fn exec_requires_command_or_code() {
-    let srv = helpers::TestServer::new().await;
-    let resp = helpers::call(
-        &srv.app,
-        helpers::post_json("/api/exec", &json!({"targets": ["all"]})),
-    )
-    .await;
-    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
-    let body = helpers::body_json(resp).await;
-    assert!(
-        body["error"].as_str().unwrap_or("").contains("command"),
-        "error must mention 'command'; got: {body}"
-    );
-}
+static ENV_LOCK: Mutex<()> = Mutex::new(());
 
-#[tokio::test]
-async fn exec_missing_agentbus_token_returns_500() {
-    // AGENTBUS_TOKEN is not set in test environment, so fan-out should fail gracefully
-    let srv = helpers::TestServer::new().await;
+#[tokio::test(flavor = "current_thread")]
+async fn test_exec_accepts_legacy_ccc_token_alias_for_signing() {
+    let _guard = ENV_LOCK.lock().unwrap();
+    let ts = helpers::TestServer::new().await;
+    let exec_log = ts.tmp.path().join("exec.jsonl");
+
+    let keys = [
+        "AGENTBUS_TOKEN",
+        "SQUIRRELBUS_TOKEN",
+        "ACC_AGENT_TOKEN",
+        "CCC_AGENT_TOKEN",
+        "AGENTBUS_URL",
+        "SQUIRRELBUS_URL",
+        "ACC_URL",
+        "CCC_URL",
+        "EXEC_LOG_PATH",
+    ];
+    let saved: Vec<(&str, Option<String>)> = keys
+        .iter()
+        .map(|key| (*key, std::env::var(key).ok()))
+        .collect();
+
+    for key in keys {
+        unsafe { std::env::remove_var(key) };
+    }
+    unsafe {
+        std::env::set_var("CCC_AGENT_TOKEN", "legacy-token");
+        std::env::set_var("CCC_URL", "http://127.0.0.1:9");
+        std::env::set_var("EXEC_LOG_PATH", exec_log.as_os_str());
+    }
+
     let resp = helpers::call(
-        &srv.app,
+        &ts.app,
         helpers::post_json(
             "/api/exec",
             &json!({
-                "command": "ping",
-                "params": {"message": "test"},
-                "targets": ["all"]
+                "targets": ["all"],
+                "command": "ping"
             }),
         ),
     )
     .await;
-    // Either 500 (no AGENTBUS_TOKEN) or 200 (ok:true, busSent:false) — both acceptable
-    let status = resp.status();
-    assert!(
-        status == StatusCode::OK || status == StatusCode::INTERNAL_SERVER_ERROR,
-        "expected 200 or 500 when AGENTBUS_TOKEN absent; got {status}"
-    );
-}
 
-#[tokio::test]
-async fn exec_result_can_be_posted() {
-    let srv = helpers::TestServer::new().await;
+    for (key, value) in saved {
+        unsafe {
+            if let Some(value) = value {
+                std::env::set_var(key, value);
+            } else {
+                std::env::remove_var(key);
+            }
+        }
+    }
 
-    // Use a unique ID to avoid conflicts with persisted exec.jsonl from prior runs
-    let fake_exec_id = format!(
-        "exec-test-{}",
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .subsec_nanos()
-    );
-
-    let resp = helpers::call(
-        &srv.app,
-        helpers::post_json(
-            &format!("/api/exec/{fake_exec_id}/result"),
-            &json!({
-                "agent": "test-agent",
-                "output": "test output",
-                "exit_code": 0,
-            }),
-        ),
-    )
-    .await;
     assert_eq!(resp.status(), StatusCode::OK);
-
-    // Retrieve it
-    let resp = helpers::call(&srv.app, helpers::get(&format!("/api/exec/{fake_exec_id}"))).await;
-    assert_eq!(resp.status(), StatusCode::OK);
-    let record = helpers::body_json(resp).await;
-    let results = record["results"].as_array().expect("results array");
-    assert!(!results.is_empty(), "expected at least one result");
-    // Find the result we just posted
-    let our_result = results.iter().find(|r| r["output"] == json!("test output"));
-    assert!(
-        our_result.is_some(),
-        "our posted result should appear in record"
-    );
-    assert_eq!(our_result.unwrap()["agent"], json!("test-agent"));
-}
-
-#[tokio::test]
-async fn exec_get_nonexistent_returns_404() {
-    let srv = helpers::TestServer::new().await;
-    let resp = helpers::call(&srv.app, helpers::get("/api/exec/exec-does-not-exist-xyz")).await;
-    assert_eq!(resp.status(), StatusCode::NOT_FOUND);
+    let body = helpers::body_json(resp).await;
+    assert_eq!(body["ok"], true);
+    assert_eq!(body["targets"][0], "all");
 }

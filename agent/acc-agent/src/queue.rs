@@ -894,11 +894,11 @@ fn select_item<'a>(
                     }
                 }
             }
-            // Collaboration gate: if a specific peer is preferred and online, let them handle it
-            let preferred = item["preferred_executor"].as_str().unwrap_or("");
-            if !preferred.is_empty()
-                && preferred != agent_name
-                && online_peers.iter().any(|p| p == preferred)
+            // Collaboration gate: if a specific peer is preferred and online, let them handle it.
+            let preferred_agent = item["preferred_agent"].as_str().unwrap_or("");
+            if !preferred_agent.is_empty()
+                && preferred_agent != agent_name
+                && online_peers.iter().any(|p| p == preferred_agent)
             {
                 return false;
             }
@@ -947,10 +947,7 @@ async fn post_comment(cfg: &Config, client: &Client, item_id: &str, comment: &st
 }
 
 async fn post_heartbeat(cfg: &Config, client: &Client, note: &str, tasks_in_flight: u32) {
-    let max_slots: u32 = std::env::var("AGENT_MAX_TASKS")
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(2);
+    let max_slots = cfg.max_tasks_per_agent();
     let free_slots = max_slots.saturating_sub(tasks_in_flight);
     let req = HeartbeatRequest {
         ts: Some(chrono::Utc::now()),
@@ -965,6 +962,9 @@ async fn post_heartbeat(cfg: &Config, client: &Client, note: &str, tasks_in_flig
         free_session_slots: None,
         max_sessions: None,
         session_spawn_denied_reason: None,
+        ccc_version: None,
+        workspace_revision: None,
+        runtime_version: None,
         executors: vec![],
         sessions: vec![],
     };
@@ -1232,7 +1232,7 @@ mod tests {
     fn test_select_item_skips_when_preferred_peer_online() {
         let items = vec![
             json!({"id": "1", "status": "pending", "assignee": "all", "priority": "normal",
-                   "preferred_executor": "natasha", "created": ""}),
+                   "preferred_agent": "natasha", "created": ""}),
         ];
         // natasha is online — boris should skip this item
         let selected = select_item(&items, "boris", &[], &["natasha".to_string()]);
@@ -1246,7 +1246,7 @@ mod tests {
     fn test_select_item_claims_when_preferred_peer_offline() {
         let items = vec![
             json!({"id": "1", "status": "pending", "assignee": "all", "priority": "normal",
-                   "preferred_executor": "natasha", "created": ""}),
+                   "preferred_agent": "natasha", "created": ""}),
         ];
         // natasha is NOT in online_peers — boris should take it
         let selected = select_item(&items, "boris", &[], &[]);
@@ -1260,13 +1260,13 @@ mod tests {
     fn test_select_item_self_preferred_claims() {
         let items = vec![
             json!({"id": "1", "status": "pending", "assignee": "all", "priority": "normal",
-                   "preferred_executor": "boris", "created": ""}),
+                   "preferred_agent": "boris", "created": ""}),
         ];
-        // I am the preferred executor — I should claim it
+        // I am the preferred agent — I should claim it
         let selected = select_item(&items, "boris", &[], &["natasha".to_string()]);
         assert!(
             selected.is_some(),
-            "must claim task when self is preferred executor"
+            "must claim task when self is preferred agent"
         );
     }
 

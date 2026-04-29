@@ -12,7 +12,10 @@ pub mod project;
 pub mod queue;
 pub mod task;
 
-pub use agent::{Agent, AgentCapacity, AgentExecutor, AgentOnlineStatus, AgentSession};
+pub use agent::{
+    Agent, AgentCapabilitiesRequest, AgentCapacity, AgentExecutor, AgentOnlineStatus,
+    AgentRegistrationRequest, AgentSession,
+};
 pub use bus::{BusMsg, BusSendRequest};
 pub use error::ApiError;
 pub use memory::{MemoryHit, MemorySearchRequest, MemoryStoreRequest};

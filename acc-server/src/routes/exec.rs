@@ -49,6 +49,47 @@ fn server_name() -> String {
         .unwrap_or_else(|_| "acc-server".to_string())
 }
 
+fn first_nonempty_env(keys: &[&str]) -> Option<String> {
+    keys.iter().find_map(|key| {
+        std::env::var(key)
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+    })
+}
+
+fn exec_signing_token() -> Option<String> {
+    first_nonempty_env(&[
+        "AGENTBUS_TOKEN",
+        "SQUIRRELBUS_TOKEN",
+        "ACC_AGENT_TOKEN",
+        "CCC_AGENT_TOKEN",
+    ])
+}
+
+fn bus_url() -> String {
+    first_nonempty_env(&["AGENTBUS_URL", "SQUIRRELBUS_URL", "ACC_URL", "CCC_URL"]).unwrap_or_else(
+        || {
+            let port = std::env::var("ACC_PORT").unwrap_or_else(|_| "8789".to_string());
+            format!("http://localhost:{port}")
+        },
+    )
+}
+
+fn bus_bearer_token(signing_token: &str) -> String {
+    first_nonempty_env(&["ACC_AGENT_TOKEN", "CCC_AGENT_TOKEN"])
+        .unwrap_or_else(|| signing_token.to_string())
+}
+
+fn warn_exec_usage(operation: &str) {
+    tracing::warn!(
+        target: "acc.compat",
+        path = "/api/exec",
+        operation,
+        "operator exec path used; /api/exec is not a durable scheduling plane"
+    );
+}
+
 // ── POST /api/exec ────────────────────────────────────────────────────────
 
 async fn post_exec(
@@ -56,6 +97,7 @@ async fn post_exec(
     headers: HeaderMap,
     Json(body): Json<Value>,
 ) -> impl IntoResponse {
+    warn_exec_usage("dispatch");
     if !state.is_authed(&headers) {
         return (
             axum::http::StatusCode::UNAUTHORIZED,
@@ -85,17 +127,16 @@ async fn post_exec(
             Json(json!({"error":"request must include 'command' (registry) or 'code' (deprecated shell)"}))).into_response();
     };
 
-    let agentbus_token = std::env::var("AGENTBUS_TOKEN")
-        .or_else(|_| std::env::var("SQUIRRELBUS_TOKEN"))
-        .unwrap_or_default();
-    if agentbus_token.is_empty() {
-        return (
-            axum::http::StatusCode::INTERNAL_SERVER_ERROR,
-            Json(json!({"error":"AGENTBUS_TOKEN not configured"})),
-        )
-            .into_response();
-    }
-
+    let agentbus_token = match exec_signing_token() {
+        Some(token) => token,
+        None => {
+            return (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({"error":"AGENTBUS_TOKEN not configured"})),
+            )
+                .into_response()
+        }
+    };
     let exec_id = format!("exec-{}", uuid::Uuid::new_v4());
     let now = chrono::Utc::now().to_rfc3339();
     let timeout_ms = body
@@ -149,13 +190,8 @@ async fn post_exec(
         "all".to_string()
     };
 
-    let bus_url = std::env::var("AGENTBUS_URL")
-        .or_else(|_| std::env::var("SQUIRRELBUS_URL"))
-        .unwrap_or_else(|_| {
-            let port = std::env::var("ACC_PORT").unwrap_or_else(|_| "8789".to_string());
-            format!("http://localhost:{port}")
-        });
-    let bus_token = std::env::var("ACC_AGENT_TOKEN").unwrap_or_else(|_| agentbus_token.clone());
+    let bus_url = bus_url();
+    let bus_token = bus_bearer_token(&agentbus_token);
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(5))
@@ -203,6 +239,7 @@ async fn get_exec(
     headers: HeaderMap,
     Path(id): Path<String>,
 ) -> impl IntoResponse {
+    warn_exec_usage("get");
     if !state.is_authed(&headers) {
         return (
             axum::http::StatusCode::UNAUTHORIZED,
@@ -228,6 +265,7 @@ async fn post_exec_result(
     Path(id): Path<String>,
     Json(body): Json<Value>,
 ) -> impl IntoResponse {
+    warn_exec_usage("result");
     if !state.is_authed(&headers) {
         return (
             axum::http::StatusCode::UNAUTHORIZED,

@@ -323,6 +323,8 @@ async fn find_abandoned_tasks(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rusqlite::params;
+    use serde_json::json;
 
     #[test]
     fn test_env_defaults() {
@@ -344,5 +346,59 @@ mod tests {
             assert!(inner.cooldowns.is_empty());
             assert!(inner.recent_alerts.is_empty());
         });
+    }
+
+    #[tokio::test]
+    async fn watchdog_tick_alerts_for_offline_agent_with_claimed_task() {
+        let tmp = tempfile::tempdir().unwrap();
+        let state = crate::testing::make_state(&tmp).await;
+
+        let last_seen = (Utc::now() - chrono::Duration::minutes(20)).to_rfc3339();
+        {
+            let mut agents = state.agents.write().await;
+            *agents = json!({
+                "boris": {
+                    "name": "boris",
+                    "lastSeen": last_seen,
+                    "decommissioned": false
+                }
+            });
+        }
+        {
+            let db = state.fleet_db.lock().await;
+            db.execute(
+                "INSERT INTO fleet_tasks \
+                 (id, project_id, title, description, status, claimed_by, claimed_at) \
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                params![
+                    "task-1",
+                    "proj-1",
+                    "Fix stranded work",
+                    "",
+                    "claimed",
+                    "boris",
+                    "2026-04-29T00:00:00Z"
+                ],
+            )
+            .unwrap();
+        }
+
+        let mut rx = state.bus_tx.subscribe();
+        watchdog_tick(&state, 600, 900).await.unwrap();
+
+        let msg = tokio::time::timeout(std::time::Duration::from_secs(1), rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        let alert: Value = serde_json::from_str(&msg).unwrap();
+        assert_eq!(alert["type"], "agent.abandoned_work");
+        assert_eq!(alert["agent"], "boris");
+        assert_eq!(alert["task_count"], 1);
+        assert_eq!(alert["abandoned_tasks"][0]["id"], "task-1");
+
+        let inner = state.watchdog.inner.read().await;
+        assert_eq!(inner.total_runs, 1);
+        assert_eq!(inner.total_alerts, 1);
+        assert_eq!(inner.recent_alerts.len(), 1);
     }
 }

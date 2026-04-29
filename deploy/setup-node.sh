@@ -100,8 +100,8 @@ install_cron_linux() {
 
 install_cron_macos() {
   # On macOS, the "pull cron" is the acc-agent LaunchAgent itself (KeepAlive=true).
-  # acc-agent supervise spawns hermes, the bus listener, and the queue worker as
-  # children; the bus listener handles acc.update → agent-pull.sh on demand.
+  # acc-agent supervise starts the minimal task worker and bus listener by
+  # default. Legacy queue and Hermes polling require explicit env opt-ins.
   # There is no separate periodic cron on macOS.
   PLIST_SRC="$WORKSPACE/deploy/launchd/com.acc.agent.plist"
   PLIST_DST="$HOME/Library/LaunchAgents/com.acc.agent.plist"

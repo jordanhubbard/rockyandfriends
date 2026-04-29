@@ -1,7 +1,7 @@
 //! Agent registry reads on `/api/agents`.
 
 use crate::{Client, Error, Result};
-use acc_model::Agent;
+use acc_model::{Agent, AgentCapabilitiesRequest, AgentRegistrationRequest};
 use serde::Deserialize;
 
 #[derive(Debug, Clone, Copy)]
@@ -64,6 +64,49 @@ impl<'a> AgentsApi<'a> {
             SingleEnvelope::Bare(a) => a,
         })
     }
+
+    /// POST /api/agents/register
+    pub async fn register(self, req: &AgentRegistrationRequest) -> Result<Agent> {
+        let resp = self
+            .client
+            .http()
+            .post(self.client.url("/api/agents/register"))
+            .json(req)
+            .send()
+            .await?;
+        let status = resp.status().as_u16();
+        let bytes = resp.bytes().await?;
+        if !(200..300).contains(&status) {
+            return Err(Error::from_response(status, &bytes));
+        }
+        let env: SingleEnvelope = serde_json::from_slice(&bytes)?;
+        Ok(match env {
+            SingleEnvelope::Wrapped { agent } => agent,
+            SingleEnvelope::Bare(a) => a,
+        })
+    }
+
+    /// PUT /api/agents/{name}/capabilities
+    pub async fn put_capabilities(
+        self,
+        name: &str,
+        req: &AgentCapabilitiesRequest,
+    ) -> Result<Vec<String>> {
+        let resp = self
+            .client
+            .http()
+            .put(self.client.url(&format!("/api/agents/{name}/capabilities")))
+            .json(req)
+            .send()
+            .await?;
+        let status = resp.status().as_u16();
+        let bytes = resp.bytes().await?;
+        if !(200..300).contains(&status) {
+            return Err(Error::from_response(status, &bytes));
+        }
+        let env: CapabilitiesEnvelope = serde_json::from_slice(&bytes)?;
+        Ok(env.capabilities)
+    }
 }
 
 #[derive(Debug)]
@@ -122,4 +165,9 @@ enum SingleEnvelope {
 enum NamesEnvelope {
     Wrapped { names: Vec<String> },
     Bare(Vec<String>),
+}
+
+#[derive(Deserialize)]
+struct CapabilitiesEnvelope {
+    capabilities: Vec<String>,
 }

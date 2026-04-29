@@ -72,19 +72,8 @@ async fn classify_session(cfg: &Config, pane: &PaneInfo, executor: &str) -> Agen
         .activity_epoch
         .unwrap_or_else(|| Utc::now().timestamp());
     let last_activity = Utc.timestamp_opt(activity_epoch, 0).single();
-    let age_secs = Utc::now().timestamp() - activity_epoch;
-    let looks_idle = looks_idle_prompt(&capture);
-    let state = if pane.dead {
-        "dead"
-    } else if auth_state == "unauthenticated" {
-        "unauthenticated"
-    } else if age_secs > cfg.session_stuck_threshold_secs() && !looks_idle {
-        "stuck"
-    } else if age_secs <= cfg.session_busy_window_secs() {
-        "busy"
-    } else {
-        "idle"
-    };
+    let age_secs = Utc::now().timestamp().saturating_sub(activity_epoch);
+    let state = classify_session_state(cfg, pane.dead, auth_state, age_secs, &capture);
 
     let mut extra = BTreeMap::new();
     extra.insert("pane_id".into(), serde_json::json!(pane.pane_id));
@@ -102,6 +91,29 @@ async fn classify_session(cfg: &Config, pane: &PaneInfo, executor: &str) -> Agen
         stuck: Some(state == "stuck"),
         estimated_ram_mb: Some(default_session_ram_mb(executor)),
         extra,
+    }
+}
+
+fn classify_session_state(
+    cfg: &Config,
+    pane_dead: bool,
+    auth_state: &str,
+    activity_age_secs: i64,
+    capture: &str,
+) -> &'static str {
+    if pane_dead {
+        return "dead";
+    }
+    if auth_state == "unauthenticated" {
+        return "unauthenticated";
+    }
+    let looks_idle = looks_idle_prompt(capture);
+    if activity_age_secs > cfg.session_stuck_threshold_secs() && !looks_idle {
+        "stuck"
+    } else if activity_age_secs <= cfg.session_busy_window_secs() && !looks_idle {
+        "busy"
+    } else {
+        "idle"
     }
 }
 
@@ -271,6 +283,21 @@ fn which_bin(name: &str) -> Option<PathBuf> {
 mod tests {
     use super::*;
 
+    fn test_cfg() -> Config {
+        Config {
+            acc_dir: std::env::temp_dir(),
+            acc_url: "http://example.test".into(),
+            acc_token: "tok".into(),
+            agent_name: "agent".into(),
+            agentbus_token: "bus".into(),
+            pair_programming: true,
+            host: "host".into(),
+            ssh_user: "user".into(),
+            ssh_host: "host".into(),
+            ssh_port: 22,
+        }
+    }
+
     fn pane(name: &str, current_command: &str, start_command: &str) -> PaneInfo {
         PaneInfo {
             session_name: name.to_string(),
@@ -322,5 +349,37 @@ mod tests {
         assert!(looks_idle_prompt("done\nacc%"));
         assert!(looks_idle_prompt("Ready"));
         assert!(!looks_idle_prompt("Applying patch to file"));
+    }
+
+    #[test]
+    fn classify_session_state_distinguishes_health_states() {
+        let cfg = test_cfg();
+
+        assert_eq!(
+            classify_session_state(&cfg, true, "ready", 1, "still here"),
+            "dead"
+        );
+        assert_eq!(
+            classify_session_state(&cfg, false, "unauthenticated", 1, "login required"),
+            "unauthenticated"
+        );
+        assert_eq!(
+            classify_session_state(&cfg, false, "ready", 1, "Applying patch"),
+            "busy"
+        );
+        assert_eq!(
+            classify_session_state(
+                &cfg,
+                false,
+                "ready",
+                cfg.session_stuck_threshold_secs() + 1,
+                "Applying patch"
+            ),
+            "stuck"
+        );
+        assert_eq!(
+            classify_session_state(&cfg, false, "ready", 1, "done\nacc%"),
+            "idle"
+        );
     }
 }

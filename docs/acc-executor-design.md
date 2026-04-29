@@ -103,7 +103,7 @@ type ExecutorType =
   | 'claude_cli'      // claude --print (current default)
   | 'claude_sdk'      // @anthropic-ai/claude-code SDK
   | 'codex_cli'       // codex --approval-mode full-auto
-  | 'codex_vllm'      // codex → local vLLM (nemotron)
+  | 'codex_vllm'      // optional codex → local vLLM path on GPU nodes
   | 'cursor_cli'      // cursor --headless (opt-in)
   | 'opencode'        // opencode CLI → ollama/vLLM
   | 'inference_key';  // direct API call, no coding agent
@@ -125,7 +125,7 @@ export async function dispatch(item, agentConfig) {
     case 'codex_cli':
       return runCodex(item, { baseUrl: null });           // OpenAI
 
-    case 'codex_vllm':
+    case 'codex_vllm': // explicit opt-in only; do not choose from GPU presence alone
       return runCodex(item, { baseUrl: agentConfig.vllmUrl || 'http://localhost:18081/v1' });
 
     case 'cursor_cli':
@@ -230,9 +230,9 @@ export async function runCodex(item, { baseUrl = null } = {}) {
 1. **.ccc/executors/`** — implement `dispatch.mjs`, `claude-sdk.mjs`, `codex.mjs` per designs above
 2. **`run-coding-agent.sh`** — refactor to call `dispatch.mjs` via `node -e` or replace with Node wrapper
 3. **Brain routing** — when `preferred_executor` is unset, brain should infer from:
-   - `has_gpu: true` on agent → prefer `codex_vllm` (free local inference)  
-   - `claude login` session present → prefer `claude_sdk`  
-   - Neither → `opencode` → ollama fallback
+   - ready persistent CLI sessions first (`claude_cli`, `codex_cli`, `cursor_cli`, `opencode`)
+   - API providers for review, summarization, planning, and coordination
+   - `codex_vllm` only when a task explicitly asks for local model serving
 4. **Cost reporting** — SDK `cost` metadata → post to `/api/item/:id/complete` as `cost` field; store in CCC journal for billing dashboards
 5. **Session resume** — store `sessionId` from SDK responses; expose `POST /api/item/:id/resume` to continue stalled tasks
 

@@ -43,24 +43,27 @@ Full walkthrough: [GETTING_STARTED.md](GETTING_STARTED.md)
 
 ## Agent Runtime
 
-Agents run **hermes-agent** as the primary runtime:
+The minimal agent runtime is **acc-agent supervise**, which starts durable task
+work and the bus listener by default:
 
 ```bash
-pipx install hermes-agent     # preferred
-hermes --version
-hermes gateway                # start channel gateway (Slack, Telegram, etc.)
+acc-agent tasks               # durable work from /api/tasks
+acc-agent bus                 # AgentBus listener and operator exec handling
 ```
 
-The **hermes-driver** (`deploy/hermes-driver.py`) is a CCC-aware supervisor that polls the queue for GPU/inference tasks and drives hermes sessions to completion, posting heartbeats and results back to the hub.
+Optional processes are explicit opt-ins: `ACC_ENABLE_LEGACY_QUEUE=true` for the
+legacy queue worker, `ACC_ENABLE_HERMES_POLL=true` for Hermes durable polling,
+Slack/Telegram credentials for Hermes gateways, and NVIDIA/proxy variables for
+local model routing.
 
-For coding tasks, a Claude Code CLI session runs in a persistent tmux pane alongside hermes:
+For coding tasks, persistent CLI sessions run in tmux panes alongside the agent:
 
 ```bash
-tmux new-session -d -s claude-main
-tmux send-keys -t claude-main 'claude --dangerously-skip-permissions' Enter
+tmux new-session -d -s codex:acc
+tmux send-keys -t codex:acc 'codex' Enter
 ```
 
-Queue items with `preferred_executor: claude_cli` are dispatched to this session via `workqueue/scripts/claude-worker.mjs`.
+Durable tasks with `preferred_executor` / `required_executors` are routed against live heartbeat `executors`, `sessions`, and capacity telemetry. The legacy queue worker remains for old ingress only; new durable coding behavior belongs on `/api/tasks`.
 
 ---
 
@@ -70,9 +73,21 @@ Queue items with `preferred_executor: claude_cli` are dispatched to this session
 
 `/api/queue` remains as compatibility ingress for older workers. New workflow semantics must be added to `/api/tasks`, not queue-only fields. `/api/exec` is for operator-issued remote commands, not normal durable scheduling.
 
+Legacy `/api/queue` and `/api/exec` calls emit `acc.compat` warnings. Keep these
+routes only while mixed-version agents still use them; removal is safe after all
+agents run the minimal runtime and the operator sees no compatibility warnings
+for a full migration window.
+
 Finalization is single-owner: commit role tasks are claimable only by the persisted `finisher_agent`. See [docs/workflow-runbook.md](docs/workflow-runbook.md).
 
 Slack and Telegram provenance is captured as durable conversation chains linking messages, reactions, participants, entities, outcomes, and spawned tasks. See [docs/conversation-chains.md](docs/conversation-chains.md).
+
+CLI-first rollout and operator remediation steps live in
+[docs/cli-first-migration-runbook.md](docs/cli-first-migration-runbook.md).
+
+GitHub issues can be synced into beads and promoted to fleet tasks with the
+`github_sync` tool. The linked metadata schema, mirror command, migration, and
+timer setup are in [docs/github-beads-sync-runbook.md](docs/github-beads-sync-runbook.md).
 
 ## Executor Routing
 
@@ -178,8 +193,10 @@ Full reference: `deploy/.env.template` (agents) · `deploy/.env.server.template`
 | Unit | Purpose |
 |------|---------|
 | `acc-server.service` | API server + dashboard (port 8789) |
-| `ccc-queue-worker.service` | Queue processor |
-| `ccc-bus-listener.service` | AgentBus SSE receiver |
+| `acc-agent.service` | Minimal agent supervisor (`tasks` + `bus` by default) |
+| `acc-github-sync.timer` | Optional GitHub Issues ↔ beads ↔ fleet task sync |
+| `ccc-queue-worker.service` | Legacy queue compatibility worker (optional) |
+| `ccc-bus-listener.service` | Legacy AgentBus SSE receiver (optional on old nodes) |
 | `ccc-exec-listen.service` | Remote exec handler |
 | `ccc-agent.service` + `ccc-agent.timer` | Periodic `agent-pull.sh` + heartbeat |
 | `consul.service` | Service discovery + DNS |

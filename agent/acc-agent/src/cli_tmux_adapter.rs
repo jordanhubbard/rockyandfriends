@@ -3,6 +3,7 @@ use std::time::{Duration, Instant};
 
 use crate::config::Config;
 use crate::session_discovery;
+use crate::session_registry;
 use crate::tmux;
 
 const STARTUP_TIMEOUT: Duration = Duration::from_secs(30);
@@ -52,7 +53,7 @@ pub async fn run_task(
 }
 
 async fn ensure_session(
-    _cfg: &Config,
+    cfg: &Config,
     adapter: &SessionAdapterConfig,
     workspace: &Path,
 ) -> Result<String, String> {
@@ -66,10 +67,30 @@ async fn ensure_session(
         return Ok(existing);
     }
 
+    session_registry::admit_session_spawn(cfg, adapter.executor).await?;
+
     let launch = render_launch(adapter);
     tmux::new_session(adapter.default_session_name, Some(workspace), &launch).await?;
     let pane_id = pane_for_session(adapter.default_session_name).await?;
     wait_until_idle(&pane_id, STARTUP_TIMEOUT).await?;
+    session_registry::upsert_session(
+        cfg,
+        acc_model::AgentSession {
+            name: adapter.default_session_name.to_string(),
+            executor: Some(adapter.executor.to_string()),
+            project_id: workspace
+                .file_name()
+                .and_then(|name| name.to_str())
+                .map(str::to_string),
+            state: Some("idle".into()),
+            auth_state: Some("ready".into()),
+            last_activity: Some(chrono::Utc::now()),
+            busy: Some(false),
+            stuck: Some(false),
+            ..Default::default()
+        },
+    )
+    .await;
     Ok(adapter.default_session_name.to_string())
 }
 

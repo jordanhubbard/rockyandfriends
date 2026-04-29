@@ -5,7 +5,7 @@
 
 use axum::{
     extract::{Path, State},
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Json},
     routing::get,
     Router,
@@ -27,8 +27,13 @@ pub fn router() -> Router<Arc<AppState>> {
 
 async fn get_session(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Path(key): Path<String>,
 ) -> impl IntoResponse {
+    if !state.is_authed(&headers) {
+        return crate::routes::unauthorized().into_response();
+    }
+
     let conn = state.fleet_db.lock().await;
     match crate::db::get_session(&conn, &key) {
         Ok(Some(messages)) => Json(json!({"key": key, "messages": messages})).into_response(),
@@ -57,9 +62,14 @@ struct PutSessionBody {
 
 async fn put_session(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Path(key): Path<String>,
     Json(body): Json<PutSessionBody>,
 ) -> impl IntoResponse {
+    if !state.is_authed(&headers) {
+        return crate::routes::unauthorized().into_response();
+    }
+
     let agent = body.agent.as_deref().unwrap_or("");
     let workspace = body.workspace.as_deref().unwrap_or("default");
     let conn = state.fleet_db.lock().await;
@@ -78,8 +88,13 @@ async fn put_session(
 
 async fn delete_session(
     State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
     Path(key): Path<String>,
 ) -> impl IntoResponse {
+    if !state.is_authed(&headers) {
+        return crate::routes::unauthorized().into_response();
+    }
+
     let conn = state.fleet_db.lock().await;
     match crate::db::delete_session(&conn, &key) {
         Ok(()) => Json(json!({"ok": true, "key": key})).into_response(),
@@ -94,7 +109,14 @@ async fn delete_session(
     }
 }
 
-async fn list_sessions(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+async fn list_sessions(
+    State(state): State<Arc<AppState>>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    if !state.is_authed(&headers) {
+        return crate::routes::unauthorized().into_response();
+    }
+
     let conn = state.fleet_db.lock().await;
     let result: Result<Vec<Value>, rusqlite::Error> = (|| {
         let mut stmt = conn.prepare_cached(

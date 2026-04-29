@@ -145,6 +145,28 @@ async fn register_agent_normalizes_canonical_executor_shape() {
 }
 
 #[tokio::test]
+async fn put_capabilities_registers_tools_and_executor_shape() {
+    let srv = helpers::TestServer::new().await;
+    let resp = helpers::call(
+        &srv.app,
+        helpers::put_json(
+            "/api/agents/cap-node/capabilities",
+            &json!({"capabilities": ["bash", "read_file", "codex_cli"]}),
+        ),
+    )
+    .await;
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let body =
+        helpers::body_json(helpers::call(&srv.app, helpers::get("/api/agents/cap-node")).await)
+            .await;
+    assert_eq!(body["agent"]["tool_capabilities"][0], "bash");
+    assert_eq!(body["agent"]["tool_capabilities"][2], "codex_cli");
+    assert_eq!(body["agent"]["executors"][0]["executor"], "codex_cli");
+    assert_eq!(body["agent"]["executors"][0]["type"], "codex_cli");
+}
+
+#[tokio::test]
 async fn heartbeat_sets_last_seen() {
     let srv = helpers::TestServer::new().await;
     helpers::call(
@@ -200,6 +222,9 @@ async fn alternate_heartbeat_updates_capacity_and_sessions() {
                 "tasks_in_flight": 1,
                 "estimated_free_slots": 2,
                 "free_session_slots": 1,
+                "ccc_version": "d30dfa5",
+                "workspace_revision": "d30dfa5",
+                "runtime_version": "0.1.0",
                 "executors": [{"executor": "claude_cli", "ready": true, "auth_state": "ready"}],
                 "sessions": [{"name": "proj-a", "executor": "claude_cli", "state": "busy"}]
             }),
@@ -214,6 +239,9 @@ async fn alternate_heartbeat_updates_capacity_and_sessions() {
     .await;
     assert_eq!(body["agent"]["capacity"]["tasks_in_flight"], 1);
     assert_eq!(body["agent"]["capacity"]["free_session_slots"], 1);
+    assert_eq!(body["agent"]["ccc_version"], "d30dfa5");
+    assert_eq!(body["agent"]["workspace_revision"], "d30dfa5");
+    assert_eq!(body["agent"]["runtime_version"], "0.1.0");
     assert_eq!(body["agent"]["sessions"][0]["name"], "proj-a");
 }
 
