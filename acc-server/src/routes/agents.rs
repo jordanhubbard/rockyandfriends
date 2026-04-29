@@ -60,6 +60,73 @@ fn online_status(agent: &Value) -> &'static str {
     }
 }
 
+fn local_supervisor_agent_name() -> Option<String> {
+    std::env::var("AGENT_NAME")
+        .or_else(|_| std::env::var("ACC_AGENT_NAME"))
+        .ok()
+        .map(|s| s.to_lowercase())
+        .filter(|s| !s.is_empty())
+}
+
+fn gateway_workspace_for_process(name: &str) -> &'static str {
+    if name.contains("offtera") {
+        "offtera"
+    } else {
+        "omgjkh"
+    }
+}
+
+async fn supervisor_gateway_health(state: &AppState) -> Option<Value> {
+    let handle = state.supervisor.as_ref()?;
+    let statuses = handle.statuses.read().await;
+    let children: serde_json::Map<String, Value> = statuses
+        .iter()
+        .filter(|status| status.name.starts_with("gateway"))
+        .map(|status| {
+            let running = status.pid.is_some();
+            (
+                status.name.clone(),
+                json!({
+                    "name": status.name,
+                    "workspace": gateway_workspace_for_process(&status.name),
+                    "status": if running { "running" } else { status.health_status.as_str() },
+                    "running": running,
+                    "pid": status.pid,
+                    "restart_count": status.restarts,
+                    "started_at": status.started_at,
+                    "health_status": status.health_status,
+                    "health_reason": status.health_reason,
+                }),
+            )
+        })
+        .collect();
+    if children.is_empty() {
+        None
+    } else {
+        Some(json!({
+            "version": 1,
+            "source": "acc-server-supervisor",
+            "updated_at": chrono::Utc::now(),
+            "children": children,
+        }))
+    }
+}
+
+async fn overlay_local_gateway_health(state: &AppState, name: &str, record: &mut Value) {
+    let Some(local_name) = local_supervisor_agent_name() else {
+        return;
+    };
+    if local_name != name.to_lowercase() {
+        return;
+    }
+    let Some(health) = supervisor_gateway_health(state).await else {
+        return;
+    };
+    if let Some(obj) = record.as_object_mut() {
+        obj.insert("gateway_health".into(), health);
+    }
+}
+
 const KNOWN_EXECUTORS: &[&str] = &[
     "claude_cli",
     "codex_cli",
@@ -233,10 +300,10 @@ async fn get_agents(
 ) -> Json<Value> {
     let online_only = params.get("online").map(|v| v == "true").unwrap_or(false);
     let agents = state.agents.read().await;
-    let mut result: Vec<Value> = match agents.as_object() {
+    let mut result: Vec<(String, Value)> = match agents.as_object() {
         Some(map) => map
-            .values()
-            .filter_map(|a| {
+            .iter()
+            .filter_map(|(name, a)| {
                 if online_only && !is_online(a) {
                     return None;
                 }
@@ -245,11 +312,16 @@ async fn get_agents(
                     obj.insert("online".into(), json!(is_online(a)));
                     obj.insert("onlineStatus".into(), json!(online_status(a)));
                 }
-                Some(record)
+                Some((name.clone(), record))
             })
             .collect(),
         None => vec![],
     };
+    drop(agents);
+    for (name, record) in &mut result {
+        overlay_local_gateway_health(&state, name, record).await;
+    }
+    let mut result: Vec<Value> = result.into_iter().map(|(_, record)| record).collect();
     result.sort_by(|a, b| {
         let ts_a = a.get("lastSeen").and_then(|v| v.as_str()).unwrap_or("");
         let ts_b = b.get("lastSeen").and_then(|v| v.as_str()).unwrap_or("");
@@ -310,13 +382,16 @@ async fn get_agent_by_name(
     Path(name): Path<String>,
 ) -> impl IntoResponse {
     let agents = state.agents.read().await;
-    match agents.as_object().and_then(|m| m.get(&name)) {
+    let agent = agents.as_object().and_then(|m| m.get(&name)).cloned();
+    drop(agents);
+    match agent {
         Some(agent) => {
             let mut record = agent.clone();
             if let Some(obj) = record.as_object_mut() {
-                obj.insert("online".into(), json!(is_online(agent)));
-                obj.insert("onlineStatus".into(), json!(online_status(agent)));
+                obj.insert("online".into(), json!(is_online(&agent)));
+                obj.insert("onlineStatus".into(), json!(online_status(&agent)));
             }
+            overlay_local_gateway_health(&state, &name, &mut record).await;
             Json(json!({ "ok": true, "agent": record })).into_response()
         }
         None => (
@@ -334,8 +409,11 @@ async fn get_agent_health(
 ) -> impl IntoResponse {
     let agents = state.agents.read().await;
     let agent_name = name.to_lowercase();
-    match agents.as_object().and_then(|m| m.get(&agent_name)) {
-        Some(agent) => {
+    let agent = agents.as_object().and_then(|m| m.get(&agent_name)).cloned();
+    drop(agents);
+    match agent {
+        Some(mut agent) => {
+            overlay_local_gateway_health(&state, &agent_name, &mut agent).await;
             let telemetry_keys = [
                 "gpu",
                 "gpu_temp_c",
@@ -359,7 +437,7 @@ async fn get_agent_health(
             ];
             let mut health = serde_json::Map::new();
             health.insert("agent".into(), json!(agent_name));
-            health.insert("online".into(), json!(is_online(agent)));
+            health.insert("online".into(), json!(is_online(&agent)));
             health.insert(
                 "lastSeen".into(),
                 agent.get("lastSeen").cloned().unwrap_or(json!(null)),

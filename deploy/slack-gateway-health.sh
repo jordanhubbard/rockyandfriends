@@ -43,7 +43,7 @@ mapfile -t TARGETS < <(printf '%s\n' "$AGENTS_JSON" | jq -r '
     .ssh_user,
     .ssh_host,
     (.ssh_port // 22),
-    (.tailscale_ip // ""),
+    (if (.tailscale_ip | type) == "string" and .tailscale_ip != "" then .tailscale_ip else "-" end),
     (.gateway_health // {} | @json)
   ] | @tsv')
 
@@ -148,7 +148,7 @@ echo "[slack-gateway-health] hub=$HUB_URL targets=${#TARGETS[@]}"
 for row in "${TARGETS[@]}"; do
   IFS=$'\t' read -r name user host port tailscale_ip gateway_health <<< "$row"
   ssh_host="$host"
-  if [ "$PREFER_TAILSCALE" = "true" ] && [ -n "$tailscale_ip" ]; then
+  if [ "$PREFER_TAILSCALE" = "true" ] && [ "$tailscale_ip" != "-" ]; then
     ssh_host="$tailscale_ip"
   fi
 
