@@ -302,13 +302,18 @@ pub struct ProviderEntry {
 
 impl ProviderEntry {
     fn build(&self) -> Box<dyn LlmProvider> {
-        let key = self.api_key.clone().unwrap_or_default();
+        let llm_cfg = acc_client::llm_config::LlmConfig::load();
         match self.provider_type.as_str() {
             "anthropic" => {
+                let key = self
+                    .api_key
+                    .clone()
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or_else(|| llm_cfg.anthropic_key.clone());
                 let base = self
                     .url
                     .clone()
-                    .unwrap_or_else(|| "https://api.anthropic.com".to_string());
+                    .unwrap_or_else(|| llm_cfg.anthropic_base_url_or_default().to_string());
                 Box::new(AnthropicProvider::with_base_url(
                     key,
                     self.model.clone(),
@@ -317,9 +322,21 @@ impl ProviderEntry {
             }
             _ => {
                 // "openai" | "openai-compat" — anything with a /v1/chat/completions endpoint
+                let key = self
+                    .api_key
+                    .clone()
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or_else(|| llm_cfg.api_key.clone());
                 let base = self
                     .url
                     .clone()
+                    .or_else(|| {
+                        if llm_cfg.base_url.is_empty() {
+                            None
+                        } else {
+                            Some(llm_cfg.base_url.clone())
+                        }
+                    })
                     .unwrap_or_else(|| "https://api.openai.com".to_string());
                 Box::new(OpenAiProvider::with_base_url(key, self.model.clone(), base))
             }
@@ -458,22 +475,23 @@ pub fn make_provider(api_key: String, model: String) -> Box<dyn LlmProvider> {
     let use_openai = std::env::var("HERMES_PROVIDER").as_deref() == Ok("openai")
         || llm_cfg.is_openai_configured();
     if use_openai {
-        let oai_key = if !api_key.is_empty() {
-            api_key
-        } else {
+        let oai_key = if !llm_cfg.api_key.is_empty() {
             llm_cfg.api_key
+        } else {
+            api_key
         };
-        Box::new(OpenAiProvider::with_base_url(
-            oai_key,
-            model,
-            llm_cfg.base_url,
-        ))
+        let base_url = if llm_cfg.base_url.is_empty() {
+            "https://api.openai.com".to_string()
+        } else {
+            llm_cfg.base_url
+        };
+        Box::new(OpenAiProvider::with_base_url(oai_key, model, base_url))
     } else {
         let anthropic_url = llm_cfg.anthropic_base_url_or_default().to_string();
-        let ant_key = if !api_key.is_empty() {
-            api_key
-        } else {
+        let ant_key = if !llm_cfg.anthropic_key.is_empty() {
             llm_cfg.anthropic_key
+        } else {
+            api_key
         };
         Box::new(AnthropicProvider::with_base_url(
             ant_key,

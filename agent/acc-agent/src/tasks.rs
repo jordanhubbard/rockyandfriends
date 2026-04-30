@@ -48,6 +48,37 @@ const RECLAIM_COOLDOWN: Duration = Duration::from_secs(15 * 60);
 const TASK_KEEPALIVE_INTERVAL: Duration = Duration::from_secs(60);
 const CLI_TASK_EXECUTORS: &[&str] = &["claude_cli", "codex_cli", "cursor_cli"];
 
+fn known_cli_executor(executor: &str) -> Option<&'static str> {
+    CLI_TASK_EXECUTORS
+        .iter()
+        .copied()
+        .find(|known| *known == executor)
+}
+
+fn cli_task_executor_order_from(raw: Option<&str>) -> Vec<&'static str> {
+    let mut ordered = Vec::new();
+    if let Some(raw) = raw {
+        for part in raw.split([',', ' ', ':']) {
+            let part = part.trim();
+            if let Some(executor) = known_cli_executor(part) {
+                if !ordered.contains(&executor) {
+                    ordered.push(executor);
+                }
+            }
+        }
+    }
+    for executor in CLI_TASK_EXECUTORS {
+        if !ordered.contains(executor) {
+            ordered.push(*executor);
+        }
+    }
+    ordered
+}
+
+fn cli_task_executor_order() -> Vec<&'static str> {
+    cli_task_executor_order_from(std::env::var("ACC_CLI_EXECUTOR_ORDER").ok().as_deref())
+}
+
 /// Spawn a background task that posts /api/heartbeat/{agent} every
 /// TASK_KEEPALIVE_INTERVAL until the returned sender is dropped or
 /// signaled. Fire-and-forget on the network: if a heartbeat POST
@@ -163,19 +194,18 @@ fn task_executor_field<'a>(task: &'a Value, field: &str) -> Option<&'a str> {
 
 fn select_cli_executor(task: &Value) -> Option<&str> {
     if let Some(executor) = task_executor_field(task, "preferred_executor") {
-        if CLI_TASK_EXECUTORS.contains(&executor) {
+        if let Some(executor) = known_cli_executor(executor) {
             return Some(executor);
         }
     }
-    task.get("required_executors")
+    let required = task
+        .get("required_executors")
         .and_then(|v| v.as_array())
-        .or_else(|| task["metadata"]["required_executors"].as_array())
-        .and_then(|executors| {
-            executors
-                .iter()
-                .filter_map(|v| v.as_str())
-                .find(|executor| CLI_TASK_EXECUTORS.contains(executor))
-        })
+        .or_else(|| task["metadata"]["required_executors"].as_array())?;
+    let required: Vec<&str> = required.iter().filter_map(|v| v.as_str()).collect();
+    cli_task_executor_order()
+        .into_iter()
+        .find(|executor| required.contains(executor))
 }
 
 async fn select_cli_executor_for_task(cfg: &Config, task: &Value) -> Option<String> {
@@ -191,8 +221,9 @@ fn select_default_cli_executor_from_snapshot(
     snapshot: &session_registry::HeartbeatFragment,
 ) -> Option<String> {
     let project_id = task["project_id"].as_str().filter(|s| !s.is_empty());
+    let executor_order = cli_task_executor_order();
     for require_project_match in [true, false] {
-        for executor in CLI_TASK_EXECUTORS {
+        for executor in &executor_order {
             if snapshot.sessions.iter().any(|session| {
                 session_ready_for_executor(session, executor)
                     && (!require_project_match
@@ -208,15 +239,15 @@ fn select_default_cli_executor_from_snapshot(
         return None;
     }
 
-    CLI_TASK_EXECUTORS
-        .iter()
+    executor_order
+        .into_iter()
         .find(|executor| {
             snapshot
                 .executors
                 .iter()
                 .any(|entry| executor_ready(entry, executor))
         })
-        .map(|executor| (*executor).to_string())
+        .map(|executor| executor.to_string())
 }
 
 fn session_ready_for_executor(session: &AgentSession, executor: &str) -> bool {
@@ -1786,6 +1817,14 @@ mod tests {
             "metadata": {}
         });
         assert_eq!(select_cli_executor(&task), None);
+    }
+
+    #[test]
+    fn cli_task_executor_order_uses_env_order_then_defaults() {
+        assert_eq!(
+            cli_task_executor_order_from(Some("cursor_cli,codex_cli,missing")),
+            vec!["cursor_cli", "codex_cli", "claude_cli"]
+        );
     }
 
     #[test]
