@@ -63,47 +63,50 @@ if [[ -z "$KEYS" ]]; then
   exit 0
 fi
 
-# Mapping from CCC secret key → .env variable name
-# Update this map when new secrets are added
-declare -A KEY_MAP=(
-  ["slack/bot_token"]="SLACK_BOT_TOKEN"
-  ["slack/app_token"]="SLACK_APP_TOKEN"
-  ["slack/signing_secret"]="SLACK_SIGNING_SECRET"
-  ["slack/user_token"]="SLACK_USER_TOKEN"
-  ["slack/webhook_url"]="SLACK_WEBHOOK_URL"
-  ["slack/watch_channel"]="SLACK_WATCH_CHANNEL"
-  ["openai/api_key"]="OPENAI_API_KEY"
-  ["openai/base_url"]="OPENAI_BASE_URL"
-  ["openai/model"]="OPENAI_MODEL"
-  ["anthropic/api_key"]="ANTHROPIC_API_KEY"
-  ["anthropic/base_url"]="ANTHROPIC_BASE_URL"
-  ["anthropic/model"]="ANTHROPIC_MODEL"
-  ["hermes/provider"]="HERMES_PROVIDER"
-  ["hermes/model"]="HERMES_MODEL"
-  ["llm/providers"]="LLM_PROVIDERS"
-  ["llm/url"]="LLM_URL"
-  ["llm/key"]="LLM_KEY"
-  ["cli/executor_order"]="ACC_CLI_EXECUTOR_ORDER"
-  ["cli/default_executor"]="ACC_DEFAULT_CLI_EXECUTOR"
-  ["nvidia/api_key"]="NVIDIA_API_KEY"
-  ["nvidia/api_base"]="NVIDIA_API_BASE"
-  ["tokenhub/url"]="TOKENHUB_URL"
-  ["tokenhub/agent_key"]="TOKENHUB_API_KEY"
-  ["agentbus/token"]="AGENTBUS_TOKEN"
-  ["squirrelbus/token"]="SQUIRRELBUS_TOKEN"
-  ["acc/agent_token"]="ACC_AGENT_TOKEN"
-  ["SMB_PASSWORD"]="SMB_PASSWORD"
-  ["rocky_smb_user"]="SMB_USER"
-  ["rocky_smb_host"]="SMB_HOST"
-  ["rocky_smb_share"]="SMB_SHARE"
-  ["azure/blob_public_url"]="AZURE_BLOB_PUBLIC_URL"
-  ["qdrant/address"]="QDRANT_ADDRESS"
-  ["qdrant/embed_model"]="EMBED_MODEL"
-  ["qdrant/embed_dim"]="EMBED_DIM"
-  ["qdrant/nvidia_embed_url"]="NVIDIA_EMBED_URL"
-  ["peers/bullwinkle_url"]="BULLWINKLE_URL"
-  ["peers/natasha_url"]="NATASHA_URL"
-)
+# Mapping from CCC secret key → .env variable name.
+# Keep this as a case statement rather than a Bash associative array: macOS
+# still ships Bash 3.x, and the fleet scripts must run there.
+mapped_env_key() {
+  case "$1" in
+    slack/bot_token)          echo "SLACK_BOT_TOKEN" ;;
+    slack/app_token)          echo "SLACK_APP_TOKEN" ;;
+    slack/signing_secret)     echo "SLACK_SIGNING_SECRET" ;;
+    slack/user_token)         echo "SLACK_USER_TOKEN" ;;
+    slack/webhook_url)        echo "SLACK_WEBHOOK_URL" ;;
+    slack/watch_channel)      echo "SLACK_WATCH_CHANNEL" ;;
+    openai/api_key)           echo "OPENAI_API_KEY" ;;
+    openai/base_url)          echo "OPENAI_BASE_URL" ;;
+    openai/model)             echo "OPENAI_MODEL" ;;
+    anthropic/api_key)        echo "ANTHROPIC_API_KEY" ;;
+    anthropic/base_url)       echo "ANTHROPIC_BASE_URL" ;;
+    anthropic/model)          echo "ANTHROPIC_MODEL" ;;
+    hermes/provider)          echo "HERMES_PROVIDER" ;;
+    hermes/model)             echo "HERMES_MODEL" ;;
+    llm/providers)            echo "LLM_PROVIDERS" ;;
+    llm/url)                  echo "LLM_URL" ;;
+    llm/key)                  echo "LLM_KEY" ;;
+    cli/executor_order)       echo "ACC_CLI_EXECUTOR_ORDER" ;;
+    cli/default_executor)     echo "ACC_DEFAULT_CLI_EXECUTOR" ;;
+    nvidia/api_key)           echo "NVIDIA_API_KEY" ;;
+    nvidia/api_base)          echo "NVIDIA_API_BASE" ;;
+    tokenhub/url)             echo "TOKENHUB_URL" ;;
+    tokenhub/agent_key)       echo "TOKENHUB_API_KEY" ;;
+    agentbus/token)           echo "AGENTBUS_TOKEN" ;;
+    squirrelbus/token)        echo "SQUIRRELBUS_TOKEN" ;;
+    acc/agent_token)          echo "ACC_AGENT_TOKEN" ;;
+    SMB_PASSWORD)             echo "SMB_PASSWORD" ;;
+    rocky_smb_user)           echo "SMB_USER" ;;
+    rocky_smb_host)           echo "SMB_HOST" ;;
+    rocky_smb_share)          echo "SMB_SHARE" ;;
+    azure/blob_public_url)    echo "AZURE_BLOB_PUBLIC_URL" ;;
+    qdrant/address)           echo "QDRANT_ADDRESS" ;;
+    qdrant/embed_model)       echo "EMBED_MODEL" ;;
+    qdrant/embed_dim)         echo "EMBED_DIM" ;;
+    qdrant/nvidia_embed_url)  echo "NVIDIA_EMBED_URL" ;;
+    peers/bullwinkle_url)     echo "BULLWINKLE_URL" ;;
+    peers/natasha_url)        echo "NATASHA_URL" ;;
+  esac
+}
 
 agent_secret_slug() {
   local name="${AGENT_NAME:-${CCC_AGENT_NAME:-$(hostname -s 2>/dev/null || hostname)}}"
@@ -118,7 +121,8 @@ workspace_suffix() {
 
 env_keys_for_secret() {
   local secret_key="$1"
-  local mapped="${KEY_MAP[$secret_key]:-}"
+  local mapped
+  mapped="$(mapped_env_key "$secret_key")"
   if [[ -n "$mapped" ]]; then
     printf '%s\n' "$mapped"
     return 0
