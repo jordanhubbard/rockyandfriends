@@ -32,7 +32,7 @@ fi
 # shellcheck disable=SC1090
 source "${ACC_DIR}/.env" 2>/dev/null || true
 
-if [ -x "${WORKSPACE}/deploy/secrets-sync.sh" ]; then
+if [ -f "${WORKSPACE}/deploy/secrets-sync.sh" ]; then
     echo "[restart-hub] Syncing secrets into ${ACC_DIR}/.env"
     ACC_DIR="${ACC_DIR}" bash "${WORKSPACE}/deploy/secrets-sync.sh" --force || \
         echo "[restart-hub] WARNING: secrets sync failed — continuing with cached .env" >&2
