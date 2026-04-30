@@ -1,3 +1,5 @@
+use std::path::Path;
+
 mod agent;
 mod bus;
 mod cli_sanity;
@@ -26,6 +28,19 @@ mod worker;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+    let invoked_as_hermes = args
+        .first()
+        .and_then(|arg0| Path::new(arg0).file_stem())
+        .and_then(|stem| stem.to_str())
+        .map(|stem| stem == "hermes")
+        .unwrap_or(false);
+
+    if invoked_as_hermes {
+        log_init::init("hermes");
+        tokio_run(hermes::run(&args[1..]));
+        return;
+    }
+
     if args.len() < 2 {
         print_help();
         std::process::exit(1);
@@ -75,6 +90,7 @@ fn print_help() {
     eprintln!("  acc-agent bus     (long-running daemon: AgentBus SSE listener)");
     eprintln!("  acc-agent queue   (long-running daemon: queue worker)");
     eprintln!("  acc-agent hermes  (hermes session driver)");
+    eprintln!("  hermes            (compatibility alias for acc-agent hermes)");
     eprintln!("  acc-agent proxy   (long-running daemon: NVIDIA header-strip proxy)");
     eprintln!("  acc-agent tasks     [--max=N]    (long-running daemon: fleet task worker)");
     eprintln!(

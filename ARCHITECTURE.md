@@ -51,7 +51,7 @@ A cheap Azure CPU VM. The hub of all coordination.
 
 ### 2. Agent Nodes — The Spokes
 
-Anything with a Claude/Codex CLI session in tmux, or any machine running hermes-agent.
+Anything with a Claude/Codex CLI session in tmux, or any machine running the native `acc-agent` runtime.
 
 **Key properties:**
 - Outbound-only connectivity is sufficient — agents reach out to CCC, CCC doesn't reach in
@@ -94,7 +94,7 @@ The "boss" (owner) can invite collaborators. Each collaborator can see the dashb
 ### 5. Agent Registration Flow
 
 ```
-Install hermes-agent on the node (pipx install hermes-agent)
+Install acc-agent on the node (`make install` or `deploy/restart-agent.sh`)
 Copy deploy/.env.template → ~/.ccc/.env, fill in CCC_URL + CCC_AGENT_TOKEN
 Run: make register   (POSTs capabilities to the hub)
 Agent appears on CCC dashboard

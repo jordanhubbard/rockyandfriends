@@ -28,7 +28,7 @@
         <key>HOME</key>
         <string>AGENT_HOME</string>
         <key>PATH</key>
-        <string>AGENT_HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+        <string>AGENT_HOME/.acc/bin:AGENT_HOME/.local/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
     </dict>
 </dict>
 </plist>

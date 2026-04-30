@@ -143,7 +143,9 @@ install: build ## Install acc-agent binary to $$HOME/.acc/bin on this node
 	@ACC_DIR=$${ACC_DIR:-$$HOME/.acc}; \
 	mkdir -p "$$ACC_DIR/bin"; \
 	cp target/release/acc-agent "$$ACC_DIR/bin/acc-agent"; \
-	echo "✓ acc-agent installed → $$ACC_DIR/bin/acc-agent"
+	ln -sf acc-agent "$$ACC_DIR/bin/hermes"; \
+	echo "✓ acc-agent installed → $$ACC_DIR/bin/acc-agent"; \
+	echo "✓ hermes compatibility command → $$ACC_DIR/bin/hermes"
 
 start: ## Start the agent daemon on this node (auto-detects hub vs fleet)
 	@if [ "$$(uname)" = "Darwin" ]; then \

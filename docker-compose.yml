@@ -60,31 +60,11 @@ services:
     networks:
       - acc-net
 
-  # ── Hermes gateway (vendored from jordanhubbard/hermes-agent) ─────────────
-  # Handles all messaging platform integrations (Slack, Signal, Telegram, etc.)
-  # and exposes the hermes agent runtime to the ACC task queue.
-  # Config: ./hermes-data/.hermes/ (bind-mounted to /root/.hermes inside)
-  hermes:
-    build:
-      context: ./hermes
-      dockerfile: Dockerfile
-    container_name: acc-hermes
-    restart: unless-stopped
-    env_file:
-      - ./acc-data/.env
-      - ./hermes-data/.env          # SLACK_BOT_TOKEN, SIGNAL_*, etc.
-    environment:
-      - ACC_URL=http://acc-api:8789
-      - CCC_URL=http://acc-api:8789  # alias used by ccc_integration plugin
-      - HERMES_PLUGINS=ccc_integration,acc_shared_memory
-    volumes:
-      - ./hermes-data:/root/.hermes  # hermes config, sessions, skills, memory
-      - ./logs:/data/logs
-    depends_on:
-      acc-api:
-        condition: service_healthy
-    networks:
-      - acc-net
+  # Hermes gateway is no longer a vendored Docker service. Run the native
+  # agent runtime on a registered node instead:
+  #   ~/.acc/bin/acc-agent hermes --gateway
+  # or, after install:
+  #   ~/.acc/bin/hermes --gateway
 
 networks:
   acc-net:

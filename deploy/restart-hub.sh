@@ -36,6 +36,11 @@ UNIT_DEST="/etc/systemd/system/acc-server.service"
 
 mkdir -p "${ACC_DIR}/bin"
 
+install_hermes_alias() {
+    ln -sf acc-agent "${ACC_DIR}/bin/hermes"
+    echo "[restart-hub] ✓ hermes compatibility command → ${ACC_DIR}/bin/hermes"
+}
+
 # ── 1. Build ─────────────────────────────────────────────────────────────────
 echo "[restart-hub] Building acc-server + acc-agent (release) from $WORKSPACE"
 cargo build --release --manifest-path "${WORKSPACE}/Cargo.toml" -p acc-server -p acc-agent
@@ -54,6 +59,7 @@ tmp="${AGENT_DEST}.new.$$"
 cp "$AGENT_BIN" "$tmp"
 chmod +x "$tmp"
 mv "$tmp" "$AGENT_DEST"
+install_hermes_alias
 
 # ── 3. Sync systemd unit ─────────────────────────────────────────────────────
 if [ -f "$UNIT_TEMPLATE" ]; then

@@ -189,7 +189,7 @@ for the systemd mount unit template, or `acc-deploy-agentfs` for the setup scrip
 ```bash
 ssh -o StrictHostKeyChecking=no USER@HOST '
   source ~/.acc/.env 2>/dev/null || source ~/.ccc/.env 2>/dev/null
-  export PATH="$HOME/.local/bin:$PATH"
+  export PATH="$HOME/.acc/bin:$HOME/.local/bin:$PATH"
   hermes --version && echo "hermes OK"
 '
 ```

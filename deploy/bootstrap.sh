@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # bootstrap.sh — One-command agent bootstrap from CCC
-# Installs hermes-agent, seeds workspace, configures agent identity.
+# Installs native acc-agent, seeds workspace, configures agent identity.
 #
 # Usage:
 #   curl -sSL https://raw.githubusercontent.com/${ACC_OWNER}/${ACC_REPO}/main/deploy/bootstrap.sh | \
@@ -13,7 +13,6 @@ set -euo pipefail
 # Repository coordinates — override via env to fork/rename the ACC hub
 ACC_OWNER="${ACC_OWNER:-jordanhubbard}"
 ACC_REPO="${ACC_REPO:-ACC}"
-HERMES_REPO="${HERMES_REPO:-https://github.com/${ACC_OWNER}/hermes-agent.git}"
 ACC_REPO_URL="${ACC_REPO_URL:-https://github.com/${ACC_OWNER}/${ACC_REPO}.git}"
 
 CCC=""
@@ -123,10 +122,10 @@ _json_get() {
 
 # ── 2. Hermes is now native Rust (acc-agent hermes) ──────────────────────
 # The Python hermes-agent package is retired. The acc-agent binary includes
-# hermes --poll and hermes --gateway natively. It is built and installed by
-# deploy/restart-agent.sh which runs later in this bootstrap.
-info "Hermes runtime: native Rust (acc-agent hermes --poll / --gateway)"
-success "No separate Hermes install required"
+# hermes --poll and hermes --gateway natively. deploy/restart-agent.sh also
+# installs ~/.acc/bin/hermes as a compatibility command.
+info "Hermes runtime: native Rust (acc-agent hermes, or hermes compatibility command)"
+success "No Python hermes-agent install required"
 
 # ── 3. Clone / update CCC workspace ──────────────────────────────────────
 ACC_WORKSPACE="$HOME/.acc/workspace"
@@ -405,6 +404,10 @@ fi
 if command -v acc-agent &>/dev/null || [[ -x "$HOME/.acc/bin/acc-agent" ]]; then
   info "Configuring Hermes agent..."
   mkdir -p "$HOME/.hermes/skills"
+  if [[ -x "$HOME/.acc/bin/acc-agent" ]]; then
+    ln -sf acc-agent "$HOME/.acc/bin/hermes"
+    success "Hermes compatibility command: $HOME/.acc/bin/hermes"
+  fi
 
   # CCC fleet skill
   if [[ -d "$ACC_WORKSPACE/skills/acc-node" ]]; then
@@ -697,5 +700,5 @@ echo ""
 echo "  CCC workspace:  ${CCC_WORKSPACE}"
 echo "  ACC env:        ${HOME}/.acc/.env"
 echo ""
-echo "  Next: acc-agent hermes --gateway   (starts the channel gateway)"
+echo "  Next: acc-agent hermes --gateway   (or: hermes --gateway)"
 echo ""

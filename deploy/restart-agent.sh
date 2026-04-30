@@ -48,6 +48,11 @@ fi
 AGENT_DEST="${ACC_DIR}/bin/acc-agent"
 mkdir -p "$LOG_DIR" "${ACC_DIR}/bin"
 
+install_hermes_alias() {
+    ln -sf acc-agent "${ACC_DIR}/bin/hermes"
+    echo "[restart-agent] ✓ hermes compatibility command → ${ACC_DIR}/bin/hermes"
+}
+
 # Load .env for ROCKY_TAILSCALE_IP / ROCKY_TAILSCALE_USER overrides
 # shellcheck disable=SC1090
 source "${ACC_DIR}/.env" 2>/dev/null || true
@@ -353,6 +358,7 @@ if ! $SKIP_INSTALL; then
     chmod +x "$tmp"
     mv "$tmp" "$AGENT_DEST"
 fi
+install_hermes_alias
 
 echo "[restart-agent] Reloading daemon manager with new binary in place..."
 reload_launchd_after_binary_swap

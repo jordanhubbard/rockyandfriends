@@ -72,7 +72,7 @@ Cost model: coding CLI = fixed monthly subscription, not per-token. CCC's infere
 | Codex | `npm install -g @openai/codex` | Good alternative |
 | OpenCode | https://opencode.ai | Open source |
 
-To install the CCC fleet skill into hermes-agent:
+To install the CCC fleet skill into the native Hermes runtime:
 ```bash
 cp -r ~/.ccc/workspace/skills/acc-node/ ~/.hermes/skills/acc-node/
 ```

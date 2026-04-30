@@ -18,6 +18,15 @@ use provider::make_provider;
 use tool::ToolRegistry;
 
 pub async fn run(args: &[String]) {
+    if args.iter().any(|a| a == "--version" || a == "-V") {
+        println!("hermes-rust {}", VERSION);
+        return;
+    }
+    if args.iter().any(|a| a == "--help" || a == "-h") {
+        print_help();
+        return;
+    }
+
     // Gateway mode: long-running Slack/Telegram bot.
     if args.iter().any(|a| a == "--gateway") {
         // Optional --workspace <name> selects which set of env vars to use.
@@ -118,4 +127,19 @@ async fn native_run(args: &[String]) {
 
 fn build_client(cfg: &Config) -> Client {
     Client::new(&cfg.acc_url, &cfg.acc_token).expect("failed to build HTTP client")
+}
+
+fn print_help() {
+    println!("hermes-rust {}", VERSION);
+    println!();
+    println!("USAGE:");
+    println!("  hermes --chat | --repl");
+    println!("  hermes --query <text>");
+    println!("  hermes --task <id> --query <text>");
+    println!("  hermes --item <id> --query <text>");
+    println!("  hermes --gateway [--workspace <name>]");
+    println!("  hermes --poll");
+    println!("  hermes --poll-queue");
+    println!();
+    println!("The standalone hermes command is a compatibility alias for acc-agent hermes.");
 }

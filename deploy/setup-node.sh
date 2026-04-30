@@ -170,7 +170,7 @@ else
   success "tmux present ($(tmux -V))"
 fi
 
-# python3-venv (required to create the hermes venv; Debian/Ubuntu splits this out)
+# python3-venv (required by some Python tooling; Debian/Ubuntu splits this out)
 if [[ "$PLATFORM" == "linux" ]] && ! python3 -m venv --help &>/dev/null 2>&1; then
   info "Installing python3-venv..."
   PY_VER=$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')
@@ -200,59 +200,23 @@ else
   echo ""
 fi
 
-# ── Install Hermes agent runtime ─────────────────────────────────────────
-# DEPRECATED: Python hermes-agent has been replaced by native Rust acc-agent.
-# The following install logic is kept for reference during transition only.
-# acc-agent hermes --poll and acc-agent hermes --gateway replace 'hermes' entirely.
-info "Checking Hermes agent runtime..."
-
-HERMES_INSTALLED=false
-
-if command -v hermes &>/dev/null; then
-  HERMES_INSTALLED=true
-  success "Hermes agent present ($(hermes --version 2>/dev/null | head -1))"
+# ── Hermes runtime ───────────────────────────────────────────────────────
+info "Checking Hermes runtime..."
+if [ -x "$ACC_DIR/bin/acc-agent" ]; then
+  ln -sf acc-agent "$ACC_DIR/bin/hermes"
+  success "Native Hermes runtime present ($ACC_DIR/bin/acc-agent hermes)"
+  success "Hermes compatibility command present ($ACC_DIR/bin/hermes)"
 else
-  info "Hermes not found — installing..."
-  HERMES_INSTALL_OK=false
-  if command -v pipx &>/dev/null; then
-    # pipx is the cleanest path (avoids PEP 668 on modern macOS/Linux)
-    pipx install hermes-agent --quiet 2>/dev/null && HERMES_INSTALL_OK=true || true
-  elif command -v pip3 &>/dev/null || command -v pip &>/dev/null; then
-    PIP="$(command -v pip3 || command -v pip)"
-    if [[ "$PLATFORM" == "macos" ]]; then
-      # PEP 668: Homebrew Python refuses bare pip install on macOS 3.11+
-      HERMES_VENV="$HOME/.hermes-install-venv"
-      python3 -m venv "$HERMES_VENV" --quiet 2>/dev/null && \
-        "$HERMES_VENV/bin/pip" install --quiet hermes-agent 2>/dev/null && \
-        ln -sf "$HERMES_VENV/bin/hermes" "$HOME/.local/bin/hermes" 2>/dev/null && \
-        HERMES_INSTALL_OK=true || true
-    else
-      "$PIP" install --quiet hermes-agent 2>/dev/null && HERMES_INSTALL_OK=true || true
-    fi
-  fi
-
-  if [ "$HERMES_INSTALL_OK" = true ] && command -v hermes &>/dev/null; then
-    HERMES_INSTALLED=true
-    success "Hermes agent installed ($(hermes --version 2>/dev/null | head -1))"
-  else
-    warn "Could not auto-install Hermes."
-    echo ""
-    echo "  ┌──────────────────────────────────────────────────────────────┐"
-    echo "  │  Install Hermes manually:                                    │"
-    echo "  │    macOS:  pipx install hermes-agent   (preferred)           │"
-    echo "  │            brew install pipx && pipx install hermes-agent    │"
-    echo "  │    Linux:  pip3 install hermes-agent                         │"
-    echo "  │  Then re-run this script to complete setup.                  │"
-    echo "  └──────────────────────────────────────────────────────────────┘"
-    echo ""
-  fi
+  info "Native Hermes runtime is provided by acc-agent; no Python hermes-agent install required"
+  info "agent-pull/restart will install $ACC_DIR/bin/acc-agent and $ACC_DIR/bin/hermes"
 fi
 
 # Install acc-node skill into Hermes
 CCC_SKILL_SRC="$WORKSPACE/skills/acc-node"
-if [ -d "$CCC_SKILL_SRC" ] && [ "$HERMES_INSTALLED" = true ]; then
+if [ -d "$CCC_SKILL_SRC" ]; then
   SKILL_DEST="$HOME/.hermes/skills/acc-node"
   if [ ! -d "$SKILL_DEST" ]; then
+    mkdir -p "$HOME/.hermes/skills"
     cp -r "$CCC_SKILL_SRC" "$SKILL_DEST"
     success "acc-node skill installed into Hermes"
   else
@@ -278,7 +242,6 @@ seed_hermes_memory() {
   local SENTINEL_OLD="## CCC Fleet Context"
   local SENTINEL_NEW="<!-- ccc-fleet-seed -->"
 
-  if ! command -v hermes &>/dev/null; then return; fi
   if grep -qE "(## CCC Fleet Context|<!-- ccc-fleet-seed -->)" "$MEMORY_FILE" 2>/dev/null; then
     success "CCC fleet context already in hermes MEMORY.md — skipping"
     return
@@ -693,7 +656,7 @@ echo "  Next steps:"
 echo "  1. Edit $ENV_FILE with your agent's credentials"
 echo "  2. Run a manual pull: bash $PULL_SCRIPT"
 echo "  3. Check logs: tail -f $LOG_DIR/pull.log"
-echo "  4. Start channel gateway: acc-agent hermes --gateway"
+echo "  4. Start channel gateway: acc-agent hermes --gateway   (or: hermes --gateway)"
 echo ""
 echo "  To register this agent with CCC:"
 echo "  bash $WORKSPACE/deploy/register-agent.sh"

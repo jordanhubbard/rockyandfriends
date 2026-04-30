@@ -57,6 +57,7 @@ For direct host debugging, use the native Hermes subcommand:
 acc-agent hermes --chat              # interactive local conversation
 acc-agent hermes --query "hello"     # one-shot prompt
 acc-agent hermes --gateway           # Slack/Telegram gateway
+hermes --chat                        # compatibility alias when installed
 ```
 
 Optional processes are explicit opt-ins: `ACC_ENABLE_LEGACY_QUEUE=true` for the

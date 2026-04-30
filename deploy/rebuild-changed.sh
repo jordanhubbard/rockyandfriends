@@ -28,6 +28,14 @@ rb_success() { echo -e "${GREEN}  [rebuild]${NC} ✓ $1"; }
 rb_warn()    { echo -e "${YELLOW}  [rebuild]${NC} ⚠ $1"; }
 rb_skip()    { echo -e "${BLUE}  [rebuild]${NC} → $1 (unchanged)"; }
 
+install_hermes_alias_for() {
+  local dest="$1"
+  local dir
+  dir="$(dirname "${dest}")"
+  ln -sf "$(basename "${dest}")" "${dir}/hermes"
+  rb_success "hermes compatibility command → ${dir}/hermes"
+}
+
 # Nothing to compare — first run or no pull happened
 if [ -z "${BEFORE_SHA}" ] || [ "${BEFORE_SHA}" = "${AFTER_SHA}" ]; then
   rb_info "No new commits — skipping source rebuild"
@@ -69,6 +77,9 @@ build_and_install() {
     chmod +x "${tmp}"
     mv "${tmp}" "${dest}"
     rb_success "${label} installed → ${dest}"
+    if [ "${label}" = "acc-agent" ]; then
+      install_hermes_alias_for "${dest}"
+    fi
 
     # Restart service if a restart command was provided
     if [ -n "${restart_cmd}" ]; then
@@ -94,6 +105,7 @@ if echo "${CHANGED}" | grep -q "^agent/"; then
       tmp="${AGENT_DEST}.new.$$"
       cp "${WORKSPACE}/acc-agent" "${tmp}" && chmod +x "${tmp}" && mv "${tmp}" "${AGENT_DEST}"
       rb_success "acc-agent installed from pre-built workspace binary → ${AGENT_DEST}"
+      install_hermes_alias_for "${AGENT_DEST}"
     fi
   elif [ -f "${AGENT_MANIFEST}" ]; then
     # Determine restart: kill acc-agent so the supervisor or timer relaunches it

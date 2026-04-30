@@ -7,6 +7,9 @@ set -euo pipefail
 
 echo "[hermes-venv] ERROR: Python hermes-agent is retired." >&2
 echo "[hermes-venv] Use the native runtime instead:" >&2
+echo "  ~/.acc/bin/hermes --chat" >&2
+echo "  ~/.acc/bin/hermes --query \"hello\"" >&2
+echo "  ~/.acc/bin/hermes --gateway" >&2
 echo "  ~/.acc/bin/acc-agent hermes --chat" >&2
 echo "  ~/.acc/bin/acc-agent hermes --query \"hello\"" >&2
 echo "  ~/.acc/bin/acc-agent hermes --gateway" >&2

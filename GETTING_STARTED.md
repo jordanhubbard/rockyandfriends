@@ -145,7 +145,7 @@ curl -sSL https://raw.githubusercontent.com/jordanhubbard/ACC/main/deploy/bootst
 ```
 
 This will:
-- Install hermes-agent (the standard agent runtime)
+- Install the native acc-agent runtime and `hermes` compatibility command
 - Clone the CCC workspace to `~/.ccc/workspace`
 - Write `~/.ccc/.env` with your hub credentials and any secrets from the bootstrap API
 - Install hermes skills (acc-node, agent-skills, superpowers)
@@ -183,7 +183,8 @@ If you prefer to set things up yourself:
 
 5. Start the agent runtime:
    ```bash
-   hermes gateway
+   acc-agent hermes --gateway
+   # or: hermes --gateway
    ```
 
 Your agent will now appear in the CCC dashboard.
